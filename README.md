@@ -45,3 +45,29 @@ Things learned that the Car Thing client must handle:
 - **Sessions are tied to the socket:** when the WebSocket drops, Hermes closes or detaches the sessions it opened (`ws_disconnect`). The device must reconnect and resume.
 - **A refused connection shows up as HTTP 403.** Hermes rejects the WebSocket upgrade before it opens, so a bad token and a blocked request look the same from the client.
 - **Proxy:** `websockets` 15+ follows the system proxy by default. The probe turns that off unless you pass `--use-proxy`.
+
+## Step 2: name the Car Thing's buttons and knob
+
+`tools/list_inputs.sh` runs on the Car Thing itself (plain busybox shell, nothing to install). It lists the input devices Linux sees, then prints every button press and knob turn for 60 seconds. Nothing on the device is changed.
+
+From a Mac or Linux computer with the Car Thing plugged in by USB (on Nocturne's start screen, pick **Connect to PC** if it asks):
+
+```sh
+ping -c 2 nocturne.local                                   # should answer within a few seconds
+ssh root@nocturne.local 'sh -s' < tools/list_inputs.sh     # add a number after -s for longer, e.g. 'sh -s 120'
+```
+
+While it listens, press each top button from left to right, then the front button, press the knob, and turn the knob a few clicks each way. Leave the touchscreen alone, or it floods the output.
+
+- **Signing in:** Nocturne is built on yocto-superbird, whose images allow `root` with an empty password over USB. If `ssh` asks for a password, press Enter.
+- **If `nocturne.local` doesn't answer:** the Car Thing gives itself an address in `10.42.1.x`. On a Mac, look for a new USB network interface in System Settings → Network; the Car Thing is the address one above the Mac's.
+
+Expected from the community device tree, to be confirmed by the run:
+
+| Control | Linux event |
+| --- | --- |
+| Top buttons 1–4 | `KEY_1`–`KEY_4` (codes 2–5) |
+| Top-right button | `KEY_M` (50) |
+| Front button | `KEY_ESC` (1) |
+| Knob press | `KEY_ENTER` (28) |
+| Knob turn | `REL_HWHEEL` (relative axis 6), ±1 per click |
