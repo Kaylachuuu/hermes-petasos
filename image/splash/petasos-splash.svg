@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+<defs><pattern id="k" width="40" height="44" y="30" patternUnits="userSpaceOnUse"><path d="M0,38 H36 V6 H8 V30 H28 V14 H18 V22" fill="none" stroke="#c9b48a" stroke-width="3"/></pattern><pattern id="k2" width="40" height="44" y="410" patternUnits="userSpaceOnUse"><path d="M0,38 H36 V6 H8 V30 H28 V14 H18 V22" fill="none" stroke="#c9b48a" stroke-width="3"/></pattern></defs>
+<rect width="800" height="480" fill="#1a1410"/>
+<rect x="0" y="30" width="800" height="44" fill="url(#k)"/>
+<rect x="0" y="410" width="800" height="44" fill="url(#k2)"/>
+<line x1="0" y1="20" x2="800" y2="20" stroke="#c9b48a" stroke-width="2"/><line x1="0" y1="80" x2="800" y2="80" stroke="#c9b48a" stroke-width="2"/>
+<line x1="0" y1="400" x2="800" y2="400" stroke="#c9b48a" stroke-width="2"/><line x1="0" y1="460" x2="800" y2="460" stroke="#c9b48a" stroke-width="2"/>
+<text x="400" y="218" text-anchor="middle" font-family="Caladea" font-size="78" letter-spacing="22" fill="#d97a3a">ΠΕΤΑΣΟΣ</text>
+<text x="400" y="280" text-anchor="middle" font-family="Caladea" font-size="30" letter-spacing="14" fill="#c9b48a">PETASOS</text>
+<text x="400" y="330" text-anchor="middle" font-family="Inter" font-weight="300" font-size="16" letter-spacing="6" fill="#9c8a68">MESSENGER OF ATHENA</text>
+</svg>
