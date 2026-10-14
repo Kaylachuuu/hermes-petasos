@@ -399,6 +399,7 @@ func (h *hermes) run(eventsFile string) {
 		go readEventFile(eventsFile, "test", raw)
 	} else {
 		go watchInputs(grab, raw)
+		go watchTouch()
 		setUpTunnel(h.dir)
 		go keepTethered(h.cfg.Phone)
 		go keepSpeakerConnected()

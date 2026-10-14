@@ -229,6 +229,13 @@ func (l *light) touched(ev map[string]any) bool {
 	return false
 }
 
+// wake counts as activity, for the touchscreen.
+func (l *light) wake() {
+	l.mu.Lock()
+	l.active = time.Now()
+	l.mu.Unlock()
+}
+
 func (l *light) settings() lightSettings {
 	l.mu.Lock()
 	defer l.mu.Unlock()

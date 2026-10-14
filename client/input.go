@@ -19,6 +19,7 @@ const (
 
 	evKey    = 1
 	evRel    = 2
+	evAbs    = 3
 	relHWhee = 6
 
 	eviocgrab = 0x40044590 // _IOW('E', 0x90, int)
@@ -48,6 +49,56 @@ func watchInputs(grab bool, out chan<- map[string]any) {
 			}
 		}(name)
 	}
+}
+
+// watchTouch wakes the screen when the touchscreen is touched. Touches only wake it: nothing on
+// the screen is meant to be tapped, and the kiosk browser still gets them as usual.
+func watchTouch() {
+	for {
+		path := findInputLike("tlsc6x", "touch")
+		if path == "" {
+			log.Printf("no touchscreen found; looking again in 60s")
+			time.Sleep(60 * time.Second)
+			continue
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			log.Printf("opening the touchscreen: %v", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		log.Printf("reading touchscreen (%s)", path)
+		buf := make([]byte, 24)
+		for {
+			if _, err := io.ReadFull(f, buf); err != nil {
+				break
+			}
+			typ := binary.LittleEndian.Uint16(buf[16:18])
+			if typ == evKey || typ == evAbs {
+				backlight.wake()
+			}
+		}
+		f.Close()
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// findInputLike finds the first input device whose name contains any of the words, ignoring case.
+func findInputLike(words ...string) string {
+	paths, _ := filepath.Glob("/sys/class/input/event*/device/name")
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(string(data)))
+		for _, w := range words {
+			if strings.Contains(name, w) {
+				return "/dev/input/" + filepath.Base(filepath.Dir(filepath.Dir(p)))
+			}
+		}
+	}
+	return ""
 }
 
 func findInput(name string) string {
