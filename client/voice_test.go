@@ -55,3 +55,12 @@ func TestWavFile(t *testing.T) {
 		t.Fatalf("bad header % x", w[:44])
 	}
 }
+
+func TestTo16(t *testing.T) {
+	wide := []byte{0xAA, 0xBB, 0x34, 0x12, 0x00, 0x00, 0xFF, 0xFF} // 0x1234BBAA, 0xFFFF0000
+	out := make([]byte, 4)
+	to16(wide, out)
+	if binary.LittleEndian.Uint16(out) != 0x1234 || int16(binary.LittleEndian.Uint16(out[2:])) != -1 {
+		t.Fatalf("got % x", out)
+	}
+}

@@ -45,7 +45,7 @@ type config struct {
 	Device  string `json:"device,omitempty"`  // name the plugin keeps state under; default "car-thing"
 	Grab    *bool  `json:"grab,omitempty"`    // take the buttons from Nocturne's own screen; default true
 	Phone   string `json:"phone,omitempty"`   // Bluetooth address of the phone to tether to; default any paired one
-	Mic     string `json:"mic,omitempty"`     // ALSA device to record from; default plughw:0,0
+	Mic     string `json:"mic,omitempty"`     // ALSA device to record from (32-bit samples); default hw:0,0
 	Speaker string `json:"speaker,omitempty"` // ALSA device to play on; default bluealsa (the connected Bluetooth speaker)
 }
 

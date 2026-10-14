@@ -22,7 +22,9 @@ import (
 // recording to the plugin, and play Athena's spoken reply on the Bluetooth speaker. The plugin
 // does the transcribing, the chat turn and the speech; this side only moves audio.
 //
-// Recording uses arecord (16 kHz mono, raw PCM on stdout); playback uses aplay on BlueALSA's
+// Recording uses arecord (16 kHz mono, raw PCM on stdout). The Car Thing's microphones only
+// deliver 32-bit samples (16-bit is advertised but refused), so they are read as S32_LE and cut
+// down to 16-bit here. Playback uses aplay on BlueALSA's
 // "bluealsa" device, which plays to the most recently connected Bluetooth speaker.
 
 const (
@@ -50,7 +52,7 @@ func newVoice(h *hermes, presses chan<- map[string]any) *voice {
 	v := &voice{h: h, mic: h.cfg.Mic, speaker: h.cfg.Speaker, presses: presses,
 		slow: &http.Client{Transport: h.http.Transport, Timeout: 4 * time.Minute}}
 	if v.mic == "" {
-		v.mic = "plughw:0,0" // the Car Thing's microphones (yocto-superbird routes them to both capture devices)
+		v.mic = "hw:0,0" // the Car Thing's microphones (yocto-superbird routes them to both capture devices)
 	}
 	if v.speaker == "" {
 		v.speaker = "bluealsa"
@@ -113,7 +115,7 @@ func (v *voice) listen(mode string, endMs, idleS int) {
 }
 
 func (v *voice) startRecording() {
-	cmd := exec.Command("arecord", "-q", "-D", v.mic, "-f", "S16_LE", "-r", fmt.Sprint(sampleRate),
+	cmd := exec.Command("arecord", "-q", "-D", v.mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
 		"-c", "1", "-t", "raw")
 	out, err := cmd.StdoutPipe()
 	var stderr bytes.Buffer
@@ -133,12 +135,14 @@ func (v *voice) startRecording() {
 	go func() {
 		defer close(rec.done)
 		var vad *endpointer
-		r := bufio.NewReaderSize(out, frameBytes*4)
+		r := bufio.NewReaderSize(out, frameBytes*8)
+		wide := make([]byte, frameBytes*2)
 		frame := make([]byte, frameBytes)
 		for {
-			if _, err := io.ReadFull(r, frame); err != nil {
+			if _, err := io.ReadFull(r, wide); err != nil {
 				return
 			}
+			to16(wide, frame)
 			rec.mu.Lock()
 			rec.pcm.Write(frame)
 			rec.mu.Unlock()
@@ -414,6 +418,14 @@ func wavFile(pcm []byte, rate int) []byte {
 	_ = binary.Write(&b, binary.LittleEndian, uint32(len(pcm)))
 	b.Write(pcm)
 	return b.Bytes()
+}
+
+// to16 keeps the top 16 bits of each 32-bit little-endian sample (the microphones' data is
+// left-aligned in the 32-bit word).
+func to16(wide, out []byte) {
+	for i := 0; i+1 < len(out); i += 2 {
+		out[i], out[i+1] = wide[2*i+2], wide[2*i+3]
+	}
 }
 
 func intOf(v any, fallback int) int {
