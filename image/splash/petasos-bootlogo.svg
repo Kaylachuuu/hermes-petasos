@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+<rect width="800" height="480" fill="#1f1b17"/>
+<g fill="none" stroke="#c9b48a" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="400" cy="236" rx="168" ry="30"/>
+<path d="M318,228 C318,150 482,150 482,228" fill="#1f1b17"/>
+<path d="M338,214 C360,206 440,206 462,214" stroke-width="3" opacity=".7"/>
+</g>
+<g fill="#d97a3a"><path d="M478,206 C520,198 566,172 604,134 C590,162 574,174 558,182 C580,178 596,170 612,160 C596,186 574,196 552,202 C568,203 584,200 598,196 C574,216 534,224 482,224 Z"/><path d="M478,206 C520,198 566,172 604,134 C590,162 574,174 558,182 C580,178 596,170 612,160 C596,186 574,196 552,202 C568,203 584,200 598,196 C574,216 534,224 482,224 Z" transform="translate(800,0) scale(-1,1)"/></g>
+<text x="400" y="352" text-anchor="middle" font-family="Caladea" font-size="46" letter-spacing="16" fill="#c9b48a">PETASOS</text>
+<text x="400" y="392" text-anchor="middle" font-family="Inter" font-weight="300" font-size="16" letter-spacing="6" fill="#9c8a68">MESSENGER OF ATHENA</text>
+</svg>
