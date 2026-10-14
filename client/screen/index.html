@@ -349,7 +349,7 @@ function connect() {
   events.onmessage = (e) => {
     state = JSON.parse(e.data);
     if (pageVersion === null) pageVersion = state.version;
-    else if (state.version !== pageVersion) { location.reload(); return; }
+    else if (state.version !== pageVersion) { location.replace("/?v=" + encodeURIComponent(state.version)); return; }
     draw(state);
   };
   events.onerror = () => { $("hint").textContent = "Starting…"; $("hint").className = "hint wait"; };

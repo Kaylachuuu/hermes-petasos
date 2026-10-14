@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -60,13 +59,16 @@ func pointKiosk(client *http.Client) error {
 		if t.Type != "page" {
 			continue
 		}
-		if strings.HasPrefix(t.URL, screenURL) {
+		// The page's address carries petasos's version, so a page from an older petasos is
+		// replaced, and never comes from the browser's cache.
+		want := screenURL + "?v=" + url.QueryEscape(version)
+		if t.URL == want {
 			return nil
 		}
 		if t.WebSocketDebuggerURL == "" {
 			return fmt.Errorf("the kiosk page has no DevTools connection")
 		}
-		if err := devtoolsCall(t.WebSocketDebuggerURL, "Page.navigate", map[string]string{"url": screenURL}); err != nil {
+		if err := devtoolsCall(t.WebSocketDebuggerURL, "Page.navigate", map[string]string{"url": want}); err != nil {
 			return fmt.Errorf("telling the kiosk to show the screen: %v", err)
 		}
 		log.Printf("screen shown on the kiosk")

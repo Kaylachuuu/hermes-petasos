@@ -107,7 +107,11 @@ func (s *screen) serve() {
 	s.update(func(st *screenState) { st.Version = version })
 	files, _ := fs.Sub(screenFiles, "screen")
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(files)))
+	pages := http.FileServer(http.FS(files))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store") // a new petasos brings a new page
+		pages.ServeHTTP(w, r)
+	})
 	mux.HandleFunc("/events", s.events)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
