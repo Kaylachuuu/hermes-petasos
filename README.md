@@ -80,3 +80,18 @@ Kayla ran it on 2026-10-14 against current Nocturne (yocto, flashed with Terbium
 The other inputs are the touchscreen (`tlsc6x`, `event2`, multitouch absolute events) and `Nocturne (… ) (MCS)` (`event3`), a Bluetooth media-control input Nocturne creates. The client should find devices by name, not by `eventN` number, since numbering can change.
 
 Older Nocturne builds (3.0.0 and 4.0.x) use RNDIS at `172.16.42.2`, which macOS doesn't support; current Nocturne is the target.
+
+## Planned control layout (step 3)
+
+Agreed 2026-10-14. The mapping will live in an editable file on the Hermes server.
+
+| Control | Action |
+| --- | --- |
+| Front button, hold | Push-to-talk: speak while holding, release to send |
+| Front button, tap | Start or end conversation mode: sends after about a second of silence, listens again after each reply, ends after a longer silence |
+| Knob press | Stop Athena speaking |
+| Knob turn | Volume |
+| Presets 1–4 | One-touch requests you choose |
+| Top-right button | Mic off |
+
+The first version won't support interrupting by voice, because the mic would hear Athena through a nearby speaker. Press the knob instead.
