@@ -80,6 +80,13 @@ button:disabled { opacity: .5; cursor: default; }
       </div>
     </div>
 
+    <h2>Audio</h2>
+    <div class="row">
+      <label for="mic">Microphone</label>
+      <select id="mic"></select>
+      <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
+    </div>
+
     <h2>Hermes</h2>
     <div class="row">
       <label>Signed in to</label>
@@ -131,6 +138,17 @@ function showVPN() {
   $("route-text").textContent = current.route === "vpn" ? "Reaching Hermes through the VPN" : "Reaching Hermes directly";
 }
 
+function showMics() {
+  const select = $("mic");
+  select.textContent = "";
+  const add = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; select.append(o); };
+  add("", "Same as this computer's sound settings");
+  for (const m of current.mics) add(m.id, m.builtin ? `${m.name} (built in)` : m.name);
+  if (current.mic && !current.mics.some((m) => m.id === current.mic)) add(current.mic, `${current.mic_name || "The chosen microphone"} (not connected)`);
+  select.value = current.mic || "";
+  if (current.mics_error) $("mic-hint").textContent = `Couldn't list the microphones: ${current.mics_error}`;
+}
+
 async function load() {
   const res = await fetch("/app/settings", { cache: "no-store" });
   if (!res.ok) throw new Error("This page is only for the Petasos app.");
@@ -143,6 +161,7 @@ async function load() {
   $("form").hidden = false;
   showName();
   showVPN();
+  showMics();
 }
 
 function fail(message) {
@@ -173,6 +192,8 @@ $("form").addEventListener("submit", async (e) => {
   $("save").disabled = true;
   const change = { name: $("name").value.trim(), vpn: $("vpn").value === "wireguard", when: $("when").value };
   if (newConfig) change.wireguard = newConfig.text;
+  change.mic = $("mic").value;
+  change.mic_name = $("mic").selectedOptions[0] ? $("mic").selectedOptions[0].textContent.replace(/ \((built in|not connected)\)$/, "") : "";
   try {
     const res = await fetch("/app/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) });
     const body = await res.json().catch(() => ({}));

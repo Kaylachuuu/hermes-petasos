@@ -7,6 +7,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,10 +40,17 @@ func windowsApp() bool {
 				rate = n
 			}
 		}
-		if err := winRecord(rate); err != nil {
+		mic := ""
+		if len(args) >= 3 {
+			mic = args[2]
+		}
+		if err := winRecord(rate, mic); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		os.Exit(0)
+	case len(args) >= 1 && args[0] == "--inputs":
+		_ = json.NewEncoder(os.Stdout).Encode(winInputs())
 		os.Exit(0)
 	case len(args) >= 1 && args[0] == "--play":
 		if err := winPlay(); err != nil {
@@ -214,13 +222,54 @@ const (
 	whdrDone   = 1
 )
 
-// winRecord writes the default microphone to stdout as 32-bit little-endian mono samples at
-// rate (what arecord gives on the Car Thing), until stdout is closed or it is stopped.
-func winRecord(rate int) error {
+// waveInCaps is WAVEINCAPSW: a microphone's name, among other things.
+type waveInCaps struct {
+	Mid, Pid      uint16
+	DriverVersion uint32
+	Name          [32]uint16
+	Formats       uint32
+	Channels      uint16
+	Reserved      uint16
+}
+
+// winInputs lists the microphones, for the settings page. Windows numbers them afresh as they
+// come and go, so each is known by its name.
+func winInputs() []micInfo {
+	mics := []micInfo{}
+	n, _, _ := winmm.NewProc("waveInGetNumDevs").Call()
+	caps := winmm.NewProc("waveInGetDevCapsW")
+	for i := uintptr(0); i < n; i++ {
+		var c waveInCaps
+		if r, _, _ := caps.Call(i, uintptr(unsafe.Pointer(&c)), unsafe.Sizeof(c)); r != 0 {
+			continue
+		}
+		name := syscall.UTF16ToString(c.Name[:])
+		mics = append(mics, micInfo{ID: name, Name: name})
+	}
+	return mics
+}
+
+// winRecord writes the microphone named mic (or the default one) to stdout as 32-bit
+// little-endian mono samples at rate (what arecord gives on the Car Thing), until stdout is
+// closed or it is stopped.
+func winRecord(rate int, mic string) error {
 	format := waveFormatEx{FormatTag: 1, Channels: 1, SamplesPerSec: uint32(rate),
 		AvgBytesPerSec: uint32(rate * 2), BlockAlign: 2, BitsPerSample: 16}
+	device := uintptr(waveMapper)
+	if mic != "" {
+		found := false
+		for i, m := range winInputs() {
+			if m.ID == mic {
+				device, found = uintptr(i), true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(os.Stderr, "%s isn't connected; recording from the default microphone\n", mic)
+		}
+	}
 	var h uintptr
-	if r, _, _ := winmm.NewProc("waveInOpen").Call(uintptr(unsafe.Pointer(&h)), waveMapper,
+	if r, _, _ := winmm.NewProc("waveInOpen").Call(uintptr(unsafe.Pointer(&h)), device,
 		uintptr(unsafe.Pointer(&format)), 0, 0, 0); r != 0 {
 		return fmt.Errorf("no microphone to record from (waveInOpen %d)", r)
 	}

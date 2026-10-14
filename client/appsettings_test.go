@@ -51,3 +51,34 @@ func TestAppSettingsAreCheckedAndSaved(t *testing.T) {
 		t.Fatalf("saved %+v %+v %v %v", cfg, set, info, err)
 	}
 }
+
+// The microphone choice is saved, listed from the helper, and passed to the recorder.
+func TestMicrophoneChoice(t *testing.T) {
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "audio")
+	os.WriteFile(helper, []byte(`#!/bin/sh
+[ "$1" = --inputs ] && echo '[{"id":"BuiltInMicrophoneDevice","name":"MacBook Pro Microphone","builtin":true},{"id":"airpods","name":"AirPods"}]'
+`), 0o755)
+	oldA, oldM, oldV := audioHelper, micChoice, virtual
+	audioHelper, virtual = helper, true
+	defer func() { audioHelper, micChoice, virtual = oldA, oldM, oldV }()
+	h := &hermes{dir: dir, cfg: config{Device: "mac"}}
+	mic := "BuiltInMicrophoneDevice"
+	if p := h.saveAppSettings(appSettingsChange{Name: "Mac", Mic: &mic, MicName: "MacBook Pro Microphone"}); p != "" {
+		t.Fatal(p)
+	}
+	v := h.appSettingsView()
+	if v.Mic != mic || v.MicName != "MacBook Pro Microphone" || len(v.Mics) != 2 || !v.Mics[0].Builtin {
+		t.Fatalf("view %+v", v)
+	}
+	micChoice = loadAudioSettings(dir).Mic
+	cmd := (&voice{}).recordCommand()
+	if got := strings.Join(cmd.Args[1:], " "); got != "--record 16000 BuiltInMicrophoneDevice" {
+		t.Fatalf("recorder run as %q", got)
+	}
+	none := ""
+	h.saveAppSettings(appSettingsChange{Name: "Mac", Mic: &none, MicName: "x"})
+	if a := loadAudioSettings(dir); a.Mic != "" || a.MicName != "" {
+		t.Fatalf("saved %+v", a)
+	}
+}

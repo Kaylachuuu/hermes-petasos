@@ -36,7 +36,11 @@ var (
 // recordCommand is the recorder: raw 32-bit little-endian mono samples at sampleRate on stdout.
 func (v *voice) recordCommand() *exec.Cmd {
 	if virtual {
-		return exec.Command(audioHelper, "--record", strconv.Itoa(sampleRate))
+		args := []string{"--record", strconv.Itoa(sampleRate)}
+		if micChoice != "" {
+			args = append(args, micChoice)
+		}
+		return exec.Command(audioHelper, args...)
 	}
 	return exec.Command("arecord", "-q", "-D", v.mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
 		"-c", "1", "-t", "raw")
@@ -81,6 +85,7 @@ func (h *hermes) startVirtual(raw chan<- map[string]any) {
 	display.mu.Lock()
 	display.inputs = raw
 	display.mu.Unlock()
+	micChoice = loadAudioSettings(h.dir).Mic
 	h.servesAppSettings()
 	h.startVPN()
 	go h.watchHome()

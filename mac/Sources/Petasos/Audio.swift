@@ -1,4 +1,6 @@
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import Foundation
 
 // The recorder and player the petasos program uses on the Mac, in place of the Car Thing's
@@ -6,10 +8,11 @@ import Foundation
 enum Audio {
     // record writes the default microphone to stdout as raw 32-bit little-endian mono samples at
     // the given rate (what arecord -f S32_LE -c 1 gives on the Car Thing), until it is stopped.
-    static func record(rate: Double) -> Never {
+    // mic is a microphone's id from --inputs; nil records from the one the Mac's sound settings use.
+    static func record(rate: Double, mic: String?) -> Never {
         signal(SIGPIPE, SIG_IGN) // a closed pipe then shows up as a failed write, and ends the recording
         checkAccess()
-        let recorder = Recorder(rate: rate)
+        let recorder = Recorder(rate: rate, mic: mic)
         // The engine stops when the microphone changes under it, such as a Bluetooth headset
         // switching to its call mode as recording starts; start again with the new one.
         NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
@@ -31,6 +34,70 @@ enum Audio {
     }
 
     private static var stopSource: DispatchSourceSignal?
+
+    // listInputs writes the Mac's microphones to stdout as JSON, for the settings page:
+    // [{"id": its unique id, "name": ..., "builtin": true for the Mac's own}].
+    static func listInputs() -> Never {
+        let mics = inputDevices().map { ["id": $0.uid, "name": $0.name, "builtin": $0.builtin] as [String: Any] }
+        guard let data = try? JSONSerialization.data(withJSONObject: mics) else { exit(1) }
+        FileHandle.standardOutput.write(data)
+        exit(0)
+    }
+
+    struct InputDevice {
+        let id: AudioDeviceID
+        let uid: String
+        let name: String
+        let builtin: Bool
+    }
+
+    // inputDevices is every audio device with at least one input channel.
+    static func inputDevices() -> [InputDevice] {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.compactMap { id in
+            guard inputChannels(id) > 0,
+                  let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
+                  let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
+            var transport: UInt32 = 0
+            var transportSize = UInt32(MemoryLayout<UInt32>.size)
+            var transportAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                                              mElement: kAudioObjectPropertyElementMain)
+            _ = AudioObjectGetPropertyData(id, &transportAddress, 0, nil, &transportSize, &transport)
+            return InputDevice(id: id, uid: uid, name: name, builtin: transport == kAudioDeviceTransportTypeBuiltIn)
+        }
+    }
+
+    private static func inputChannels(_ id: AudioDeviceID) -> Int {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
+                                                 mScope: kAudioDevicePropertyScopeInput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, raw) == noErr else { return 0 }
+        let buffers = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return buffers.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    private static func stringProperty(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var value: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        let status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(id, &address, 0, nil, &size, pointer)
+        }
+        return status == noErr ? value as String : nil
+    }
 
     static func fail(_ message: String) -> Never {
         FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
@@ -78,11 +145,13 @@ enum Audio {
 final class Recorder {
     let engine = AVAudioEngine()
     private let rate: Double
+    private let mic: String?
     private let outFormat: AVAudioFormat
     private var restarts = 0
 
-    init(rate: Double) {
+    init(rate: Double, mic: String?) {
         self.rate = rate
+        self.mic = mic
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
                                          channels: 1, interleaved: false) else {
             Audio.fail("can't record at \(rate) Hz")
@@ -92,6 +161,9 @@ final class Recorder {
 
     func start() {
         let input = engine.inputNode
+        if let mic = mic {
+            useMicrophone(mic)
+        }
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
               let converter = AVAudioConverter(from: inFormat, to: outFormat) else {
@@ -134,6 +206,21 @@ final class Recorder {
             try engine.start()
         } catch {
             Audio.fail("can't start the microphone: \(error)")
+        }
+    }
+
+    // useMicrophone points the engine at the chosen microphone, leaving the Mac's own choice alone.
+    private func useMicrophone(_ uid: String) {
+        guard let device = Audio.inputDevices().first(where: { $0.uid == uid }) else {
+            FileHandle.standardError.write("the chosen microphone isn't connected; using the Mac's own\n".data(using: .utf8)!)
+            return
+        }
+        guard let unit = engine.inputNode.audioUnit else { return }
+        var id = device.id
+        let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                          &id, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if status != noErr {
+            FileHandle.standardError.write("can't record from \(device.name) (\(status)); using the Mac's own\n".data(using: .utf8)!)
         }
     }
 

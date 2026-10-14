@@ -13,8 +13,8 @@ import (
 )
 
 // The app's own settings (the Mac and Windows apps alike), on the page at /settings.html: this
-// computer's name, which tells its chat apart from the Car Thing's and other computers', and
-// the VPN. Saving restarts the program, which the app then starts again, so a change takes
+// computer's name, which tells its chat apart from the Car Thing's and other computers', the
+// VPN, and the microphone (mics.go). Saving restarts the program, which the app then starts again, so a change takes
 // effect the same way a fresh start would.
 
 // appDir is the app's folder (config.json, tokens.json and the rest); signInNeeded is set while
@@ -31,16 +31,20 @@ var app struct {
 }
 
 type appSettingsView struct {
-	Name      string `json:"name"`
-	Device    string `json:"device"`
-	Server    string `json:"server"`
-	VPN       bool   `json:"vpn"`
-	When      string `json:"when"`
-	HasConfig bool   `json:"has_config"`
-	Endpoint  string `json:"endpoint,omitempty"`
-	Address   string `json:"address,omitempty"`
-	Route     string `json:"route"` // "direct" or "vpn"
-	VPNError  string `json:"vpn_error,omitempty"`
+	Name      string    `json:"name"`
+	Device    string    `json:"device"`
+	Server    string    `json:"server"`
+	VPN       bool      `json:"vpn"`
+	When      string    `json:"when"`
+	HasConfig bool      `json:"has_config"`
+	Endpoint  string    `json:"endpoint,omitempty"`
+	Address   string    `json:"address,omitempty"`
+	Route     string    `json:"route"` // "direct" or "vpn"
+	VPNError  string    `json:"vpn_error,omitempty"`
+	Mic       string    `json:"mic"`      // "" for the computer's own choice
+	MicName   string    `json:"mic_name"` // the chosen one's name
+	Mics      []micInfo `json:"mics"`     // the microphones connected now
+	MicsError string    `json:"mics_error,omitempty"`
 }
 
 type appSettingsChange struct {
@@ -48,6 +52,8 @@ type appSettingsChange struct {
 	VPN       bool    `json:"vpn"`
 	When      string  `json:"when"`
 	WireGuard *string `json:"wireguard,omitempty"` // a new config's text; absent keeps the old one
+	Mic       *string `json:"mic,omitempty"`       // absent keeps the microphone as it is
+	MicName   string  `json:"mic_name,omitempty"`
 }
 
 func (h *hermes) servesAppSettings() {
@@ -111,6 +117,14 @@ func (h *hermes) appSettingsView() appSettingsView {
 	app.mu.Lock()
 	v.VPNError = app.vpnError
 	app.mu.Unlock()
+	a := loadAudioSettings(h.dir)
+	v.Mic, v.MicName = a.Mic, a.MicName
+	mics, err := listMics()
+	v.Mics = mics
+	if err != nil {
+		v.Mics = []micInfo{}
+		v.MicsError = err.Error()
+	}
 	return v
 }
 
@@ -150,6 +164,15 @@ func (h *hermes) saveAppSettings(c appSettingsChange) string {
 	}
 	if err := writeJSON(filepath.Join(h.dir, "vpn.json"), vpnSettings{On: c.VPN, When: when}, 0o644); err != nil {
 		return "Couldn't save the VPN setting: " + err.Error()
+	}
+	if c.Mic != nil {
+		a := audioSettings{Mic: *c.Mic, MicName: strings.TrimSpace(c.MicName)}
+		if a.Mic == "" {
+			a.MicName = ""
+		}
+		if err := writeJSON(filepath.Join(h.dir, "audio.json"), a, 0o644); err != nil {
+			return "Couldn't save the microphone: " + err.Error()
+		}
 	}
 	cfg := h.cfg
 	cfg.Name, cfg.Device = name, device
