@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 from pathlib import Path
 
 _CORE = "hermes_petasos_core"
@@ -17,14 +18,22 @@ _LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3
            "car-play": "Car play/pause", "car-next": "Car next track", "car-previous": "Car previous track"}
 
 
+_LOADING = threading.Lock()
+
+
 def _core():
-    """core.py, loaded once per process under a fixed name shared with the dashboard routes."""
+    """core.py, loaded once per process under a fixed name shared with the dashboard routes, and
+    published only once fully loaded (see dashboard/plugin_api.py)."""
     module = sys.modules.get(_CORE)
-    if module is None:
-        spec = importlib.util.spec_from_file_location(_CORE, Path(__file__).with_name("core.py"))
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[_CORE] = module
-        spec.loader.exec_module(module)
+    if module is not None:
+        return module
+    with _LOADING:
+        module = sys.modules.get(_CORE)
+        if module is None:
+            spec = importlib.util.spec_from_file_location(_CORE, Path(__file__).with_name("core.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module = sys.modules.setdefault(_CORE, module)
     return module
 
 

@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 client/dist/*
 !client/dist/petasos-linux-arm64
+!client/dist/petasos-darwin-arm64
+!client/dist/petasos-darwin-amd64

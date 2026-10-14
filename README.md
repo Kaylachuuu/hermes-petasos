@@ -239,3 +239,37 @@ The Car Thing's screen shows what's going on: the preset labels under their butt
 - **Screen tab** (`client/backlight.go`): brightness (Auto, from the ambient light sensor, or 10–100%, lit along a Greek key band at the bottom the way the volume is), how long until the screen dims (Off, 15, 30, 45 or 60 seconds) and how far, and how long until it turns off (the same choices). The Greek key band sits under the tabs, where it is on the main screen, and lights up to the level while Brightness or Dim to is highlighted. Press the knob on a row, turn to change it (the screen follows as you turn), press again. Any button, the knob or a touch on the screen wakes it, and a voice turn, notice or volume change keeps it awake; a preset pressed while the screen is off only wakes it, since its label can't be seen. Kept in `screen.json` next to `config.json`.
 - **Bluetooth tab** (`client/bluetooth.go`): lists the paired phones and computers it can get online through (one marked first) and the speakers, connects, disconnect and forget them, and pair new ones: "Pair a new device" looks for speakers in pairing mode and makes the Car Thing visible as Petasos to a phone's Bluetooth settings. Pairing codes show on the screen, confirmed with the knob.
 - Fonts: Caladea (Apache 2.0) and Source Sans 3 (OFL 1.1); see `client/screen/fonts/README`.
+
+## Step 8: the virtual Petasos on a Mac
+
+`mac/` is a small Mac app that shows the same Petasos screen in a window and talks to Hermes the
+same way the Car Thing does, without the Hermes desktop app. It runs the petasos program (built
+for macOS into `client/dist`) in the background, in a mode with no device behind it: buttons
+under the screen stand in for the hardware, and the Mac's microphone and speakers do the audio.
+
+### Build it
+
+Needs the Xcode command line tools (`xcode-select --install`); Go is not needed.
+
+```sh
+cd mac && ./build.sh
+open Petasos.app
+```
+
+The first time it asks for the Hermes address and the dashboard sign-in, then keeps its own
+renewable sign-in in `~/Library/Application Support/Petasos`, like the Car Thing. macOS asks for
+the microphone the first time you talk. **Sign In Again…** and **Show Log** are in the app menu.
+
+### Controls
+
+| Key | Does |
+|---|---|
+| Hold Space (or the talk button) | talk, as the front button does |
+| Tap Space | start a conversation |
+| Enter | stop speaking, as the knob press does |
+| M | mic on or off |
+| 1 to 4, or click a label | the presets |
+| Arrow keys, or scroll | the Mac's volume |
+
+It shows as its own device in the plugin, so the presets and agent name from the dashboard's
+Petasos tab apply here too.

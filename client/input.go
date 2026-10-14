@@ -258,7 +258,7 @@ func filterInputs(in <-chan map[string]any, out chan<- map[string]any) {
 			}
 			out <- ev
 		case <-timer.C:
-			if muteDown != nil {
+			if muteDown != nil && !virtual { // the Mac has its own Bluetooth and screen settings
 				opened = true
 				if bt.isOpen() {
 					bt.close()

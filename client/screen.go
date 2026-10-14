@@ -36,7 +36,8 @@ type screenState struct {
 	Presets  []string  `json:"presets"`
 	Agent    string    `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
 	Links    links     `json:"links"`
-	BT       *btScreen `json:"bt,omitempty"` // the Bluetooth screens, when open
+	BT       *btScreen `json:"bt,omitempty"`      // the Bluetooth screens, when open
+	Virtual  bool      `json:"virtual,omitempty"` // the virtual Petasos on a Mac: the page draws its own controls
 }
 
 type links struct {
@@ -50,9 +51,10 @@ type links struct {
 }
 
 type screen struct {
-	mu    sync.Mutex
-	state screenState
-	subs  map[chan []byte]struct{}
+	mu     sync.Mutex
+	state  screenState
+	subs   map[chan []byte]struct{}
+	inputs chan<- map[string]any // where the page's own controls go, on the virtual Petasos
 }
 
 var display = &screen{
@@ -113,6 +115,7 @@ func (s *screen) serve() {
 		pages.ServeHTTP(w, r)
 	})
 	mux.HandleFunc("/events", s.events)
+	mux.HandleFunc("/input", s.pagePress)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
 		log.Printf("can't serve the screen: %v", err)

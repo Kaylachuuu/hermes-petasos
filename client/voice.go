@@ -135,8 +135,7 @@ func (v *voice) listen(mode string, endMs, idleS int) {
 
 func (v *voice) startRecording() {
 	display.setPhase("ready")
-	cmd := exec.Command("arecord", "-q", "-D", v.mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
-		"-c", "1", "-t", "raw")
+	cmd := v.recordCommand()
 	out, err := cmd.StdoutPipe()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -381,7 +380,7 @@ func (v *voice) play(wav []byte) {
 	} else {
 		wav = converted
 	}
-	cmd := exec.Command("aplay", "-q", "-D", v.speaker, "-")
+	cmd := v.playCommand()
 	cmd.Stdin = bytes.NewReader(wav)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -429,6 +428,10 @@ var mixerLevel = regexp.MustCompile(`\[(\d+)%\]`)
 
 func (v *voice) volume(delta int) {
 	if delta == 0 {
+		return
+	}
+	if virtual {
+		macVolume(delta)
 		return
 	}
 	out, err := exec.Command("amixer", "-D", v.speaker, "scontrols").Output()

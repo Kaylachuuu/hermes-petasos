@@ -69,8 +69,9 @@ func main() {
 	log.SetFlags(0)
 	dir := flag.String("dir", "/var/lib/petasos", "folder holding config.json and tokens.json")
 	events := flag.String("events", "", "read raw input events from this file instead of the Car Thing's buttons (testing)")
+	flag.StringVar(&audioHelper, "audio", "", "the virtual Petasos's recorder and player (the Mac app's executable)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version]")
+		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version|virtual|signin SERVER [USERNAME]]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -91,6 +92,25 @@ func main() {
 		if err := h.check(); err != nil {
 			log.Fatal(err)
 		}
+	case "signin": // the virtual Petasos's sign-in; the password comes on stdin
+		if flag.NArg() < 2 {
+			flag.Usage()
+			os.Exit(2)
+		}
+		if err := signIn(*dir, flag.Arg(1), flag.Arg(2), os.Stdin); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("signed in")
+	case "virtual":
+		if audioHelper == "" {
+			log.Fatal("the virtual Petasos needs -audio, the app that records and plays")
+		}
+		virtual = true
+		h, err := load(*dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		h.run("")
 	case "run":
 		adopt(*dir)
 		h, err := load(*dir)
@@ -330,6 +350,9 @@ type clientInfo struct {
 // update replaces this program with the server's version when they differ, then restarts in
 // place. It returns only when there was nothing to do or the update failed.
 func (h *hermes) update() error {
+	if virtual {
+		return nil // the Mac app brings its own copy
+	}
 	var latest clientInfo
 	if err := h.call("GET", "/api/plugins/petasos/client?arch="+runtime.GOARCH, nil, &latest); err != nil {
 		return err
@@ -396,7 +419,9 @@ func (h *hermes) run(eventsFile string) {
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
 	go filterInputs(raw, presses)
-	if eventsFile != "" {
+	if virtual {
+		h.startVirtual(raw)
+	} else if eventsFile != "" {
 		go readEventFile(eventsFile, "test", raw)
 	} else {
 		go watchInputs(grab, raw)

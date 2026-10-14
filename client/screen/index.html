@@ -77,6 +77,23 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .keys { position: absolute; left: 0; right: 0; bottom: 0; height: 8cqw; display: flex; justify-content: center; align-items: center;
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
+
+/* The virtual Petasos (the Mac app): the screen above, its controls below. */
+body.virtual { cursor: default; }
+body.virtual .screen { height: calc(100vh - 64px); }
+body.virtual .topbar > span { cursor: pointer; border-radius: .6cqw; }
+body.virtual .topbar > span:hover { background: var(--row); }
+.controls { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; display: flex; align-items: center;
+            justify-content: center; gap: 10px; border-top: 2px solid var(--bronze); background: var(--night);
+            font-family: var(--body); }
+.controls button { font: 600 14px var(--body); letter-spacing: .04em; color: var(--bronze); background: transparent;
+                   border: 1.5px solid var(--rule); border-radius: 8px; height: 38px; padding: 0 14px; cursor: pointer;
+                   display: inline-flex; align-items: center; gap: 8px; }
+.controls button:hover { border-color: var(--dust); }
+.controls button.down, .controls button.on { border-color: var(--ember); color: var(--ember); background: var(--row); }
+.controls button.talk { min-width: 150px; justify-content: center; }
+.controls kbd { font: 12px var(--body); color: var(--dust); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
+.controls svg { width: 18px; height: 18px; }
 </style>
 </head>
 <body>
@@ -179,12 +196,21 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
   </div>
 </div>
 
+<div class="controls" id="controls" hidden>
+  <button id="c-mute" title="Mic on or off (M)"><svg><use href="#i-mic"/></svg><kbd>M</kbd></button>
+  <button class="talk" id="c-front" title="Hold to talk; tap for a conversation (Space)">Hold to talk <kbd>Space</kbd></button>
+  <button id="c-knob" title="Stop speaking (Return)">Stop <kbd>⏎</kbd></button>
+  <button id="c-down" title="Volume down (↓)">−</button>
+  <button id="c-up" title="Volume up (↑)">+</button>
+</div>
+
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (name) => `<svg><use href="#i-${name}"/></svg>`;
-const rest = (a) => `Hold the front button to talk to ${a}`;
+const rest = (a) => state && state.virtual ? `Hold Space to talk to ${a}`
+                                           : `Hold the front button to talk to ${a}`;
 let state = null, noticeSeen = 0, noticeUntil = 0, volumeSeen = null, volumeTimer = 0, lastReply = "", scrollAnim = null;
 
 function warning(s) {
@@ -261,7 +287,7 @@ function drawHome(s) {
   else if (thinking) [text, cls] = [`${a} is thinking…`, "wait"];
   else if (Date.now() < noticeUntil && s.notice) [text, cls] = [s.notice, "wait"];
   else if (warn) [text, cls] = [warn, "wait"];
-  else if (s.muted) [text, cls] = ["The mic is off. Press the mic button to turn it on.", "wait"];
+  else if (s.muted) [text, cls] = [s.virtual ? "The mic is off. Press M to turn it on." : "The mic is off. Press the mic button to turn it on.", "wait"];
   const hint = $("hint");
   hint.textContent = text;
   hint.className = "hint " + cls;
@@ -327,6 +353,7 @@ function drawBT(b) {
 }
 
 function draw(s) {
+  if (s.virtual) setUpControls(s);
   $("motto").textContent = `MESSENGER OF ${s.agent.toUpperCase()}`;
   $("speaker-name").textContent = s.agent.toUpperCase();
   drawTop(s);
@@ -351,6 +378,54 @@ function connect() {
   };
   events.onerror = () => { $("hint").textContent = "Starting…"; $("hint").className = "hint wait"; };
 }
+// --- the virtual Petasos's controls ------------------------------------------------------------
+
+// press sends one control's press or release to petasos, which treats it like the real button.
+function press(input, action, delta) {
+  fetch("/input", { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ input, action, delta }) }).catch(() => {});
+}
+
+let controlsReady = false;
+function setUpControls(s) {
+  $("c-mute").classList.toggle("on", !!s.muted);
+  if (controlsReady) return;
+  controlsReady = true;
+  document.body.classList.add("virtual");
+  $("controls").hidden = false;
+  $("l-phone").style.display = $("l-speaker").style.display = "none"; // the Mac's own
+  const held = new Set();
+  const down = (input, el) => { if (held.has(input)) return; held.add(input); el && el.classList.add("down"); press(input, "press"); };
+  const up = (input, el) => { if (!held.delete(input)) return; el && el.classList.remove("down"); press(input, "release"); };
+  const hold = (el, input) => {
+    el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); down(input, el); });
+    el.addEventListener("pointerup", () => up(input, el));
+    el.addEventListener("pointercancel", () => up(input, el));
+  };
+  hold($("c-front"), "front");
+  hold($("c-mute"), "mute");
+  hold($("c-knob"), "knob");
+  [0, 1, 2, 3].forEach((i) => hold($("p" + i), "preset-" + (i + 1)));
+  $("c-up").addEventListener("click", () => press("knob", "turn", 1));
+  $("c-down").addEventListener("click", () => press("knob", "turn", -1));
+  const keys = { " ": ["front", "c-front"], m: ["mute", "c-mute"], M: ["mute", "c-mute"], Enter: ["knob", "c-knob"],
+                 1: ["preset-1", "p0"], 2: ["preset-2", "p1"], 3: ["preset-3", "p2"], 4: ["preset-4", "p3"] };
+  addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") { press("knob", "turn", 1); e.preventDefault(); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") { press("knob", "turn", -1); e.preventDefault(); return; }
+    const k = keys[e.key];
+    if (k) { e.preventDefault(); if (!e.repeat) down(k[0], $(k[1])); }
+  });
+  addEventListener("keyup", (e) => { const k = keys[e.key]; if (k) { e.preventDefault(); up(k[0], $(k[1])); } });
+  addEventListener("blur", () => { for (const [, [input, id]] of Object.entries(keys)) up(input, $(id)); });
+  let wheel = 0;
+  addEventListener("wheel", (e) => {
+    wheel += e.deltaY;
+    while (Math.abs(wheel) >= 60) { press("knob", "turn", wheel < 0 ? 1 : -1); wheel -= Math.sign(wheel) * 60; }
+  }, { passive: true });
+}
+
 document.fonts.ready.then(connect);
 </script>
 </body>
