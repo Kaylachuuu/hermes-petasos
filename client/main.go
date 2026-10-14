@@ -10,8 +10,10 @@
 //	petasos version    print the version
 //
 // Everything lives in one folder (default /var/lib/petasos): this program, config.json
-// ({"server": "http://10.0.0.20:9119"}) and tokens.json (written by the installer, then kept
-// fresh here as Hermes rotates them).
+// ({"server": "http://10.0.0.20:9119"}), tokens.json (written by the installer, then kept
+// fresh here as Hermes rotates them) and, optionally, wireguard.conf for the tunnel home.
+// It gets online through the phone's hotspot over Bluetooth (tether.go) and reaches the home
+// network through WireGuard (wireguard.go).
 package main
 
 import (
@@ -42,6 +44,7 @@ type config struct {
 	Server string `json:"server"`
 	Device string `json:"device,omitempty"` // name the plugin keeps state under; default "car-thing"
 	Grab   *bool  `json:"grab,omitempty"`   // take the buttons from Nocturne's own screen; default true
+	Phone  string `json:"phone,omitempty"`  // Bluetooth address of the phone to tether to; default any paired one
 }
 
 type tokens struct {
@@ -379,6 +382,8 @@ func (h *hermes) run(eventsFile string) {
 		go readEventFile(eventsFile, "test", presses)
 	} else {
 		go watchInputs(grab, presses)
+		setUpTunnel(h.dir)
+		go keepTethered(h.cfg.Phone)
 	}
 
 	online := false

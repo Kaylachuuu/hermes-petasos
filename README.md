@@ -155,7 +155,7 @@ With the Car Thing plugged into a Mac by USB, from a folder holding `install_dev
 ~/.venvs/petasos/bin/python install_device.py http://10.0.0.20:9119
 ```
 
-It asks for your dashboard login, downloads the program from the plugin, and copies everything over one SSH connection (press Enter if ssh asks for a password). It finishes by printing the program's version, whether it's running, and its latest log lines. To watch it later: `ssh root@nocturne.local journalctl -u petasos -f`.
+It asks for your dashboard login, downloads the program from the plugin, and copies everything over one SSH connection (press Enter if ssh asks for a password). It finishes by printing the program's version, whether it's running, and its latest log lines. To watch it later: `ssh -4 root@petasos.local journalctl -u petasos -f`.
 
 ### Build it
 
@@ -165,4 +165,37 @@ client/build.sh            # writes client/dist/petasos-linux-arm64
 
 Bump `client/VERSION` with every change: the Car Thing updates whenever the version the plugin serves differs from its own. The build is reproducible, so the committed binary can be checked against the source.
 
-Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event decoding (`go test`), a full run against a test Hermes (it updated itself from 0.0.9 to 0.1.0, then turned recorded presses into the expected commands), and the installer against a stand-in for ssh. Not yet run on the Car Thing itself.
+Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event decoding (`go test`), a full run against a test Hermes (it updated itself from 0.0.9 to 0.1.0, then turned recorded presses into the expected commands), and the installer against a stand-in for ssh. Since then installed and running on the Car Thing (0.2.0, on the petasos image below).
+
+## Step 5: our own Car Thing system, and getting online
+
+Nocturne can't give petasos a network of its own (no Bluetooth tethering, no WireGuard), so the Car Thing runs our own image instead: `image/`, a layer on [yocto-superbird](https://github.com/JoeyEamigh/yocto-superbird). It adds Bluetooth tethering and WireGuard to the kernel, Bluetooth audio, petasos itself (it starts at boot, then copies itself to `/var/lib/petasos` so it can update there), the Greek key boot logo and screen (`image/splash/`), and root login over the USB cable only.
+
+### Build and flash
+
+On Athenaeum, from a yocto-superbird checkout (so the build cache is shared):
+
+```sh
+cd ~/Projects/yocto-superbird
+KAS_CONTAINER_ENGINE=podman kas-container build ~/Projects/hermes-petasos/image/kas/petasos.yml
+```
+
+The result is `build/tmp/deploy/images/superbird/petasos-image-superbird-flashthing.zip`. Copy it to the Mac, hold buttons 1 and 4 while plugging the Car Thing in, and run `flashthing-cli` on it (install with rustup and `cargo install flashthing-cli`; Homebrew's Rust builds LLVM from source). Then run the installer as in step 4. On the USB cable the Car Thing is `petasos.local`; use `ssh -4`.
+
+### Online through the phone
+
+The Car Thing uses the phone's Personal Hotspot over Bluetooth. Pair once, over SSH:
+
+```sh
+bluetoothctl          # then: power on, scan on, pair <address> while the scan runs, trust <address>, quit
+```
+
+From then on petasos reconnects to the hotspot by itself whenever the link drops (`client/tether.go`). With more than one phone paired, pick one with the installer's `--phone <address>`.
+
+The phone's own VPN doesn't carry hotspot traffic, so the Car Thing has its own WireGuard peer. Make one on the home WireGuard server with `AllowedIPs` set to the home network only (such as `10.0.0.0/24`) and `PersistentKeepalive = 25`, save the config on the Mac, and install with:
+
+```sh
+~/.venvs/petasos/bin/python install_device.py http://10.0.0.20:9119 --wireguard ~/Downloads/petasos.conf
+```
+
+petasos turns it into a systemd-networkd tunnel (`wg-petasos`) under `/run` at start (`client/wireguard.go`). It refuses a config that sends all traffic home.

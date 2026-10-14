@@ -6,6 +6,7 @@ to the Car Thing over SSH in one go, together with the server address and a sign
 It then sets the program to start at boot and starts it.
 
   python install_device.py http://10.0.0.20:9119
+  python install_device.py http://10.0.0.20:9119 --wireguard ~/Downloads/petasos.conf
   python install_device.py http://10.0.0.20:9119 --host nocturne.local --no-grab
 
 Works on the petasos image (start-at-boot is built in) and on Nocturne (where it adds a
@@ -51,6 +52,9 @@ cd /var/lib/petasos/.incoming
 cp petasos ../petasos.new && chmod 0755 ../petasos.new && mv ../petasos.new ../petasos
 cp config.json ../config.json && chmod 0644 ../config.json
 (umask 077 && cp tokens.json ../tokens.json.new) && mv ../tokens.json.new ../tokens.json
+if [ -e wireguard.conf ]; then
+    (umask 077 && cp wireguard.conf ../wireguard.conf.new) && mv ../wireguard.conf.new ../wireguard.conf
+fi
 if [ -e /usr/lib/systemd/system/petasos.service ]; then
     : # the petasos image: starting at boot is built in
 elif ! cmp -s petasos.service /etc/systemd/system/petasos.service 2>/dev/null \
@@ -82,6 +86,10 @@ def main() -> None:
     parser.add_argument("base_url", help="the address you open the Hermes dashboard on, as the Car Thing will reach it")
     parser.add_argument("--host", default="petasos.local",
                         help="the Car Thing's address (default petasos.local; nocturne.local on Nocturne)")
+    parser.add_argument("--wireguard", type=Path, metavar="FILE",
+                        help="the Car Thing's WireGuard peer config (wg-quick format), for its tunnel home")
+    parser.add_argument("--phone", metavar="ADDRESS",
+                        help="Bluetooth address of the phone to tether to, if more than one is paired")
     parser.add_argument("--no-grab", action="store_true",
                         help="let Nocturne's own screen keep seeing the buttons too")
     parser.add_argument("--token", help=argparse.SUPPRESS)
@@ -91,6 +99,11 @@ def main() -> None:
     parser.add_argument("--insecure-tls", action="store_true", help="skip HTTPS certificate checks")
     args = parser.parse_args()
     args.token = None  # the device needs its own refresh token, which only a password sign-in gives
+    wireguard = None
+    if args.wireguard:
+        wireguard = args.wireguard.expanduser().read_bytes()  # read first, so a wrong path fails before signing in
+        if b"[Interface]" not in wireguard or b"[Peer]" not in wireguard:
+            sys.exit(f"{args.wireguard} doesn't look like a WireGuard config; nothing was installed.")
 
     h = Http(args.base_url, args.insecure_tls, args.use_proxy)
     access = sign_in(h, args)
@@ -113,6 +126,8 @@ def main() -> None:
     config = {"server": h.base}
     if args.no_grab:
         config["grab"] = False
+    if args.phone:
+        config["phone"] = args.phone
     bundle = io.BytesIO()
     with tarfile.open(fileobj=bundle, mode="w") as tar:
         tar_member(tar, "petasos", binary, 0o755)
@@ -121,6 +136,8 @@ def main() -> None:
                                                     "provider": args.provider or ""},
                                                    indent=2) + "\n").encode(), 0o600)
         tar_member(tar, "petasos.service", UNIT.encode(), 0o644)
+        if wireguard is not None:
+            tar_member(tar, "wireguard.conf", wireguard, 0o600)
         tar_member(tar, "install.sh", INSTALL_SH.encode(), 0o755)
 
     print(f"\nCopying it to the Car Thing at {args.host} (if ssh asks for a password, press Enter)")
