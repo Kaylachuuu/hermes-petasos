@@ -89,7 +89,7 @@ func TestWireGuard(t *testing.T) {
 		t.Errorf("network:\n%s", network)
 	}
 	full := strings.Replace(wgQuick, "AllowedIPs = 10.0.0.0/24, 10.8.0.0/24", "AllowedIPs = 0.0.0.0/0", 1)
-	if _, err := parseWireGuard([]byte(full)); err == nil || !strings.Contains(err.Error(), "everything home") {
+	if c, err := parseWireGuard([]byte(full)); err != nil || c.homeOnly() == nil || !strings.Contains(c.homeOnly().Error(), "everything home") {
 		t.Errorf("full tunnel: %v", err)
 	}
 	if _, err := parseWireGuard([]byte("[Interface]\nAddress = 10.8.0.7/24\n")); err == nil {

@@ -3,7 +3,7 @@ import WebKit
 
 // The app: one window showing the Petasos screen, served by the petasos program it starts in
 // the background. The first time, it asks for the Hermes address and a sign-in.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var engine: Process?
@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         config.suppressesIncrementalRendering = true
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 544), configuration: config)
         webView.setValue(false, forKey: "drawsBackground") // the page paints its own night colour
+        webView.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 544),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
@@ -67,12 +68,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Petasos", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Sign In Again…", action: #selector(signInAgain), keyEquivalent: "")
         appMenu.addItem(withTitle: "Show Log", action: #selector(showLog), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Petasos", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Petasos", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
+        // Without an Edit menu, copy and paste don't reach the settings page's text fields.
+        let editItem = NSMenuItem()
+        main.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
         let windowItem = NSMenuItem()
         main.addItem(windowItem)
         let windowMenu = NSMenu(title: "Window")
@@ -80,6 +94,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         windowItem.submenu = windowMenu
         NSApp.mainMenu = main
+    }
+
+    // The settings page is the petasos program's own, the same one the Windows app shows.
+    @objc private func showSettings() {
+        webView.load(URLRequest(url: pageURL.appendingPathComponent("settings.html")))
+    }
+
+    // The settings page's "Import a .conf file…" button.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.message = "Choose the WireGuard configuration (.conf) for this Mac"
+        panel.beginSheetModal(for: window) { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
     }
 
     @objc private func showLog() {

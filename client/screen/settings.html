@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Petasos settings</title>
+<style>
+/* The app's own settings (Mac and Windows alike), served by the petasos program beside the screen. */
+@font-face { font-family: "Caladea"; src: url(fonts/caladea.woff2) format("woff2"); font-weight: 400; }
+@font-face { font-family: "Source Sans 3"; src: url(fonts/source-sans-3.woff2) format("woff2"); font-weight: 400 600; }
+:root {
+  --night: #1f1b17; --bronze: #c9b48a; --dust: #9c8a68; --ember: #d97a3a; --alarm: #d9543a;
+  --rule: #3a2f25; --row: #2a1f16;
+  --display: "Caladea", Georgia, serif; --body: "Source Sans 3", sans-serif;
+}
+html, body { margin: 0; min-height: 100%; background: var(--night); color: var(--bronze); font: 16px/1.4 var(--body); }
+main { max-width: 640px; margin: 0 auto; padding: 28px 24px 40px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+         border-bottom: 2px solid var(--bronze); padding-bottom: 10px; margin-bottom: 8px; }
+h1 { font: 400 30px var(--display); letter-spacing: .18em; margin: 0; color: var(--ember); }
+h2 { font: 600 13px var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--dust);
+     margin: 26px 0 10px; }
+.row { display: grid; grid-template-columns: 160px 1fr; gap: 6px 16px; align-items: center; margin: 12px 0; }
+.row > label { color: var(--bronze); }
+.hint { grid-column: 2; color: var(--dust); font-size: 14px; margin: 0; }
+input[type=text], select { font: 16px var(--body); color: var(--bronze); background: var(--row);
+  border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 10px; width: 100%; box-sizing: border-box; }
+input[type=text]:focus, select:focus { outline: none; border-color: var(--ember); }
+button { font: 600 15px var(--body); letter-spacing: .04em; color: var(--bronze); background: transparent;
+         border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+button:hover { border-color: var(--dust); }
+button.primary { border-color: var(--ember); color: var(--ember); }
+button:disabled { opacity: .5; cursor: default; }
+.status { display: flex; align-items: center; gap: 8px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dust); flex: none; }
+.dot.on { background: var(--ember); }
+.dot.bad { background: var(--alarm); }
+.error { color: var(--alarm); }
+.actions { display: flex; gap: 12px; align-items: center; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.actions .error { margin: 0; }
+[hidden] { display: none !important; }
+@media (max-width: 520px) { .row { grid-template-columns: 1fr; } .hint { grid-column: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>SETTINGS</h1><button id="back" type="button">Done</button></header>
+  <p id="loading" class="hint" style="margin-top:16px">Loading…</p>
+  <form id="form" hidden>
+    <h2>This computer</h2>
+    <div class="row">
+      <label for="name">Name</label>
+      <input type="text" id="name" maxlength="40" autocomplete="off" spellcheck="false">
+      <p class="hint" id="name-hint"></p>
+    </div>
+
+    <h2>VPN</h2>
+    <div class="row">
+      <label for="vpn">VPN</label>
+      <select id="vpn"><option value="off">Off</option><option value="wireguard">WireGuard</option></select>
+      <p class="hint">Only Petasos's own connection to Hermes goes through it. The rest of this computer is left alone, and no administrator password is needed.</p>
+    </div>
+    <div id="vpn-on">
+      <div class="row">
+        <label for="when">Use it</label>
+        <select id="when"><option value="away">When Hermes can't be reached directly</option><option value="always">Always</option></select>
+        <p class="hint">At home Hermes answers directly, so the first choice only uses the VPN when you're away.</p>
+      </div>
+      <div class="row">
+        <label>Configuration</label>
+        <div class="status"><span class="dot" id="conf-dot"></span><span id="conf-text"></span></div>
+        <div class="hint">
+          <button type="button" id="import">Import a .conf file…</button>
+          <input type="file" id="file" accept=".conf,text/plain" hidden>
+        </div>
+        <p class="hint">The kind any WireGuard app exports. Give this computer a peer of its own: one key can't be in use on two devices at once.</p>
+      </div>
+      <div class="row" id="route-row">
+        <label>Right now</label>
+        <div class="status"><span class="dot" id="route-dot"></span><span id="route-text"></span></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="primary" id="save">Save</button>
+      <p class="error" id="error" hidden></p>
+    </div>
+  </form>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let current = null, newConfig = null;
+
+function deviceID(name) { // as appsettings.go makes it
+  return name.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
+}
+function titled(id) { return id.split(/[-_.]/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" "); }
+
+function showName() {
+  const id = deviceID($("name").value);
+  $("name-hint").textContent = id
+    ? `Its chat with your agent is “Petasos · ${titled(id)}”, unless the dashboard's Petasos tab has all devices share one.` +
+      (current && id !== current.device ? " A new name starts a new chat." : "")
+    : "Give this computer a name, such as Office Mac.";
+}
+
+function showVPN() {
+  $("vpn-on").hidden = $("vpn").value !== "wireguard";
+  const dot = $("conf-dot");
+  if (newConfig) {
+    dot.className = "dot on";
+    $("conf-text").textContent = `${newConfig.name}, ready to save`;
+  } else if (current.has_config) {
+    dot.className = current.vpn_error ? "dot bad" : "dot on";
+    $("conf-text").textContent = current.vpn_error
+      ? `Didn't start: ${current.vpn_error}`
+      : [current.address, current.endpoint && `to ${current.endpoint}`].filter(Boolean).join(" ") || "Imported";
+  } else {
+    dot.className = "dot";
+    $("conf-text").textContent = "None yet";
+  }
+  $("route-row").hidden = !current.vpn || newConfig !== null;
+  $("route-dot").className = current.route === "vpn" ? "dot on" : "dot";
+  $("route-text").textContent = current.route === "vpn" ? "Reaching Hermes through the VPN" : "Reaching Hermes directly";
+}
+
+async function load() {
+  const res = await fetch("/app/settings", { cache: "no-store" });
+  if (!res.ok) throw new Error("This page is only for the Petasos app.");
+  current = await res.json();
+  $("name").value = current.name;
+  $("vpn").value = current.vpn ? "wireguard" : "off";
+  $("when").value = current.when;
+  $("loading").hidden = true;
+  $("form").hidden = false;
+  showName();
+  showVPN();
+}
+
+function fail(message) {
+  $("error").textContent = message;
+  $("error").hidden = !message;
+}
+
+$("name").addEventListener("input", showName);
+$("vpn").addEventListener("change", showVPN);
+$("import").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", async () => {
+  const f = $("file").files[0];
+  if (!f) return;
+  if (f.size > 32 * 1024) { fail("That file is too big to be a WireGuard config."); return; }
+  const text = await f.text();
+  if (!/\[Interface\]/i.test(text) || !/\[Peer\]/i.test(text)) { fail("That isn't a WireGuard config: it needs [Interface] and [Peer]."); return; }
+  newConfig = { name: f.name, text };
+  fail("");
+  showVPN();
+});
+$("back").addEventListener("click", () => { location.href = "/"; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") location.href = "/"; });
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  fail("");
+  $("save").disabled = true;
+  const change = { name: $("name").value.trim(), vpn: $("vpn").value === "wireguard", when: $("when").value };
+  if (newConfig) change.wireguard = newConfig.text;
+  try {
+    const res = await fetch("/app/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);
+    $("save").textContent = "Restarting…";
+    await waitForRestart();
+    location.href = "/";
+  } catch (err) {
+    fail(String(err.message || err));
+    $("save").disabled = false;
+  }
+});
+
+// Saving restarts the program; the app starts it again within a few seconds.
+async function waitForRestart() {
+  await new Promise((r) => setTimeout(r, 1500));
+  for (let i = 0; i < 60; i++) {
+    try {
+      const res = await fetch("/app/settings", { cache: "no-store" });
+      if (res.ok) return;
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+load().catch((err) => { $("loading").textContent = String(err.message || err); });
+</script>
+</body>
+</html>

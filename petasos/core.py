@@ -34,6 +34,7 @@ ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggl
 
 DEFAULT_MAPPING: dict = {
     "agent_name": "Hermes",
+    "chats": "separate",  # each device its own chat with the agent, or "shared": one for all
     "hold_ms": 350,
     "volume_step": 5,
     "conversation": {"end_of_speech_ms": 1000, "idle_end_s": 30},
@@ -94,6 +95,8 @@ def validate(mapping: dict) -> list[str]:
     name = mapping.get("agent_name")
     if name is not None and not (isinstance(name, str) and 0 < len(name.strip()) <= AGENT_NAME_MAX):
         problems.append(f"agent_name is the name the Car Thing shows and says, 1 to {AGENT_NAME_MAX} characters.")
+    if mapping.get("chats") not in (None, "separate", "shared"):
+        problems.append('chats is "separate" (a chat for each device) or "shared" (one for all).')
     for key, low, high in (("hold_ms", 100, 3000), ("volume_step", 1, 50)):
         value = mapping.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:

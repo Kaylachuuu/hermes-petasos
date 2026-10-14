@@ -47,7 +47,8 @@ type links struct {
 	SpeakerName  string `json:"speaker_name,omitempty"` // the paired speaker, connected or not
 	PhonePaired  bool   `json:"phone_paired"`
 	SpeakerKnown bool   `json:"speaker_paired"`
-	Checked      bool   `json:"checked"` // false until the first round of checks, so nothing flashes red at boot
+	Checked      bool   `json:"checked"`          // false until the first round of checks, so nothing flashes red at boot
+	Tunnel       bool   `json:"tunnel,omitempty"` // the Mac app is reaching Hermes through its VPN
 }
 
 type screen struct {
@@ -116,6 +117,7 @@ func (s *screen) serve() {
 	})
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/input", s.pagePress)
+	mux.HandleFunc("/app/settings", appSettings)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
 		log.Printf("can't serve the screen: %v", err)

@@ -3,8 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/user"
@@ -30,7 +34,7 @@ type wgPeer struct{ PublicKey, PresharedKey, AllowedIPs, Endpoint, Keepalive str
 
 type wgConfig struct {
 	PrivateKey, ListenPort, MTU string
-	Addresses                   []string
+	Addresses, DNS              []string
 	Peers                       []wgPeer
 }
 
@@ -47,6 +51,9 @@ func setUpTunnel(dir string) {
 		return
 	}
 	cfg, err := parseWireGuard(raw)
+	if err == nil {
+		err = cfg.homeOnly()
+	}
 	if err != nil {
 		log.Printf("wireguard.conf: %v; no tunnel home", err)
 		return
@@ -79,7 +86,7 @@ func setUpTunnel(dir string) {
 }
 
 // parseWireGuard reads a wg-quick style config: [Interface] with PrivateKey and Address, then one
-// or more [Peer] sections. Keys it doesn't use (DNS, PostUp and the like) are ignored.
+// or more [Peer] sections. Keys it doesn't use (PostUp and the like) are ignored.
 func parseWireGuard(raw []byte) (*wgConfig, error) {
 	cfg := &wgConfig{}
 	section := ""
@@ -115,6 +122,12 @@ func parseWireGuard(raw []byte) (*wgConfig, error) {
 						cfg.Addresses = append(cfg.Addresses, a)
 					}
 				}
+			case "dns": // used only by the Mac app's own tunnel (tunnel.go)
+				for _, a := range strings.Split(value, ",") {
+					if a = strings.TrimSpace(a); a != "" {
+						cfg.DNS = append(cfg.DNS, a)
+					}
+				}
 			case "listenport":
 				cfg.ListenPort = value
 			case "mtu":
@@ -148,15 +161,22 @@ func parseWireGuard(raw []byte) (*wgConfig, error) {
 		if p.PublicKey == "" || p.AllowedIPs == "" {
 			return nil, fmt.Errorf("peer %d needs PublicKey and AllowedIPs", i+1)
 		}
+	}
+	return cfg, nil
+}
+
+// homeOnly checks the config suits the Car Thing's system tunnel: sending everything home would
+// also send the tunnel's own traffic into itself, and the phone carries ordinary internet traffic
+// anyway. (The Mac app's tunnel carries only Petasos's own traffic, so anything goes there.)
+func (c *wgConfig) homeOnly() error {
+	for _, p := range c.Peers {
 		for _, ip := range strings.Split(p.AllowedIPs, ",") {
-			// Sending everything home would also send the tunnel's own traffic into itself; the
-			// phone carries ordinary internet traffic anyway.
 			if ip = strings.TrimSpace(ip); ip == "0.0.0.0/0" || ip == "::/0" {
-				return nil, fmt.Errorf("AllowedIPs sends everything home (%s); list only the home network, such as 10.0.0.0/24", ip)
+				return fmt.Errorf("AllowedIPs sends everything home (%s); list only the home network, such as 10.0.0.0/24", ip)
 			}
 		}
 	}
-	return cfg, nil
+	return nil
 }
 
 // networkd renders the .netdev and .network files.
@@ -206,4 +226,51 @@ func writeIfChanged(path string, data []byte, mode os.FileMode) (bool, error) {
 		return false, err
 	}
 	return true, os.Rename(tmp, path)
+}
+
+// uapi renders the config in wireguard-go's own key=value form, for the Mac app's tunnel
+// (tunnel_wireguard.go): keys in hex, endpoints looked up now.
+func (c *wgConfig) uapi() (string, error) {
+	var b strings.Builder
+	key := func(name, b64 string) error {
+		k, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(k) != 32 {
+			return fmt.Errorf("%s isn't a WireGuard key", name)
+		}
+		fmt.Fprintf(&b, "%s=%s\n", strings.ToLower(name), hex.EncodeToString(k))
+		return nil
+	}
+	if err := key("Private_Key", c.PrivateKey); err != nil {
+		return "", err
+	}
+	if c.ListenPort != "" {
+		fmt.Fprintf(&b, "listen_port=%s\n", c.ListenPort)
+	}
+	for _, p := range c.Peers {
+		if err := key("Public_Key", p.PublicKey); err != nil {
+			return "", err
+		}
+		if p.PresharedKey != "" {
+			if err := key("Preshared_Key", p.PresharedKey); err != nil {
+				return "", err
+			}
+		}
+		if p.Endpoint != "" {
+			addr, err := net.ResolveUDPAddr("udp", p.Endpoint)
+			if err != nil {
+				return "", fmt.Errorf("can't find the Endpoint %s: %v", p.Endpoint, err)
+			}
+			ap := addr.AddrPort() // a v4 address comes back IPv6-mapped, which WireGuard would send as IPv6
+			fmt.Fprintf(&b, "endpoint=%s\n", netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()))
+		}
+		if p.Keepalive != "" {
+			fmt.Fprintf(&b, "persistent_keepalive_interval=%s\n", p.Keepalive)
+		}
+		for _, ip := range strings.Split(p.AllowedIPs, ",") {
+			if ip = strings.TrimSpace(ip); ip != "" {
+				fmt.Fprintf(&b, "allowed_ip=%s\n", ip)
+			}
+		}
+	}
+	return b.String(), nil
 }

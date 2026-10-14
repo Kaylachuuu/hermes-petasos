@@ -51,9 +51,10 @@
     return out;
   }
 
-  function withEdits(mapping, agent, presets) {
+  function withEdits(mapping, agent, chats, presets) {
     const next = JSON.parse(JSON.stringify(mapping));
     next.agent_name = agent.trim();
+    next.chats = chats;
     next.controls = next.controls || {};
     presets.forEach((p, i) => {
       const step = { action: p.action };
@@ -103,6 +104,7 @@
   function PetasosPage() {
     const [loaded, setLoaded] = useState(null); // { mapping, problems, path }
     const [agent, setAgent] = useState("");
+    const [chats, setChats] = useState("separate");
     const [presets, setPresets] = useState([]);
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
@@ -111,6 +113,7 @@
     function take(data) {
       setLoaded(data);
       setAgent(data.mapping.agent_name || "Hermes");
+      setChats(data.mapping.chats === "shared" ? "shared" : "separate");
       setPresets(presetsOf(data.mapping));
     }
 
@@ -126,7 +129,7 @@
         const res = await SDK.authedFetch(API + "/mapping", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(withEdits(loaded.mapping, agent, presets)),
+          body: JSON.stringify(withEdits(loaded.mapping, agent, chats, presets)),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.detail || "Saving failed (HTTP " + res.status + ").");
@@ -152,7 +155,7 @@
       h("header", { className: "petasos-head" },
         h("h1", null, "Petasos"),
         h("p", { className: "petasos-hint" },
-          "The Car Thing's preset buttons and who it talks to. The Car Thing picks up changes the next time a button is pressed. Saved to " + loaded.path + ".")),
+          "The preset buttons, who Petasos talks to, and its chats. The Car Thing picks up changes the next time a button is pressed. Saved to " + loaded.path + ".")),
       loaded.problems && loaded.problems.length
         ? h("p", { className: "petasos-error" },
             "mapping.json has problems, so the Car Thing is using the last good mapping: " + loaded.problems.join(" "))
@@ -162,7 +165,14 @@
         h(C.CardContent, { className: "petasos-fields" },
           h(Field, { id: "petasos-agent", label: "Name", hint: "Shown on the screen (“Messenger of " + (agent.trim() || "…") + "”) and used in its messages." },
             h(C.Input, { id: "petasos-agent", value: agent, maxLength: AGENT_NAME_MAX,
-              onChange: (e) => { setSaved(false); setAgent(e.target.value); } })))),
+              onChange: (e) => { setSaved(false); setAgent(e.target.value); } })),
+          h(Field, { id: "petasos-chats", label: "Chats",
+            hint: chats === "shared"
+              ? "The Car Thing and every Mac app carry on one chat, “Petasos”."
+              : "Each device has its own chat: “Petasos · Car Thing”, “Petasos · Office Mac” and so on." },
+            h(C.Select, { id: "petasos-chats", value: chats, onValueChange: (v) => { setSaved(false); setChats(v); } },
+              h(C.SelectOption, { value: "separate" }, "A chat for each device"),
+              h(C.SelectOption, { value: "shared" }, "One chat for all devices"))))),
       h("div", { className: "petasos-screen", "aria-label": "How the top of the screen will look" },
         presets.map((p, i) => {
           const label = shownLabel(p);

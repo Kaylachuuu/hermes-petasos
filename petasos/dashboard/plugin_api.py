@@ -109,8 +109,9 @@ async def _turn(text: str, device: str) -> dict:
     voice = _voice()
     try:
         core = _core()
-        agent = core.agent_name(core.shared().mapping.current())
-        return await voice.turn(text, voice.device_name(device), agent)
+        mapping = core.shared().mapping.current()
+        return await voice.turn(text, voice.device_name(device), core.agent_name(mapping),
+                                shared_chat=mapping.get("chats") == "shared")
     except voice.VoiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
 

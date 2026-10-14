@@ -7,7 +7,7 @@ Athena as an ordinary chat turn, and her reply is turned into speech with Hermes
 (``/api/ws``) over loopback, so the conversation is a normal session that shows in the WebUI.
 
 Each device keeps one conversation, resumed on every turn; its stored session id is kept in
-``<hermes root>/petasos/sessions.json``.
+``<hermes root>/petasos/chats.json``.
 """
 from __future__ import annotations
 
@@ -24,7 +24,8 @@ from collections import OrderedDict
 from pathlib import Path
 
 TURN_TIMEOUT_S = 180
-SESSION_TITLE = "Car Thing"
+SESSION_SOURCE = "petasos"  # Hermes lists a source's chats together; the desktop app gives it a section
+SHARED_CHAT = "*"  # the key of the one chat every device shares, when the settings say so
 
 
 class VoiceError(RuntimeError):
@@ -203,9 +204,20 @@ class _Rpc:
         raise asyncio.TimeoutError
 
 
+def chat_title(key: str) -> str:
+    """Petasos for the shared chat; Petasos · Car Thing, Petasos · Office Mac and so on for each
+    device's own."""
+    if key == SHARED_CHAT:
+        return "Petasos"
+    words = key.replace("_", "-").replace(".", "-").split("-")
+    return "Petasos · " + " ".join(w[:1].upper() + w[1:] for w in words if w)
+
+
 async def ask(text: str, device: str, sessions: Sessions, url: str | None = None,
-              agent: str = "The agent") -> str:
-    """Send one message to the agent in the device's conversation and return the full reply."""
+              agent: str = "The agent", shared_chat: bool = False) -> str:
+    """Send one message to the agent in the device's conversation (or the one all devices share)
+    and return the full reply."""
+    key = SHARED_CHAT if shared_chat else device
     import websockets
     deadline = time.monotonic() + TURN_TIMEOUT_S
     async with websockets.connect(url or _gateway_url(), max_size=None, open_timeout=20) as ws:
@@ -213,7 +225,7 @@ async def ask(text: str, device: str, sessions: Sessions, url: str | None = None
         try:
             await rpc.event(deadline, types=("gateway.ready",))
             session_id = None
-            stored = sessions.get(device)
+            stored = sessions.get(key)
             if stored:
                 try:
                     session_id = (await rpc.call("session.resume", {
@@ -221,9 +233,10 @@ async def ask(text: str, device: str, sessions: Sessions, url: str | None = None
                 except VoiceError:
                     session_id = None  # deleted in the WebUI, say; start a new one
             if not session_id:
-                created = await rpc.call("session.create", {"title": SESSION_TITLE})
+                created = await rpc.call("session.create", {"title": chat_title(key),
+                                                            "source": SESSION_SOURCE})
                 session_id = created.get("session_id")
-                sessions.set(device, created.get("stored_session_id") or session_id)
+                sessions.set(key, created.get("stored_session_id") or session_id)
             if not session_id:
                 raise VoiceError("Hermes didn't open a chat session")
             await rpc.call("prompt.submit", {"session_id": session_id, "text": text,
@@ -284,15 +297,17 @@ def shared(root: Path | None = None) -> tuple[Sessions, Replies]:
                 except ImportError:
                     from hermes_constants import get_hermes_home
                     root = Path(get_hermes_home())
-            _SHARED = (Sessions(root / "petasos" / "sessions.json"), Replies())
+            # chats.json, not the sessions.json of earlier versions: those chats were made before
+            # Petasos had a source of its own, so they would stay in the main chat list.
+            _SHARED = (Sessions(root / "petasos" / "chats.json"), Replies())
         return _SHARED
 
 
-async def turn(text: str, device: str, agent: str = "The agent") -> dict:
+async def turn(text: str, device: str, agent: str = "The agent", shared_chat: bool = False) -> dict:
     """Ask, then speak: ``{"reply": ..., "audio": id or None}``. A reply that can't be spoken
     still comes back as text for the screen."""
     sessions, replies = shared()
-    reply = await ask(text, device, sessions, agent=agent)
+    reply = await ask(text, device, sessions, agent=agent, shared_chat=shared_chat)
     if not reply:
         return {"reply": "", "audio": None}
     loop = asyncio.get_running_loop()

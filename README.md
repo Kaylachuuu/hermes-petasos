@@ -214,7 +214,7 @@ Hold the front button and talk; let go, and Athena's answer plays on the Bluetoo
 
 - **On the Car Thing** (`client/voice.go`): records with `arecord` from `hw:0,0` (16 kHz mono; the microphones only deliver 32-bit samples, which it cuts to 16-bit), finds the end of speech in conversation mode by loudness (it learns steady road noise), sends the recording, and plays the reply with `aplay` on `bluealsa` (the connected Bluetooth speaker). `mic` and `speaker` in `config.json` change those devices.
 - **In the plugin** (`petasos/voice.py`): `POST /api/plugins/petasos/voice` takes the WAV, transcribes it with Hermes' own speech-to-text (`stt:` in `config.yaml`), sends the words to Athena over the dashboard's chat connection as a voice turn (`voice_turn`, `surface: voice-live`, which asks for a short spoken answer), and turns her reply into speech with Hermes' text-to-speech (`tts:`). `POST /ask` does the same for typed text (presets). The reply audio is fetched from `GET /voice/audio/<id>`.
-- **One conversation per device**, titled "Car Thing", resumed every time, so it shows in the WebUI like any other chat. Its id is kept in `<hermes root>/petasos/sessions.json`; delete the entry to start fresh.
+- **One conversation per device** ("Petasos · Car Thing", "Petasos · Office Mac"), or one shared by all of them ("Petasos") if the dashboard's Petasos tab says so. It is resumed every time and listed under its own source, `petasos`, so the WebUI and the desktop app can show Petasos chats apart from the rest. The ids are kept in `<hermes root>/petasos/chats.json`; delete an entry to start fresh.
 - **Approvals** can't be answered from the Car Thing; they're declined and Athena says what she couldn't do.
 
 For hermes-whisper and hermes-kokoro, Hermes' config needs:
@@ -277,3 +277,23 @@ the microphone the first time you talk. **Sign In Again…** and **Show Log** ar
 
 It shows as its own device in the plugin, so the presets and agent name from the dashboard's
 Petasos tab apply here too.
+
+### Settings
+
+**Settings…** (⌘,) or the cog under the screen opens the app's settings page. The page belongs to
+the petasos program, so a Windows app will share it.
+
+- **Name**: this computer's name. Its chat with the agent is "Petasos · <name>" unless the
+  dashboard's Petasos tab has all devices share one chat, "Petasos".
+- **VPN**: WireGuard, built into the program. Only Petasos's own connection to Hermes goes
+  through it, so the rest of the Mac is untouched and no administrator password is needed.
+  Import a `.conf` (give the Mac a peer of its own), then use it always or only when Hermes
+  can't be reached directly. The network icon on the screen turns into a shield while it is in
+  use.
+
+### Petasos chats in the Hermes desktop app
+
+Petasos makes its chats with their own source, `petasos`. The Hermes desktop app gives a source
+its own sidebar section only if it is on the app's list, so the `claude/project-thread-48e57q`
+branch of Kaylachuuu/hermes-agent adds it (`apps/desktop/src/lib/session-source.ts`). Chats made
+before this have no source of their own and stay in the main list.

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -68,13 +70,32 @@ func macVolume(delta int) {
 func (h *hermes) startVirtual(raw chan<- map[string]any) {
 	display.update(func(st *screenState) {
 		st.Virtual = true
-		// No phone or speaker of its own to watch: the Mac is online and has its own speakers.
+		// No phone or speaker to watch: Phone stands for whether the Mac is online, and the
+		// Mac has its own speakers.
 		st.Links = links{Phone: true, Speaker: true, PhonePaired: true, SpeakerKnown: true, Checked: true}
 	})
 	display.mu.Lock()
 	display.inputs = raw
 	display.mu.Unlock()
+	h.servesAppSettings()
+	h.startVPN()
 	go h.watchHome()
+	go watchInternet()
+}
+
+// watchInternet checks every 20 seconds that the Mac is online, for the network icon.
+func watchInternet() {
+	for ; ; time.Sleep(20 * time.Second) {
+		ok := false
+		for _, addr := range []string{"captive.apple.com:80", "1.1.1.1:443"} {
+			if c, err := net.DialTimeout("tcp", addr, 5*time.Second); err == nil {
+				c.Close()
+				ok = true
+				break
+			}
+		}
+		display.update(func(st *screenState) { st.Links.Phone = ok })
+	}
 }
 
 // pagePress is a press from the page's on-screen controls or keyboard shortcuts.
@@ -175,8 +196,16 @@ func signIn(dir, server, username string, password io.Reader) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "config.json"), config{Server: server, Device: "mac"}, 0o644); err != nil {
+	if err := writeJSON(filepath.Join(dir, "config.json"), config{Server: server, Device: defaultComputerID()}, 0o644); err != nil {
 		return err
 	}
 	return writeJSON(filepath.Join(dir, "tokens.json"), t, 0o600)
+}
+
+// defaultComputerID names a newly signed-in computer until its settings give it a name.
+func defaultComputerID() string {
+	if runtime.GOOS == "windows" {
+		return "pc"
+	}
+	return "mac"
 }

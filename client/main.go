@@ -43,6 +43,7 @@ var version = "dev" // set at build time from VERSION
 type config struct {
 	Server  string `json:"server"`
 	Device  string `json:"device,omitempty"`  // name the plugin keeps state under; default "car-thing"
+	Name    string `json:"name,omitempty"`    // the app's own name for this computer, shown in its settings
 	Grab    *bool  `json:"grab,omitempty"`    // take the buttons from Nocturne's own screen; default true
 	Phone   string `json:"phone,omitempty"`   // Bluetooth address of the phone to tether to; default any paired one
 	Mic     string `json:"mic,omitempty"`     // ALSA device to record from (32-bit samples); default hw:0,0
@@ -71,7 +72,7 @@ func main() {
 	events := flag.String("events", "", "read raw input events from this file instead of the Car Thing's buttons (testing)")
 	flag.StringVar(&audioHelper, "audio", "", "the virtual Petasos's recorder and player (the Mac app's executable)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version|virtual|signin SERVER [USERNAME]]")
+		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version|virtual|signin SERVER [USERNAME]|vpncheck FILE]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -101,6 +102,12 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println("signed in")
+	case "vpncheck": // the Mac app's settings, before saving a WireGuard config
+		if err := checkVPNConfig(flag.Arg(1)); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Println("ok")
 	case "virtual":
 		if audioHelper == "" {
 			log.Fatal("the virtual Petasos needs -audio, the app that records and plays")
@@ -130,8 +137,9 @@ func main() {
 
 func load(dir string) (*hermes, error) {
 	h := &hermes{dir: dir, http: &http.Client{
-		Timeout:   20 * time.Second,
-		Transport: &http.Transport{Proxy: nil, MaxIdleConns: 2, IdleConnTimeout: 90 * time.Second},
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{Proxy: nil, MaxIdleConns: 2, IdleConnTimeout: 90 * time.Second,
+			DialContext: dialHermes},
 	}}
 	if err := readJSON(filepath.Join(dir, "config.json"), &h.cfg); err != nil {
 		return nil, fmt.Errorf("reading config.json: %w", err)

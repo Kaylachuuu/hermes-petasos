@@ -91,7 +91,7 @@ def test_voice_routes(hermes, monkeypatch):
         spec.loader.exec_module(v)
     asked = []
 
-    async def fake_ask(text, device, sessions, url=None, agent="The agent"):
+    async def fake_ask(text, device, sessions, url=None, agent="The agent", shared_chat=False):
         asked.append((text, device, agent))
         return "It's sunny."
 

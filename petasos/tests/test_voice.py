@@ -70,14 +70,14 @@ class FakeGateway:
             await ws.send(json.dumps({"jsonrpc": "2.0", "id": rid, "result": result}))
 
 
-def run_turns(tmp_path, *texts):
+def run_turns(tmp_path, *texts, device="car-thing", shared_chat=False):
     gateway = FakeGateway()
     sessions = voice.Sessions(tmp_path / "sessions.json")
 
     async def go():
         async with websockets.serve(gateway.handler, "127.0.0.1", 0) as server:
             url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}/api/ws"
-            return [await voice.ask(t, "car-thing", sessions, url=url) for t in texts]
+            return [await voice.ask(t, device, sessions, url=url, shared_chat=shared_chat) for t in texts]
 
     return asyncio.run(go()), gateway, sessions
 
@@ -94,6 +94,19 @@ def test_first_turn_opens_a_session_and_later_turns_resume_it(tmp_path):
     assert sessions.get("car-thing") == "stored-1"
     # The approval request was declined rather than left hanging.
     assert gateway.declined and gateway.declined[0]["id"] == "srv-1" and "error" in gateway.declined[0]
+
+
+def test_chats_have_the_petasos_source_and_a_title_per_device(tmp_path):
+    _, gateway, sessions = run_turns(tmp_path, "Hi", device="office-mac")
+    assert gateway.calls[0] == ("session.create", {"title": "Petasos · Office Mac", "source": "petasos"})
+    assert sessions.get("office-mac") == "stored-1"
+    assert voice.chat_title("car-thing") == "Petasos · Car Thing"
+
+
+def test_a_shared_chat_is_one_for_every_device(tmp_path):
+    _, gateway, sessions = run_turns(tmp_path, "Hi", device="office-mac", shared_chat=True)
+    assert gateway.calls[0] == ("session.create", {"title": "Petasos", "source": "petasos"})
+    assert sessions.get(voice.SHARED_CHAT) == "stored-1" and sessions.get("office-mac") is None
 
 
 def test_a_session_deleted_elsewhere_is_replaced(tmp_path):
