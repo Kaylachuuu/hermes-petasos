@@ -175,7 +175,7 @@ Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event
 
 ## Step 5: our own Car Thing system, and getting online
 
-Nocturne can't give petasos a network of its own (no Bluetooth tethering, no WireGuard), so the Car Thing runs our own image instead: `image/`, a layer on [yocto-superbird](https://github.com/JoeyEamigh/yocto-superbird). It adds Bluetooth tethering and WireGuard to the kernel, Bluetooth audio, petasos itself (it starts at boot, then copies itself to `/var/lib/petasos` so it can update there), the Greek key boot logo and screen (`image/splash/`), and root login over the USB cable only.
+Nocturne can't give petasos a network of its own (no Bluetooth tethering, no WireGuard), so the Car Thing runs our own image instead: `image/`, a layer on [yocto-superbird](https://github.com/JoeyEamigh/yocto-superbird). It adds Bluetooth tethering and WireGuard to the kernel, Bluetooth audio, petasos itself (it starts at boot, then copies itself to `/var/lib/petasos` so it can update there), the winged hat boot logo, shown from power-on until petasos's screen appears (`image/splash/`), and root login over the USB cable only.
 
 ### Build and flash
 

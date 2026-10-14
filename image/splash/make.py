@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Turn rendered 800x480 PNGs into the image's two boot pictures.
+"""Turn the rendered 800x480 boot logo into the image's boot pictures.
 
-  python make.py splash.png bootlogo.png
+  python make.py bootlogo.png
 
-Writes petasos-bootup.bmp (u-boot's logo, from bootlogo.png: 480x800, turned a quarter clockwise,
-32-bit BGRA bottom-up, as superbird-logo expects) and petasos-splash.png (weston's background,
-from splash.png, landscape) into the layer, and copies the splash for the kiosk page. Render
-petasos-bootlogo.svg (the winged hat) and petasos-splash.svg (the Greek key) at 800x480 first, in
-any browser, with Caladea and Inter installed.
+The same picture shows from power-on until petasos's screen appears. Writes petasos-bootup.bmp
+(u-boot's logo: 480x800, turned a quarter clockwise, 32-bit BGRA bottom-up, as superbird-logo
+expects) and petasos-splash.png (weston's background, landscape) into the layer, and copies the
+splash for the kiosk's start page. Render petasos-bootlogo.svg (the winged hat) at 800x480 first,
+in any browser, with Caladea installed.
 """
 import shutil
 import struct
@@ -18,12 +18,10 @@ from PIL import Image
 
 LAYER = Path(__file__).resolve().parent.parent / "meta-petasos"
 
-src = Image.open(sys.argv[1]).convert("RGB")
-logo = Image.open(sys.argv[2]).convert("RGB")
-for image in (src, logo):
-    assert image.size == (800, 480), f"expected 800x480, got {image.size}"
+logo = Image.open(sys.argv[1]).convert("RGB")
+assert logo.size == (800, 480), f"expected 800x480, got {logo.size}"
 png = LAYER / "recipes-graphics/weston-init/files/petasos-splash.png"
-src.save(png, optimize=True)
+logo.save(png, optimize=True)
 shutil.copy(png, LAYER / "recipes-extended/petasos-screen/files/splash.png")
 
 portrait = logo.rotate(-90, expand=True).convert("RGBA")

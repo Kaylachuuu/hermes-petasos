@@ -1,4 +1,4 @@
-SUMMARY = "Placeholder screen for the petasos kiosk"
+SUMMARY = "Start page for the petasos kiosk: the boot logo, until petasos shows its screen"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
