@@ -31,21 +31,43 @@ func TestEndpointer(t *testing.T) {
 		}
 		return out
 	}
-	quiet, road, speech := tone(50), tone(900), tone(6000)
+	quiet, road, loud := tone(50), tone(900), tone(6000)
+	// Speech: syllables with short dips between them, over whatever the background is.
+	speech := func(background []byte, n int) [][]byte {
+		var out [][]byte
+		for len(out) < n {
+			out = append(append(out, repeat(loud, 12)...), repeat(background, 3)...)
+		}
+		return out[:n]
+	}
 
 	// Speech after quiet, then a second of quiet: ends one second after speaking stops.
-	frames := append(append(repeat(quiet, 25), repeat(speech, 100)...), repeat(quiet, 100)...)
+	frames := append(append(repeat(quiet, 25), speech(quiet, 100)...), repeat(quiet, 100)...)
 	if r, i := run(newEndpointer(1000, 30), frames...); r != endOfSpeech || i != 25+100+50-1 {
 		t.Fatalf("quiet room: %v at frame %d", r, i)
 	}
 	// Steady road noise louder than the starting guess: learned, then speech is still found.
-	frames = append(append(repeat(road, 150), repeat(speech, 60)...), repeat(road, 80)...)
+	frames = append(append(repeat(road, 150), speech(road, 60)...), repeat(road, 80)...)
 	if r, _ := run(newEndpointer(1000, 30), frames...); r != endOfSpeech {
 		t.Fatalf("road noise: %v", r)
+	}
+	// Road noise far louder than the first guess (a car at speed): it must not pass for endless
+	// speech, and the speech over it must still be found.
+	busy := tone(2000)
+	e := newEndpointer(1000, 30)
+	if r, i := run(e, repeat(busy, 300)...); r != keepListening {
+		t.Fatalf("loud road noise taken for speech: %v at %d", r, i)
+	}
+	if r, _ := run(e, append(speech(busy, 80), repeat(busy, 80)...)...); r != endOfSpeech {
+		t.Fatalf("speech over loud road noise: %v (%v)", r, e)
 	}
 	// Nobody speaks: gives up after idleS.
 	if r, i := run(newEndpointer(1000, 5), repeat(road, 400)...); r != idle || i != 249 {
 		t.Fatalf("idle: %v at %d", r, i)
+	}
+	// Someone talking without end (or noise that passes for it) still gets sent.
+	if r, i := run(newEndpointer(1000, 30), speech(quiet, 2000)...); r != endOfSpeech || i > maxTurn+50 {
+		t.Fatalf("endless talk: %v at %d", r, i)
 	}
 }
 

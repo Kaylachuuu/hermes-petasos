@@ -186,9 +186,11 @@ func (v *voice) startRecording() {
 			}
 			switch vad.feed(frame) {
 			case endOfSpeech:
+				log.Printf("end of speech (%v)", vad)
 				go v.finish(true)
 				return
 			case idle:
+				log.Printf("no speech heard (%v)", vad)
 				go v.endConversation()
 				return
 			}
@@ -402,7 +404,17 @@ func (v *voice) play(wav []byte) {
 		log.Printf("playing on %s failed (is the speaker connected?): %v %s", v.speaker, err,
 			strings.TrimSpace(stderr.String()))
 	}
+	if err == nil && !stopped && !virtual {
+		// aplay is done once BlueALSA has the last of it, but the speaker (a car's especially)
+		// is still playing its buffer. Opening the mic now would record the end of her reply
+		// as the next turn, so let it finish first.
+		time.Sleep(speakerTail)
+	}
 }
+
+// speakerTail is how long a Bluetooth speaker goes on playing after the last of the audio was
+// handed to it.
+const speakerTail = 900 * time.Millisecond
 
 func (v *voice) notHushedSince(n int) bool {
 	v.mu.Lock()
@@ -467,47 +479,74 @@ const (
 	idle
 )
 
-// endpointer decides when someone has finished speaking, from loudness alone. It tracks the
-// background level as a floor that drops at once to anything quieter and creeps up slowly
-// otherwise (so steady road noise is learned within seconds, while speech barely moves it),
-// counts frames well above that floor as speech, and ends the turn after endMs of quiet following
-// speech, or after idleS with no speech at all.
+// endpointer decides when someone has finished speaking, from loudness alone. The background
+// level is the quietest moment of the last three seconds: speech always has gaps between
+// words that let the background show through, so this follows road noise up or down within
+// seconds whatever it does, while speech can't raise it. Frames well above it count as speech,
+// and the turn ends after endMs of quiet following speech, after idleS with no speech at all, or
+// after maxTurn of talking, so it can never be stuck listening.
 type endpointer struct {
 	endFrames, idleFrames int
 	frames, quiet, voiced int
-	floor                 float64
+	speechFrames          int
+	recent                []float64 // levels of the last window frames, as a ring
+	floor, peak           float64
 	heard                 bool
 }
 
+const (
+	floorWindow = 150     // frames (3 s)
+	maxTurn     = 30 * 50 // frames (30 s)
+	minSpeech   = 400.0   // below this nothing is speech, however quiet the room
+)
+
 func newEndpointer(endMs, idleS int) *endpointer {
-	return &endpointer{endFrames: max(endMs/20, 5), idleFrames: max(idleS*50, 50), floor: 300}
+	return &endpointer{endFrames: max(endMs/20, 5), idleFrames: max(idleS*50, 50), floor: 300,
+		recent: make([]float64, 0, floorWindow)}
 }
 
 func (e *endpointer) feed(frame []byte) vadResult {
 	level := rms(frame)
-	e.frames++
-	if level < e.floor {
-		e.floor = math.Max(level, 30)
+	if len(e.recent) < floorWindow {
+		e.recent = append(e.recent, level)
 	} else {
-		e.floor *= 1.003
+		e.recent[e.frames%floorWindow] = level
 	}
-	if level > math.Max(e.floor*3, 400) {
+	e.frames++
+	if e.frames >= 10 { // a fifth of a second is enough for a first guess
+		low := math.Inf(1)
+		for _, l := range e.recent {
+			low = math.Min(low, l)
+		}
+		e.floor = math.Max(low, 30)
+	}
+	e.peak = math.Max(e.peak, level)
+	if level > math.Max(e.floor*2.5, minSpeech) {
 		e.voiced++
 		e.quiet = 0
-		if e.voiced >= 4 { // 80 ms of sound, so a click isn't speech
+		if e.voiced >= 4 && e.frames > 10 { // 80 ms of sound, so a click isn't speech
 			e.heard = true
 		}
 	} else {
 		e.voiced = 0
 		e.quiet++
 	}
+	if e.heard {
+		e.speechFrames++
+	}
 	switch {
-	case e.heard && e.quiet >= e.endFrames:
+	case e.heard && (e.quiet >= e.endFrames || e.speechFrames >= maxTurn):
 		return endOfSpeech
 	case !e.heard && e.frames >= e.idleFrames:
 		return idle
 	}
 	return keepListening
+}
+
+// String sums up what it heard, for the log.
+func (e *endpointer) String() string {
+	return fmt.Sprintf("%.1f s, background %.0f, loudest %.0f, speech threshold %.0f",
+		float64(e.frames)/50, e.floor, e.peak, math.Max(e.floor*2.5, minSpeech))
 }
 
 func rms(frame []byte) float64 {

@@ -112,6 +112,7 @@ func main() {
 		}
 		h.run("")
 	case "run":
+		keepLog(*dir)
 		adopt(*dir)
 		h, err := load(*dir)
 		for err != nil {
