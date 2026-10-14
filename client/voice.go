@@ -92,10 +92,11 @@ func (v *voice) carryOut(c map[string]any) {
 // --- recording ---------------------------------------------------------------------------------
 
 type recording struct {
-	cmd  *exec.Cmd
-	mu   sync.Mutex
-	pcm  bytes.Buffer
-	done chan struct{}
+	cmd    *exec.Cmd
+	stderr *bytes.Buffer
+	mu     sync.Mutex
+	pcm    bytes.Buffer
+	done   chan struct{}
 }
 
 func (v *voice) listen(mode string, endMs, idleS int) {
@@ -115,6 +116,8 @@ func (v *voice) startRecording() {
 	cmd := exec.Command("arecord", "-q", "-D", v.mic, "-f", "S16_LE", "-r", fmt.Sprint(sampleRate),
 		"-c", "1", "-t", "raw")
 	out, err := cmd.StdoutPipe()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err == nil {
 		err = cmd.Start()
 	}
@@ -122,7 +125,7 @@ func (v *voice) startRecording() {
 		log.Printf("can't record from %s: %v", v.mic, err)
 		return
 	}
-	rec := &recording{cmd: cmd, done: make(chan struct{})}
+	rec := &recording{cmd: cmd, stderr: &stderr, done: make(chan struct{})}
 	v.mu.Lock()
 	v.rec = rec
 	mode := v.mode
@@ -181,7 +184,10 @@ func (v *voice) finish(send bool) {
 		return
 	}
 	if len(pcm) < sampleRate*2/4 { // under a quarter second: a slip of the finger
-		log.Printf("recording too short; not sent")
+		log.Printf("recording too short (%d ms); not sent", len(pcm)*1000/(sampleRate*2))
+		if msg := strings.TrimSpace(rec.stderr.String()); msg != "" {
+			log.Printf("the microphone (%s) said: %s", v.mic, truncate(msg, 300))
+		}
 		v.relisten(gen)
 		return
 	}
