@@ -60,7 +60,10 @@ ssh root@nocturne.local 'sh -s' < tools/list_inputs.sh     # add a number after 
 While it listens, press each top button from left to right, then the front button, press the knob, and turn the knob a few clicks each way. Leave the touchscreen alone, or it floods the output.
 
 - **Signing in:** Nocturne is built on yocto-superbird, whose images allow `root` with an empty password over USB. If `ssh` asks for a password, press Enter.
-- **If `nocturne.local` doesn't answer:** the Car Thing gives itself an address in `10.42.1.x`. On a Mac, look for a new USB network interface in System Settings → Network; the Car Thing is the address one above the Mac's.
+- **If `nocturne.local` doesn't answer:** run `ifconfig | grep -E "inet (10\.42\.1|172\.16\.42)"` on the Mac.
+  - A `10.42.1.x` address means current Nocturne. The Car Thing hands the Mac an address and keeps the block's third one for itself: round the Mac's last number down to a multiple of 8 and add 2 (Mac `10.42.1.43` → Car Thing `10.42.1.42`).
+  - A `172.16.42.x` address means an older, stock-based firmware. The Car Thing is then `172.16.42.2`.
+  - No such address means the Mac sees no USB network at all: pick **Connect to PC** on the Car Thing, then try another cable or port.
 
 Expected from the community device tree, to be confirmed by the run:
 
