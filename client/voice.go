@@ -466,6 +466,7 @@ func (v *voice) volume(delta int) {
 		var n int
 		fmt.Sscan(string(level[1]), &n)
 		display.update(func(st *screenState) { st.Volume = n; st.VolumeID++ })
+		volumes.remember(string(m[1]), n)
 	}
 }
 

@@ -437,6 +437,10 @@ func (h *hermes) run(eventsFile string) {
 	}
 
 	v := newVoice(h, presses)
+	if !virtual {
+		volumes.load(h.dir)
+		go v.keepVolumes()
+	}
 	online := false
 	lastUpdate := time.Time{}
 	for {
