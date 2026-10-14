@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -76,6 +77,23 @@ func (s *screen) update(change func(*screenState)) {
 		select {
 		case ch <- raw:
 		default: // a stalled page gets the next one
+		}
+	}
+}
+
+// micLevel sends the microphone's level (0 to 1) to every open page, for the bottom band while
+// listening. It isn't part of the state, so it stays out of what a page gets as it connects.
+func (s *screen) micLevel(level float64) {
+	raw := []byte(fmt.Sprintf(`{"mic":%.2f}`, level))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for ch := range s.subs {
+		if len(ch) > 0 {
+			continue // a page that's behind skips a level, keeping room for the state
+		}
+		select {
+		case ch <- raw:
+		default:
 		}
 	}
 }

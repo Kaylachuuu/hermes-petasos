@@ -113,3 +113,20 @@ func TestToSpeakerFormat(t *testing.T) {
 		t.Fatal("re-encoded audio that was already right")
 	}
 }
+
+func TestMicMeter(t *testing.T) {
+	var m micMeter
+	for _, c := range []struct {
+		loud, want float64
+	}{{30, 0}, {400, 0.29}, {3000, 0.7}, {30000, 1}} {
+		if m.add(c.loud) {
+			t.Fatal("sent after one frame")
+		}
+		if !m.add(0) {
+			t.Fatal("not sent after two frames")
+		}
+		if got := m.level(); got != c.want {
+			t.Errorf("level for %v = %v, want %v", c.loud, got, c.want)
+		}
+	}
+}

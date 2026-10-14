@@ -187,6 +187,10 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <svg class="emblem" id="warn" viewBox="0 0 200 190" hidden><use href="#emblem"/></svg>
     <svg class="band bottom" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
       <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
+      <g class="lit" id="mic-lit" opacity="0">
+        <rect id="mic-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
+        <rect id="mic-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
+      </g>
       <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
     </svg>
   </div>
@@ -374,6 +378,27 @@ function draw(s) {
   if (s.bt) drawBT(s.bt);
   else drawHome(s);
   drawVolume(s);
+  drawMic(s);
+}
+
+// While listening, the bottom band lights to the microphone's level, as the top one does to
+// the volume: it jumps up with the voice and falls back slowly.
+let micTarget = 0, micShown = 0, micFrame = 0;
+
+function drawMic(s) {
+  const on = s.phase === "listening" && !s.bt;
+  $("mic-lit").setAttribute("opacity", on ? "1" : "0");
+  if (!on) micTarget = 0;
+  if (!micFrame) micFrame = requestAnimationFrame(stepMic);
+}
+
+function stepMic() {
+  micShown += (micTarget - micShown) * (micTarget > micShown ? 0.5 : 0.12);
+  if (Math.abs(micTarget - micShown) < 0.005) micShown = micTarget;
+  const w = (800 * micShown).toFixed(1);
+  $("mic-cover").setAttribute("width", w);
+  $("mic-keys").setAttribute("width", w);
+  micFrame = micShown === micTarget ? 0 : requestAnimationFrame(stepMic);
 }
 
 // The kiosk keeps this page open across petasos updates; when the program behind it is a newer
@@ -383,7 +408,12 @@ let pageVersion = null;
 function connect() {
   const events = new EventSource("/events");
   events.onmessage = (e) => {
-    state = JSON.parse(e.data);
+    const message = JSON.parse(e.data);
+    if ("mic" in message) { // the microphone's level, many times a second while listening
+      if (state && state.phase === "listening") { micTarget = message.mic; if (!micFrame) micFrame = requestAnimationFrame(stepMic); }
+      return;
+    }
+    state = message;
     if (pageVersion === null) pageVersion = state.version;
     else if (state.version !== pageVersion) { location.replace("/?v=" + encodeURIComponent(state.version)); return; }
     draw(state);

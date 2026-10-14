@@ -159,6 +159,7 @@ func (v *voice) startRecording() {
 		r := bufio.NewReaderSize(out, frameBytes*8)
 		wide := make([]byte, frameBytes*2)
 		frame := make([]byte, frameBytes)
+		var meter micMeter
 		for first := true; ; first = false {
 			if _, err := io.ReadFull(r, wide); err != nil {
 				if first {
@@ -175,6 +176,9 @@ func (v *voice) startRecording() {
 				}
 			}
 			to16(wide, frame)
+			if loud := rms(frame); meter.add(loud) {
+				display.micLevel(meter.level())
+			}
 			rec.mu.Lock()
 			rec.pcm.Write(frame)
 			rec.mu.Unlock()
@@ -570,6 +574,26 @@ func (e *endpointer) feed(frame []byte) vadResult {
 func (e *endpointer) String() string {
 	return fmt.Sprintf("%.1f s, background %.0f, loudest %.0f, speech threshold %.0f",
 		float64(e.frames)/50, e.floor, e.peak, math.Max(e.floor*2.5, minSpeech))
+}
+
+// micMeter turns the microphone's loudness into the level the screen's bottom band shows
+// while listening: the loudest of every two frames (25 a second), on a log scale from 0 (a quiet
+// room) to 1 (speaking up close).
+type micMeter struct {
+	n    int
+	peak float64
+}
+
+func (m *micMeter) add(loud float64) bool {
+	m.peak = math.Max(m.peak, loud)
+	m.n++
+	return m.n%2 == 0
+}
+
+func (m *micMeter) level() float64 {
+	l := (math.Log10(math.Max(m.peak, 1)) - 2) / 2.1 // 100 is 0, about 12600 is 1
+	m.peak = 0
+	return math.Round(math.Max(0, math.Min(1, l))*100) / 100
 }
 
 func rms(frame []byte) float64 {
