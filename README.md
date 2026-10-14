@@ -199,3 +199,25 @@ The phone's own VPN doesn't carry hotspot traffic, so the Car Thing has its own 
 ```
 
 petasos turns it into a systemd-networkd tunnel (`wg-petasos`) under `/run` at start (`client/wireguard.go`). It refuses a config that sends all traffic home.
+
+## Step 6: voice
+
+Hold the front button and talk; let go, and Athena's answer plays on the Bluetooth speaker. Tap it instead for conversation mode: the Car Thing sends each thing you say after a second of quiet and listens again after she answers, until you tap again or say nothing for a while. The knob press stops her mid-sentence, and turning it changes the speaker's volume. Presets ask their question the same way.
+
+- **On the Car Thing** (`client/voice.go`): records with `arecord` from `plughw:0,0` (16 kHz mono), finds the end of speech in conversation mode by loudness (it learns steady road noise), sends the recording, and plays the reply with `aplay` on `bluealsa` (the connected Bluetooth speaker). `mic` and `speaker` in `config.json` change those devices.
+- **In the plugin** (`petasos/voice.py`): `POST /api/plugins/petasos/voice` takes the WAV, transcribes it with Hermes' own speech-to-text (`stt:` in `config.yaml`), sends the words to Athena over the dashboard's chat connection as a voice turn (`voice_turn`, `surface: voice-live`, which asks for a short spoken answer), and turns her reply into speech with Hermes' text-to-speech (`tts:`). `POST /ask` does the same for typed text (presets). The reply audio is fetched from `GET /voice/audio/<id>`.
+- **One conversation per device**, titled "Car Thing", resumed every time, so it shows in the WebUI like any other chat. Its id is kept in `<hermes root>/petasos/sessions.json`; delete the entry to start fresh.
+- **Approvals** can't be answered from the Car Thing; they're declined and Athena says what she couldn't do.
+
+For hermes-whisper and hermes-kokoro, Hermes' config needs:
+
+```yaml
+stt:
+  provider: openai
+  openai: {base_url: "http://10.0.0.22:PORT/v1"}
+tts:
+  provider: openai
+  openai: {base_url: "http://10.0.0.23:PORT/v1", api_key: "not-needed", voice: "af_heart"}
+```
+
+(The speech side needs some `api_key`; any text works for a local server.)

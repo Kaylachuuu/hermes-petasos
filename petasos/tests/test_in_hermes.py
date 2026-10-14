@@ -76,3 +76,38 @@ def test_device_program_is_served_with_its_checksum(hermes):
     body = client.get("/api/plugins/petasos/client/download").content
     assert hashlib.sha256(body).hexdigest() == info["sha256"] and len(body) == info["size"]
     assert client.get("/api/plugins/petasos/client?arch=mips").status_code == 400
+
+
+def test_voice_routes(hermes, monkeypatch):
+    client, _ = hermes
+    import importlib.util
+    import sys
+    v = sys.modules.get("hermes_petasos_voice")
+    if v is None:  # the routes load it under this name; loading it first lets the test swap parts
+        spec = importlib.util.spec_from_file_location(
+            "hermes_petasos_voice", Path(__file__).resolve().parent.parent / "voice.py")
+        v = importlib.util.module_from_spec(spec)
+        sys.modules["hermes_petasos_voice"] = v
+        spec.loader.exec_module(v)
+    asked = []
+
+    async def fake_ask(text, device, sessions, url=None):
+        asked.append((text, device))
+        return "It's sunny."
+
+    monkeypatch.setattr(v, "transcribe", lambda audio, suffix=".wav": "what's the weather" if audio else "")
+    monkeypatch.setattr(v, "ask", fake_ask)
+    monkeypatch.setattr(v, "speak", lambda text: b"RIFF-fake-audio")
+    r = client.post("/api/plugins/petasos/voice?device=car-thing", content=b"RIFF....",
+                    headers={"Content-Type": "audio/wav"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["heard"] == "what's the weather" and body["reply"] == "It's sunny."
+    audio = client.get(f"/api/plugins/petasos/voice/audio/{body['audio']}")
+    assert audio.status_code == 200 and audio.content == b"RIFF-fake-audio"
+    assert audio.headers["content-type"] == "audio/wav"
+    r = client.post("/api/plugins/petasos/ask", json={"text": "Read me my last message."})
+    assert r.json()["reply"] == "It's sunny." and asked[-1] == ("Read me my last message.", "car-thing")
+    assert client.post("/api/plugins/petasos/ask", json={"text": " "}).status_code == 400
+    assert client.post("/api/plugins/petasos/voice", content=b"").status_code == 400
+    assert client.get("/api/plugins/petasos/voice/audio/nope").status_code == 404

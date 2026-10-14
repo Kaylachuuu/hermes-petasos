@@ -41,10 +41,12 @@ import (
 var version = "dev" // set at build time from VERSION
 
 type config struct {
-	Server string `json:"server"`
-	Device string `json:"device,omitempty"` // name the plugin keeps state under; default "car-thing"
-	Grab   *bool  `json:"grab,omitempty"`   // take the buttons from Nocturne's own screen; default true
-	Phone  string `json:"phone,omitempty"`  // Bluetooth address of the phone to tether to; default any paired one
+	Server  string `json:"server"`
+	Device  string `json:"device,omitempty"`  // name the plugin keeps state under; default "car-thing"
+	Grab    *bool  `json:"grab,omitempty"`    // take the buttons from Nocturne's own screen; default true
+	Phone   string `json:"phone,omitempty"`   // Bluetooth address of the phone to tether to; default any paired one
+	Mic     string `json:"mic,omitempty"`     // ALSA device to record from; default plughw:0,0
+	Speaker string `json:"speaker,omitempty"` // ALSA device to play on; default bluealsa (the connected Bluetooth speaker)
 }
 
 type tokens struct {
@@ -130,43 +132,54 @@ func load(dir string) (*hermes, error) {
 
 // call sends one JSON request with the access token, renewing the token once if it has expired.
 func (h *hermes) call(method, path string, body, out any) error {
-	for attempt := 0; ; attempt++ {
-		status, data, err := h.send(method, path, body)
+	var payload []byte
+	if body != nil {
+		raw, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
+		payload = raw
+	}
+	data, err := h.exchange(method, path, "application/json", payload, h.http, 1<<20)
+	if err == nil && out != nil {
+		return json.Unmarshal(data, out)
+	}
+	return err
+}
+
+// exchange sends one request of any kind with the access token, renewing the token once if it
+// has expired, and returns the reply body (up to limit bytes) for a 2xx status.
+func (h *hermes) exchange(method, path, contentType string, payload []byte, client *http.Client, limit int64) ([]byte, error) {
+	for attempt := 0; ; attempt++ {
+		status, data, err := h.send(method, path, contentType, payload, client, limit)
+		if err != nil {
+			return nil, err
+		}
 		if status == http.StatusUnauthorized && attempt == 0 {
 			if err := h.refresh(); err != nil {
-				return err
+				return nil, err
 			}
 			continue
 		}
 		if status/100 != 2 {
-			return fmt.Errorf("%s %s: HTTP %d: %s", method, path, status, truncate(string(data), 200))
+			return nil, fmt.Errorf("%s %s: HTTP %d: %s", method, path, status, truncate(string(data), 200))
 		}
-		if out != nil {
-			return json.Unmarshal(data, out)
-		}
-		return nil
+		return data, nil
 	}
 }
 
-func (h *hermes) send(method, path string, body any) (int, []byte, error) {
+func (h *hermes) send(method, path, contentType string, payload []byte, client *http.Client, limit int64) (int, []byte, error) {
 	var reader io.Reader
-	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return 0, nil, err
-		}
-		reader = bytes.NewReader(raw)
+	if payload != nil {
+		reader = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequest(method, h.cfg.Server+path, reader)
 	if err != nil {
 		return 0, nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", contentType)
 	}
 	h.mu.Lock()
 	token := h.tokens.AccessToken
@@ -174,12 +187,12 @@ func (h *hermes) send(method, path string, body any) (int, []byte, error) {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := h.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	return resp.StatusCode, data, err
 }
 
@@ -386,6 +399,7 @@ func (h *hermes) run(eventsFile string) {
 		go keepTethered(h.cfg.Phone)
 	}
 
+	v := newVoice(h, presses)
 	online := false
 	lastUpdate := time.Time{}
 	for {
@@ -411,7 +425,7 @@ func (h *hermes) run(eventsFile string) {
 				continue
 			}
 			for _, c := range commands {
-				h.carryOut(c)
+				v.carryOut(c)
 			}
 		case <-time.After(time.Minute):
 			if time.Since(lastUpdate) > 30*time.Minute {
@@ -436,13 +450,6 @@ func (h *hermes) connect(lastUpdate *time.Time) error {
 	*lastUpdate = time.Now()
 	_, err := h.input(map[string]any{"input": "device", "action": "hello"})
 	return err
-}
-
-// carryOut acts on one command from the plugin. Sound isn't wired up yet, so for now every
-// command is logged; the voice step fills these in.
-func (h *hermes) carryOut(c map[string]any) {
-	raw, _ := json.Marshal(c)
-	log.Printf("command %s", raw)
 }
 
 // drainFor waits, throwing away presses made while Hermes can't be reached: replaying them
