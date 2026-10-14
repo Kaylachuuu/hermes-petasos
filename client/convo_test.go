@@ -54,3 +54,31 @@ func TestConversationKeepsGoing(t *testing.T) {
 		t.Fatalf("only %d rounds of the conversation", n)
 	}
 }
+
+// A recorder that gives up before any audio leaves the screen idle with a notice, rather than
+// "Getting ready…" for good.
+func TestMicThatFailsIsReported(t *testing.T) {
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "audio")
+	os.WriteFile(helper, []byte("#!/bin/sh\necho 'no microphone to record from' >&2\nexit 1\n"), 0o755)
+	oldV, oldA := virtual, audioHelper
+	virtual, audioHelper = true, helper
+	defer func() { virtual, audioHelper = oldV, oldA }()
+	h := &hermes{dir: dir, cfg: config{Device: "test"}, http: http.DefaultClient}
+	v := newVoice(h, make(chan map[string]any, 8))
+	display.mu.Lock()
+	before := display.state.NoticeID
+	display.mu.Unlock()
+	v.carryOut(map[string]any{"do": "listen", "mode": "hold"})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		display.mu.Lock()
+		phase, notices := display.state.Phase, display.state.NoticeID
+		display.mu.Unlock()
+		if phase == "idle" && notices > before {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("still waiting on a microphone that gave up")
+}

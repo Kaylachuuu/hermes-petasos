@@ -8,6 +8,7 @@ enum Audio {
     // the given rate (what arecord -f S32_LE -c 1 gives on the Car Thing), until it is stopped.
     static func record(rate: Double) -> Never {
         signal(SIGPIPE, SIG_IGN) // a closed pipe then shows up as a failed write, and ends the recording
+        checkAccess()
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
@@ -15,7 +16,7 @@ enum Audio {
               let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
                                             channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: inFormat, to: outFormat) else {
-            FileHandle.standardError.write("no microphone to record from\n".data(using: .utf8)!)
+            FileHandle.standardError.write("no microphone to record from (input format \(inFormat))\n".data(using: .utf8)!)
             exit(1)
         }
         let out = FileHandle.standardOutput
@@ -56,6 +57,28 @@ enum Audio {
             exit(1)
         }
         dispatchMain()
+    }
+
+    // checkAccess makes sure macOS lets Petasos use the microphone, asking the first time.
+    // Without access the microphone gives nothing, so say why in the log instead.
+    private static func checkAccess() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return
+        case .notDetermined:
+            let asked = DispatchSemaphore(value: 0)
+            var granted = false
+            AVCaptureDevice.requestAccess(for: .audio) { ok in
+                granted = ok
+                asked.signal()
+            }
+            asked.wait()
+            if granted { return }
+        default:
+            break
+        }
+        FileHandle.standardError.write("macOS isn't letting Petasos use the microphone (System Settings > Privacy & Security > Microphone)\n".data(using: .utf8)!)
+        exit(1)
     }
 
     // play plays a WAV file from stdin and returns when it has finished.

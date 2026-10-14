@@ -161,6 +161,9 @@ func (v *voice) startRecording() {
 		frame := make([]byte, frameBytes)
 		for first := true; ; first = false {
 			if _, err := io.ReadFull(r, wide); err != nil {
+				if first {
+					go v.micFailed(rec)
+				}
 				return
 			}
 			if first { // the microphone is really recording now: tell the person to speak
@@ -197,6 +200,25 @@ func (v *voice) startRecording() {
 		}
 	}()
 	log.Printf("listening (%s)", mode)
+}
+
+// micFailed is a recorder that stopped before giving any audio. Unless the recording was
+// stopped on purpose, say so rather than waiting for audio that won't come.
+func (v *voice) micFailed(rec *recording) {
+	v.mu.Lock()
+	current := v.rec == rec
+	if current {
+		v.rec = nil
+	}
+	v.mu.Unlock()
+	if !current {
+		return
+	}
+	_ = rec.cmd.Wait()
+	log.Printf("the microphone stopped before recording anything: %s",
+		truncate(strings.TrimSpace(rec.stderr.String()), 300))
+	display.setPhase("idle")
+	display.notice("The microphone isn't working.")
 }
 
 // finish stops the recording; with send, the recording goes to Athena.
