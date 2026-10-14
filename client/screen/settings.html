@@ -37,8 +37,6 @@ button:disabled { opacity: .5; cursor: default; }
 .error { color: var(--alarm); }
 .actions { display: flex; gap: 12px; align-items: center; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--rule); }
 .actions .error { margin: 0; }
-.check { display: flex; align-items: center; gap: 8px; }
-.check input { width: 18px; height: 18px; accent-color: var(--ember); margin: 0; }
 [hidden] { display: none !important; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .hint { grid-column: 1; } }
 </style>
@@ -87,12 +85,6 @@ button:disabled { opacity: .5; cursor: default; }
       <label for="mic">Microphone</label>
       <select id="mic"></select>
       <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
-    </div>
-
-    <h2>Window</h2>
-    <div class="row">
-      <label for="on-top">Keep on top</label>
-      <label class="check"><input type="checkbox" id="on-top"> Keep the Petasos window above other windows</label>
     </div>
 
     <h2>Hermes</h2>
@@ -165,7 +157,6 @@ async function load() {
   $("server").textContent = current.server || "";
   $("vpn").value = current.vpn ? "wireguard" : "off";
   $("when").value = current.when;
-  $("on-top").checked = !!current.on_top;
   $("loading").hidden = true;
   $("form").hidden = false;
   showName();
@@ -201,7 +192,6 @@ $("form").addEventListener("submit", async (e) => {
   $("save").disabled = true;
   const change = { name: $("name").value.trim(), vpn: $("vpn").value === "wireguard", when: $("when").value };
   if (newConfig) change.wireguard = newConfig.text;
-  change.on_top = $("on-top").checked;
   change.mic = $("mic").value;
   change.mic_name = $("mic").selectedOptions[0] ? $("mic").selectedOptions[0].textContent.replace(/ \((built in|not connected)\)$/, "") : "";
   try {

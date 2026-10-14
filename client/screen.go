@@ -43,6 +43,7 @@ type screenState struct {
 	MicOpen  bool      `json:"mic_open,omitempty"` // ...and should be recording now
 	MicID    int       `json:"mic_id,omitempty"`   // which recording, for its posts to /mic
 	MicName  string    `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
+	OnTop    bool      `json:"on_top,omitempty"`   // the app keeps its window above others (the pin)
 }
 
 type links struct {
@@ -144,6 +145,7 @@ func (s *screen) serve() {
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/input", s.pagePress)
 	mux.HandleFunc("/mic", pagePost)
+	mux.HandleFunc("/app/window", appWindow)
 	mux.HandleFunc("/app/settings", appSettings)
 	mux.HandleFunc("/app/signin", appSignIn)
 	l, err := net.Listen("tcp", screenAddr)

@@ -123,8 +123,8 @@ func runWindow() {
 	w.Run()
 }
 
-// keepOnTop keeps the window above other windows while the settings page says so
-// (window.json), checking every two seconds.
+// keepOnTop keeps the window above other windows while the pin under the screen says so
+// (window.json), checking every half second.
 func keepOnTop(w webview2.WebView, dir string) {
 	applied := false
 	for first := true; ; first = false {
@@ -140,7 +140,7 @@ func keepOnTop(w webview2.WebView, dir string) {
 				user32.NewProc("SetWindowPos").Call(uintptr(w.Window()), after, 0, 0, 0, 0, 0x1|0x2|0x10)
 			})
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 

@@ -298,6 +298,9 @@ download runs only while it is newer than the app's own copy, and rebuilding the
 version simply wins. Deleting `engine/` goes back to the app's own copy. The window around it
 (menus, the microphone and speakers) still changes only with a rebuild.
 
+The pin at the right of the controls keeps the Petasos window above other windows, or stops
+(macOS has no pin for windows in general, but an app can float its own).
+
 ### Settings
 
 **Settings…** (⌘,) or the cog under the screen opens the app's settings page. The page belongs to
@@ -305,8 +308,6 @@ the petasos program, so a Windows app will share it.
 
 - **Name**: this computer's name. Its chat with the agent is "Petasos · <name>" unless the
   dashboard's Petasos tab has all devices share one chat, "Petasos".
-- **Keep on top**: keeps the Petasos window above other windows (the app's own window level;
-  macOS has no pin for windows in general).
 - **Microphone**: which one Petasos records from. By default the one the computer's sound
   settings use; choosing one here leaves those alone. AirPods and other Bluetooth headsets drop
   to call quality while their microphone is on, so choosing the Mac's own keeps them sounding

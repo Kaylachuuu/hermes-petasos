@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,14 +84,13 @@ func TestMicrophoneChoice(t *testing.T) {
 	}
 }
 
-func TestKeepOnTopIsSaved(t *testing.T) {
-	dir := t.TempDir()
-	h := &hermes{dir: dir, cfg: config{Device: "mac"}}
-	on := true
-	if p := h.saveAppSettings(appSettingsChange{Name: "Mac", OnTop: &on}); p != "" {
-		t.Fatal(p)
-	}
-	if !loadWindowSettings(dir).OnTop || !h.appSettingsView().OnTop {
-		t.Fatal("not kept on top")
+func TestPinKeepsWindowOnTop(t *testing.T) {
+	oldDir := appDir
+	appDir = t.TempDir()
+	defer func() { appDir = oldDir }()
+	rec := httptest.NewRecorder()
+	appWindow(rec, httptest.NewRequest("POST", "/app/window", strings.NewReader(`{"on_top":true}`)))
+	if rec.Code != 200 || !loadWindowSettings(appDir).OnTop || !display.snapshot().OnTop {
+		t.Fatalf("not kept on top: %d %s", rec.Code, rec.Body)
 	}
 }

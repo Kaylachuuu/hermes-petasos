@@ -58,10 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(webView)
         applyWindowSettings()
-        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.applyWindowSettings() }
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.applyWindowSettings() }
     }
 
-    // The settings page's "Keep on top" (window.json, beside the rest of the app's settings).
+    // The pin under the screen (window.json, beside the rest of the app's settings).
     private func applyWindowSettings() {
         var onTop = false
         if let data = try? Data(contentsOf: support.appendingPathComponent("window.json")),
