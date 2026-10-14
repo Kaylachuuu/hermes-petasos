@@ -23,6 +23,7 @@ var screenFiles embed.FS
 
 // screenState is everything the page draws. Field names are the page's.
 type screenState struct {
+	Version  string    `json:"version"`            // petasos's version: a page from an older one reloads
 	Phase    string    `json:"phase"`              // idle, ready, listening, thinking, speaking
 	Heard    string    `json:"heard,omitempty"`    // what Hermes heard, or the preset's prompt
 	Reply    string    `json:"reply,omitempty"`    // Athena's reply, while it plays
@@ -103,6 +104,7 @@ func (s *screen) notice(text string) {
 }
 
 func (s *screen) serve() {
+	s.update(func(st *screenState) { st.Version = version })
 	files, _ := fs.Sub(screenFiles, "screen")
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(files)))

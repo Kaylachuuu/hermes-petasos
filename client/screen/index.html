@@ -304,9 +304,18 @@ function draw(s) {
   drawVolume(s);
 }
 
+// The kiosk keeps this page open across petasos updates; when the program behind it is a newer
+// one, load the newer page.
+let pageVersion = null;
+
 function connect() {
   const events = new EventSource("/events");
-  events.onmessage = (e) => { state = JSON.parse(e.data); draw(state); };
+  events.onmessage = (e) => {
+    state = JSON.parse(e.data);
+    if (pageVersion === null) pageVersion = state.version;
+    else if (state.version !== pageVersion) { location.reload(); return; }
+    draw(state);
+  };
   events.onerror = () => { $("hint").textContent = "Starting…"; $("hint").className = "hint wait"; };
 }
 document.fonts.ready.then(connect);
