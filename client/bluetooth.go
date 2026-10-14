@@ -13,8 +13,9 @@ import (
 )
 
 // Bluetooth on the screen: the link icons, and the Bluetooth screens for pairing, choosing and
-// forgetting devices without a computer. Holding the mic button for two seconds opens them; the
-// knob moves and chooses, the front button goes back.
+// forgetting devices without a computer. They are the first tab of the settings (settings.go):
+// holding the mic button for two seconds opens them; the knob moves and chooses, the front
+// button goes back.
 //
 // Pairing needs an agent, the program BlueZ asks to confirm a pairing code; this registers one
 // over D-Bus (godbus), shows the code on the screen and answers with the knob. A phone pairing
@@ -27,13 +28,15 @@ const (
 
 // btScreen is what the page draws while the Bluetooth screens are open.
 type btScreen struct {
-	View   string   `json:"view"` // list, device, scan, pair, message
-	Title  string   `json:"title,omitempty"`
-	Note   string   `json:"note,omitempty"`
-	Items  []btItem `json:"items,omitempty"`
-	Sel    int      `json:"sel"`            // index into Items of the highlighted row
-	Code   string   `json:"code,omitempty"` // the pairing code, in the pair view
-	Asking bool     `json:"asking"`         // the pair view waits for the knob
+	View    string   `json:"view"`    // list, device, scan, pair, message, screen
+	Tab     string   `json:"tab"`     // the settings tab it belongs to: bluetooth or screen
+	Editing bool     `json:"editing"` // the highlighted row's value is being turned
+	Title   string   `json:"title,omitempty"`
+	Note    string   `json:"note,omitempty"`
+	Items   []btItem `json:"items,omitempty"`
+	Sel     int      `json:"sel"`            // index into Items of the highlighted row
+	Code    string   `json:"code,omitempty"` // the pairing code, in the pair view
+	Asking  bool     `json:"asking"`         // the pair view waits for the knob
 }
 
 type btItem struct {
@@ -41,9 +44,12 @@ type btItem struct {
 	Icon   string `json:"icon,omitempty"`
 	Label  string `json:"label"`
 	Detail string `json:"detail,omitempty"`
-	Hot    bool   `json:"hot,omitempty"` // shown in orange: the speaker Athena uses, the phone's hotspot
+	Hot    bool   `json:"hot,omitempty"`   // shown in orange: the speaker Athena uses, the phone's hotspot
+	Value  string `json:"value,omitempty"` // a setting's current value
+	Meter  int    `json:"meter,omitempty"` // a level, 1–100, drawn as a lit meander like the volume
 
-	do func()
+	do   func()
+	turn func(delta int) // changes a setting's value
 }
 
 type btDev struct {
@@ -64,6 +70,7 @@ type bluetooth struct {
 	pairing dbus.ObjectPath // the device Pair was called on from the scan view, while it runs
 	stop    chan struct{}   // ends the scan view's refreshing
 	confirm chan bool       // the knob's answer to a pairing code
+	tab     string          // the settings tab last shown, opened again next time
 }
 
 var bt = &bluetooth{}
@@ -203,7 +210,22 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 	}
 	name, _ := ev["input"].(string)
 	action, _ := ev["action"].(string)
+	if view.Editing {
+		switch {
+		case name == "knob" && action == "turn":
+			b.adjust(intOf(ev["delta"], 0))
+		case (name == "knob" || name == "front") && action == "press":
+			b.doneEditing()
+		}
+		return true
+	}
 	switch {
+	case name == "preset-1" && action == "press" && view.View != "pair":
+		b.stopScan()
+		b.listView()
+	case name == "preset-2" && action == "press" && view.View != "pair":
+		b.stopScan()
+		b.screenView()
 	case name == "knob" && action == "turn":
 		b.move(intOf(ev["delta"], 0))
 	case name == "knob" && action == "press":
@@ -227,12 +249,21 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 		}
 		b.back()
 	}
-	return true // presets, mute and releases do nothing here
+	return true // the spare presets, mute and releases do nothing here
 }
 
 func (b *bluetooth) show(v *btScreen) {
+	if v.Tab == "" {
+		v.Tab = "bluetooth"
+		if v.View == "screen" {
+			v.Tab = "screen"
+		}
+	}
 	b.mu.Lock()
 	b.view = v
+	if v.View != "pair" && v.View != "message" {
+		b.tab = v.Tab
+	}
 	open := b.open
 	b.mu.Unlock()
 	if !open {
@@ -244,13 +275,19 @@ func (b *bluetooth) show(v *btScreen) {
 func (b *bluetooth) openScreens() {
 	b.mu.Lock()
 	b.open = true
+	tab := b.tab
 	b.mu.Unlock()
-	log.Printf("Bluetooth screens open")
-	b.listView()
+	log.Printf("settings open")
+	if tab == "screen" {
+		b.screenView()
+	} else {
+		b.listView()
+	}
 }
 
 func (b *bluetooth) close() {
 	b.stopScan()
+	backlight.showDim(0)
 	b.mu.Lock()
 	b.open, b.view = false, nil
 	b.mu.Unlock()
@@ -296,7 +333,7 @@ func (b *bluetooth) back() {
 		return
 	}
 	switch v.View {
-	case "list":
+	case "list", "screen":
 		b.close()
 	case "scan":
 		b.stopScan()

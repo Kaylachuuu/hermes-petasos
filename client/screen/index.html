@@ -24,6 +24,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
                  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
                  overflow-wrap: anywhere; text-wrap: balance; }
 .topbar > span.off { color: #5a4f42; }
+.topbar > span.tab { color: var(--ember); }
 /* The link icons stand in a column at the left edge, centred between the two meanders. */
 .links { position: absolute; left: 2cqw; top: 18.5cqw; height: 33cqw; display: flex; flex-direction: column;
          justify-content: center; align-items: center; gap: 2.4cqw; }
@@ -51,7 +52,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .reply.long { font-size: 3cqw; }
 .emblem { position: absolute; right: 4cqw; top: 27.4cqw; width: 16cqw; }
 
-/* Bluetooth screens */
+/* Settings: the Bluetooth and Screen tabs */
 .bt { position: absolute; left: 0; right: 0; top: 10cqw; bottom: 8cqw; border-top: .2cqw solid var(--bronze);
       display: flex; flex-direction: column; padding: 2cqw 5cqw 1cqw; gap: 1cqw; }
 .bt h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 3.2cqw; letter-spacing: .12em; }
@@ -66,6 +67,10 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row em { font-style: normal; font-size: 2cqw; color: var(--dust); }
 .row.hot em { color: var(--ember); }
 .row.sel { border-color: var(--ember); background: var(--row); }
+.row b { font-weight: 400; font-size: 2.4cqw; color: var(--bronze); white-space: nowrap; }
+.row.edit b { color: var(--ember); }
+.row.edit b::before { content: "‹  "; } .row.edit b::after { content: "  ›"; }
+.row b svg { width: 25cqw; height: 3.75cqw; vertical-align: middle; }
 .pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
 .pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
 .pair .note { max-width: 70cqw; font-size: 2.5cqw; }
@@ -103,6 +108,10 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
     <symbol id="i-mic-off" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M4 4l16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-bluetooth" viewBox="0 0 24 24"><path d="m7 7.5 10 9-5 4.5V3l5 4.5-10 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M7.2 6.5a7.5 7.5 0 1 0 9.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-forget" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-device" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
@@ -182,9 +191,18 @@ function warning(s) {
   return "";
 }
 
+// In the settings the preset buttons are its tabs.
+const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["", ""], ["", ""]];
+
 function drawTop(s) {
   s.presets.forEach((label, i) => {
     const el = $("p" + i);
+    if (s.bt) {
+      const [tab, name] = TABS[i];
+      el.textContent = name || "—";
+      el.className = !name ? "off" : tab === s.bt.tab ? "tab" : "";
+      return;
+    }
     el.textContent = label || "—";
     el.className = label ? "" : "off";
   });
@@ -267,11 +285,19 @@ function drawReply(s) {
   }
 }
 
+// A level drawn the way the volume is: the meander, lit in ember up to the level.
+function meter(pct) {
+  const w = 4 * Math.max(0, Math.min(100, pct));
+  return `<svg viewBox="0 0 400 60" preserveAspectRatio="none"><rect width="400" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
+    <rect width="${w}" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/></svg>`;
+}
+
 function drawBT(b) {
-  const keys = { list: [["Knob", "choose"], ["Press", "open"], ["Front button", "back"]],
+  const keys = { list: [["Knob", "choose"], ["Press", "open"], ["Front button", "close"]],
                  device: [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
                  scan: [["Knob", "choose"], ["Press", "pair"], ["Front button", "back"]],
                  pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
+                 screen: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  message: [] }[b.view] || [];
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
@@ -284,8 +310,9 @@ function drawBT(b) {
   const rows = (b.items || []).map((it, i) => {
     if (it.kind === "header") return `<h3>${esc(it.label)}</h3>`;
     if (it.kind === "note") return `<div class="empty">${esc(it.label)}</div>`;
-    return `<div class="row${i === b.sel ? " sel" : ""}${it.hot ? " hot" : ""}" id="${i === b.sel ? "sel" : ""}">
-      ${icon(it.icon || "device")}<span>${esc(it.label)}</span><em>${esc(it.detail)}</em></div>`;
+    const sel = i === b.sel;
+    return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}" id="${sel ? "sel" : ""}">
+      ${icon(it.icon || "device")}<span>${esc(it.label)}</span>${it.meter ? `<b>${meter(it.meter)}</b>` : it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
   }).join("");
   body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
     `<div class="list">${rows}</div>`;

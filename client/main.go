@@ -393,6 +393,7 @@ func (h *hermes) run(eventsFile string) {
 	raw := make(chan map[string]any, 64)
 	grab := h.cfg.Grab == nil || *h.cfg.Grab
 	go display.serve()
+	go backlight.start(h.dir)
 	go filterInputs(raw, presses)
 	if eventsFile != "" {
 		go readEventFile(eventsFile, "test", raw)

@@ -1,7 +1,11 @@
 {
   "name": "petasos",
   "label": "Petasos",
-  "description": "Routes for the Car Thing: input events in, device commands out; the button mapping; voice turns with the agent.",
-  "api": "plugin_api.py",
-  "tab": { "hidden": true }
+  "description": "The Car Thing's preset buttons and agent name, plus the routes it uses: input events in, device commands out; the button mapping; voice turns with the agent.",
+  "icon": "Settings",
+  "version": "0.6.0",
+  "tab": { "path": "/petasos", "position": "end" },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
 }

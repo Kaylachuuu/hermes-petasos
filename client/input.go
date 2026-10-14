@@ -118,12 +118,13 @@ func translate(typ, code uint16, value int32, ms int64) map[string]any {
 	return nil
 }
 
-// btHold is how long the mic button is held to open the Bluetooth screens.
+// btHold is how long the mic button is held to open the settings.
 const btHold = 2 * time.Second
 
-// filterInputs sits between the controls and the plugin. While the Bluetooth screens are open
-// it keeps every press for them. It also holds back the mic button's press until the button is
-// let go, since holding it opens the Bluetooth screens instead of muting.
+// filterInputs sits between the controls and the plugin. Every event first wakes the screen
+// (backlight.go). While the settings are open it keeps every press for them. It also holds back
+// the mic button's press until the button is let go, since holding it opens the settings instead
+// of muting.
 func filterInputs(in <-chan map[string]any, out chan<- map[string]any) {
 	var muteDown map[string]any
 	var opened bool
@@ -132,6 +133,9 @@ func filterInputs(in <-chan map[string]any, out chan<- map[string]any) {
 	for {
 		select {
 		case ev := <-in:
+			if backlight.touched(ev) {
+				continue // it only woke the screen
+			}
 			name, _ := ev["input"].(string)
 			action, _ := ev["action"].(string)
 			if name == "mute" {
