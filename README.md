@@ -261,11 +261,12 @@ The window records the microphone itself, the way the Hermes desktop app does
 Needs the Xcode command line tools (`xcode-select --install`); Go is not needed.
 
 ```sh
-cd mac && ./build.sh
-open Petasos.app
+cd mac && ./install.sh
 ```
 
-To start it later, `open Petasos.app` from `mac/`, or drag it into Applications. Its icon is the
+`install.sh` builds it, quits a running copy, puts it in Applications (`~/Applications` if
+`/Applications` needs an administrator) and opens it; run it again after `git pull` to update.
+`./build.sh` alone builds `Petasos.app` in `mac/` without installing it. Its icon is the
 winged hat from the boot logo (`mac/icon/`); the window keeps the Car Thing's proportions as it
 is resized.
 
