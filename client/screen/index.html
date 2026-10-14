@@ -145,11 +145,11 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
     <div class="middle" id="stack">
       <div class="greek">ΠΕΤΑΣΟΣ</div>
       <div class="latin" id="latin">PETASOS</div>
-      <div class="motto" id="motto">MESSENGER OF ATHENA</div>
+      <div class="motto" id="motto">MESSENGER</div>
       <div class="heard" id="heard" hidden></div>
       <div class="hint" id="hint">Starting…</div>
     </div>
-    <div class="speaking" id="speaking" hidden><div id="scroller"><b>ATHENA</b><div class="reply" id="reply"></div></div></div>
+    <div class="speaking" id="speaking" hidden><div id="scroller"><b id="speaker-name"></b><div class="reply" id="reply"></div></div></div>
     <svg class="emblem" id="warn" viewBox="0 0 200 190" hidden><use href="#emblem"/></svg>
     <svg class="band bottom" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
       <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
@@ -168,17 +168,17 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (name) => `<svg><use href="#i-${name}"/></svg>`;
-const REST = "Hold the front button to talk to Athena";
+const rest = (a) => `Hold the front button to talk to ${a}`;
 let state = null, noticeSeen = 0, noticeUntil = 0, volumeSeen = null, volumeTimer = 0, lastReply = "", scrollAnim = null;
 
 function warning(s) {
-  const l = s.links;
+  const l = s.links, a = s.agent;
   if (!l.checked) return "";
   if (!l.phone_paired) return "Pair your phone: hold the mic button for two seconds";
-  if (!l.phone) return "Turn on Personal Hotspot to reach Athena";
-  if (!l.home) return "Can't reach Athena's server";
+  if (!l.phone) return `Turn on Personal Hotspot to reach ${a}`;
+  if (!l.home) return `Can't reach ${a}'s server`;
   if (!l.speaker_paired) return "Pair a speaker: hold the mic button for two seconds";
-  if (!l.speaker) return `Turn on ${l.speaker_name || "the speaker"} to hear Athena`;
+  if (!l.speaker) return `Turn on ${l.speaker_name || "the speaker"} to hear ${a}`;
   return "";
 }
 
@@ -229,10 +229,11 @@ function drawHome(s) {
     setTimeout(() => state && draw(state), 4100);
   }
   const warn = warning(s);
-  let text = REST, cls = "";
+  const a = s.agent;
+  let text = rest(a), cls = "";
   if (s.phase === "ready") [text, cls] = ["Getting ready…", "wait"];
-  else if (s.phase === "listening") [text, cls] = ["Athena is listening", "live"];
-  else if (thinking) [text, cls] = ["Athena is thinking…", "wait"];
+  else if (s.phase === "listening") [text, cls] = [`${a} is listening`, "live"];
+  else if (thinking) [text, cls] = [`${a} is thinking…`, "wait"];
   else if (Date.now() < noticeUntil && s.notice) [text, cls] = [s.notice, "wait"];
   else if (warn) [text, cls] = [warn, "wait"];
   else if (s.muted) [text, cls] = ["The mic is off. Press the mic button to turn it on.", "wait"];
@@ -293,6 +294,8 @@ function drawBT(b) {
 }
 
 function draw(s) {
+  $("motto").textContent = `MESSENGER OF ${s.agent.toUpperCase()}`;
+  $("speaker-name").textContent = s.agent.toUpperCase();
   drawTop(s);
   $("bt").hidden = !s.bt;
   $("home").hidden = !!s.bt;

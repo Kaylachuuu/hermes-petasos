@@ -203,8 +203,9 @@ class _Rpc:
         raise asyncio.TimeoutError
 
 
-async def ask(text: str, device: str, sessions: Sessions, url: str | None = None) -> str:
-    """Send one message to Athena in the device's conversation and return her full reply."""
+async def ask(text: str, device: str, sessions: Sessions, url: str | None = None,
+              agent: str = "The agent") -> str:
+    """Send one message to the agent in the device's conversation and return the full reply."""
     import websockets
     deadline = time.monotonic() + TURN_TIMEOUT_S
     async with websockets.connect(url or _gateway_url(), max_size=None, open_timeout=20) as ws:
@@ -237,10 +238,10 @@ async def ask(text: str, device: str, sessions: Sessions, url: str | None = None
                     raise VoiceError(str(payload.get("message") or payload)[:300])
                 else:
                     if payload.get("status") == "error":
-                        raise VoiceError(str(payload.get("error") or "Athena's turn failed")[:300])
+                        raise VoiceError(str(payload.get("error") or f"{agent}'s turn failed")[:300])
                     return (payload.get("text") or "".join(parts)).strip()
         except asyncio.TimeoutError:
-            raise VoiceError("Athena took too long to answer") from None
+            raise VoiceError(f"{agent} took too long to answer") from None
         finally:
             rpc.reader.cancel()
 
@@ -287,11 +288,11 @@ def shared(root: Path | None = None) -> tuple[Sessions, Replies]:
         return _SHARED
 
 
-async def turn(text: str, device: str) -> dict:
+async def turn(text: str, device: str, agent: str = "The agent") -> dict:
     """Ask, then speak: ``{"reply": ..., "audio": id or None}``. A reply that can't be spoken
     still comes back as text for the screen."""
     sessions, replies = shared()
-    reply = await ask(text, device, sessions)
+    reply = await ask(text, device, sessions, agent=agent)
     if not reply:
         return {"reply": "", "audio": None}
     loop = asyncio.get_running_loop()

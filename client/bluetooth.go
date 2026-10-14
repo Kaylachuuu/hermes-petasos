@@ -370,7 +370,7 @@ func (b *bluetooth) listViewAt(sel int) {
 		d := d
 		detail := "Paired · not connected"
 		if d.Connected {
-			detail = "Playing Athena"
+			detail = "Playing " + display.agent()
 		}
 		items = append(items, btItem{Kind: "row", Icon: "speaker", Label: d.Name, Detail: detail, Hot: d.Connected,
 			do: func() { b.deviceView(d.Path) }})
@@ -423,11 +423,11 @@ func (b *bluetooth) deviceViewAt(sel int) {
 		}
 	} else if d.Speaker {
 		if d.Connected {
-			note = "Athena speaks here"
+			note = display.agent() + " speaks here"
 			items = append(items, btItem{Kind: "row", Icon: "close", Label: "Disconnect",
 				do: func() { b.act(d.Name, "Disconnecting", b.call(d.Path, "org.bluez.Device1.Disconnect")) }})
 		} else {
-			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Use for Athena",
+			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Use for " + display.agent(),
 				do: func() { b.act(d.Name, "Connecting", b.useSpeaker(d.Path)) }})
 		}
 	}
@@ -646,7 +646,7 @@ func (b *bluetooth) afterPairing(path dbus.ObjectPath, name string) {
 		note = "Paired. Turn on Personal Hotspot and the Car Thing connects on its own."
 		_ = b.connectHotspot(path)()
 	case d != nil && d.Speaker:
-		note = "Paired. Athena speaks here now."
+		note = "Paired. " + display.agent() + " speaks here now."
 		if err := b.useSpeaker(path)(); err != nil {
 			note = "Paired, but it didn't connect: " + friendly(err)
 		}

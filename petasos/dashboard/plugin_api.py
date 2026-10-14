@@ -97,7 +97,9 @@ async def ask(body: dict, device: str = "car-thing") -> dict:
 async def _turn(text: str, device: str) -> dict:
     voice = _voice()
     try:
-        return await voice.turn(text, voice.device_name(device))
+        core = _core()
+        agent = core.agent_name(core.shared().mapping.current())
+        return await voice.turn(text, voice.device_name(device), agent)
     except voice.VoiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
 

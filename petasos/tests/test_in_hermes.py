@@ -91,8 +91,8 @@ def test_voice_routes(hermes, monkeypatch):
         spec.loader.exec_module(v)
     asked = []
 
-    async def fake_ask(text, device, sessions, url=None):
-        asked.append((text, device))
+    async def fake_ask(text, device, sessions, url=None, agent="The agent"):
+        asked.append((text, device, agent))
         return "It's sunny."
 
     monkeypatch.setattr(v, "transcribe", lambda audio, suffix=".wav": "what's the weather" if audio else "")
@@ -107,7 +107,7 @@ def test_voice_routes(hermes, monkeypatch):
     assert audio.status_code == 200 and audio.content == b"RIFF-fake-audio"
     assert audio.headers["content-type"] == "audio/wav"
     r = client.post("/api/plugins/petasos/ask", json={"text": "Read me my last message."})
-    assert r.json()["reply"] == "It's sunny." and asked[-1] == ("Read me my last message.", "car-thing")
+    assert r.json()["reply"] == "It's sunny." and asked[-1] == ("Read me my last message.", "car-thing", "Hermes")
     assert client.post("/api/plugins/petasos/ask", json={"text": " "}).status_code == 400
     assert client.post("/api/plugins/petasos/voice", content=b"").status_code == 400
     assert client.get("/api/plugins/petasos/voice/audio/nope").status_code == 404

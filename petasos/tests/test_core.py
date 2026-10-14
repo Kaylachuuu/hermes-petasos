@@ -164,7 +164,7 @@ def test_hello_resets_the_device(setup):
     petasos, _ = setup
     petasos.handle(ev("mute", "press"))
     petasos.handle(ev("front", "press", t=0))
-    assert petasos.handle(ev("device", "hello")) == [{"do": "screen", "presets": ["Calendar", "Last message", "", ""]}]
+    assert petasos.handle(ev("device", "hello")) == [{"do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Hermes"}]
     assert petasos.status()["devices"]["car-thing"]["muted"] is False
     assert petasos.handle(ev("front", "release", t=50)) == []
     assert petasos.handle(ev("front", "press", t=100)) == [{"do": "listen", "mode": "hold"}]
@@ -173,14 +173,15 @@ def test_hello_resets_the_device(setup):
 def test_screen_gets_preset_labels_on_hello_and_when_they_change(setup):
     petasos, _ = setup
     assert petasos.handle(ev("device", "hello")) == [
-        {"do": "screen", "presets": ["Calendar", "Last message", "", ""]}]
+        {"do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Hermes"}]
     assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
     mapping = petasos.mapping.current()
     mapping["controls"]["preset-3"] = {"press": {"action": "prompt", "text": "What's the weather tomorrow in Casper?"}}
     mapping["controls"]["preset-1"]["press"].pop("label")
     petasos.mapping.replace(mapping)
     assert petasos.handle(ev("knob", "press")) == [
-        {"do": "screen", "presets": ["What's next on my calendar", "Last message", "What's the weather tomorrow in…", ""]},
+        {"do": "screen", "presets": ["What's next on my calendar", "Last message", "What's the weather tomorrow in…", ""],
+         "agent": "Hermes"},
         {"do": "stop_speaking"}]
 
 
@@ -188,3 +189,15 @@ def test_labels_must_be_short(setup):
     mapping = copy.deepcopy(core.DEFAULT_MAPPING)
     mapping["controls"]["preset-1"]["press"]["label"] = "x" * 33
     assert any("label" in p for p in core.validate(mapping))
+
+
+def test_agent_name_reaches_the_screen(setup):
+    petasos, _ = setup
+    petasos.handle(ev("device", "hello"))
+    mapping = petasos.mapping.current()
+    mapping["agent_name"] = "Athena"
+    petasos.mapping.replace(mapping)
+    assert petasos.handle(ev("knob", "press"))[0] == {
+        "do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Athena"}
+    mapping["agent_name"] = ""
+    assert any("agent_name" in p for p in core.validate(mapping))

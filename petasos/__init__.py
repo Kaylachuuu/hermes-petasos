@@ -1,4 +1,4 @@
-"""Petasos: the Car Thing as a voice remote for Athena.
+"""Petasos: the Car Thing as a voice remote for a Hermes agent.
 
 The server half. The device reports raw button and knob events to the routes in ``dashboard/``;
 ``core.py`` turns them into commands using a mapping file the user can edit. This file only adds
@@ -27,12 +27,12 @@ def _core():
     return module
 
 
-def _describe(step: dict) -> str:
+def _describe(step: dict, agent: str) -> str:
     action = step.get("action", "none")
     if action == "prompt":
         return f'ask "{step.get("text", "")}"'
     return {"push_to_talk": "push-to-talk", "conversation": "start or end conversation mode",
-            "stop_speaking": "stop Athena speaking", "volume": "volume", "mic_toggle": "mic on/off",
+            "stop_speaking": f"stop {agent} speaking", "volume": "volume", "mic_toggle": "mic on/off",
             "none": "nothing"}.get(action, action)
 
 
@@ -40,10 +40,11 @@ def _slash(_args: str = "") -> str:
     core = _core()
     petasos = core.shared()
     mapping = petasos.mapping.current()
-    lines = ["Car Thing layout:"]
+    agent = core.agent_name(mapping)
+    lines = [f"Car Thing layout (talking to {agent}):"]
     for name in core.INPUTS:
         gestures = mapping["controls"].get(name, {})
-        parts = [f"{g} = {_describe(s)}" for g, s in gestures.items()] or ["nothing"]
+        parts = [f"{g} = {_describe(s, agent)}" for g, s in gestures.items()] or ["nothing"]
         lines.append(f"- {_LABELS[name]}: {'; '.join(parts)}")
     lines.append(f"Edit {petasos.mapping.path} to change it; edits apply on the next button press.")
     if petasos.mapping.problems:

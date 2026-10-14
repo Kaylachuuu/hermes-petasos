@@ -104,6 +104,9 @@ func (v *voice) carryOut(c map[string]any) {
 			}
 			display.update(func(st *screenState) { st.Presets = labels })
 		}
+		if name, _ := c["agent"].(string); name != "" {
+			display.update(func(st *screenState) { st.Agent = name })
+		}
 	}
 }
 
@@ -291,9 +294,9 @@ func (v *voice) askWithGen(gen int, path, contentType string, payload []byte) {
 	data, err := v.h.exchange("POST", path+sep+"device="+url.QueryEscape(v.h.cfg.Device),
 		contentType, payload, v.slow, 1<<20)
 	if err != nil {
-		log.Printf("asking Athena failed: %v", err)
+		log.Printf("asking %s failed: %v", display.agent(), err)
 		if v.current(gen) {
-			display.notice("Athena couldn't answer just now.")
+			display.notice(display.agent() + " couldn't answer just now.")
 		}
 		v.idleOrRelisten(gen)
 		return
@@ -313,7 +316,7 @@ func (v *voice) askWithGen(gen int, path, contentType string, payload []byte) {
 		return
 	}
 	log.Printf("heard: %s", a.Heard)
-	log.Printf("Athena: %s", a.Reply)
+	log.Printf("%s: %s", display.agent(), a.Reply)
 	if !v.current(gen) {
 		return
 	}

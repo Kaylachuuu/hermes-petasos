@@ -30,6 +30,7 @@ GESTURES = ("press", "hold", "tap", "turn")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt", "none")
 
 DEFAULT_MAPPING: dict = {
+    "agent_name": "Hermes",
     "hold_ms": 350,
     "volume_step": 5,
     "conversation": {"end_of_speech_ms": 1000, "idle_end_s": 30},
@@ -46,6 +47,13 @@ DEFAULT_MAPPING: dict = {
 
 
 LABEL_MAX = 32  # two lines on the screen
+AGENT_NAME_MAX = 24
+
+
+def agent_name(mapping: dict) -> str:
+    """Who the Car Thing talks to, as shown on its screen: the mapping's agent_name."""
+    name = mapping.get("agent_name")
+    return name.strip() if isinstance(name, str) and name.strip() else DEFAULT_MAPPING["agent_name"]
 
 
 def preset_labels(mapping: dict) -> list[str]:
@@ -77,6 +85,9 @@ def validate(mapping: dict) -> list[str]:
     problems: list[str] = []
     if not isinstance(mapping, dict):
         return ["The mapping must be a JSON object."]
+    name = mapping.get("agent_name")
+    if name is not None and not (isinstance(name, str) and 0 < len(name.strip()) <= AGENT_NAME_MAX):
+        problems.append(f"agent_name is the name the Car Thing shows and says, 1 to {AGENT_NAME_MAX} characters.")
     for key, low, high in (("hold_ms", 100, 3000), ("volume_step", 1, 50)):
         value = mapping.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
@@ -182,7 +193,7 @@ class DeviceState:
         self.listening: str | None = None   # "hold" or "conversation"
         self.down: dict[str, float] = {}     # input -> press time in ms, for hold/tap
         self.last_seen = 0.0
-        self.labels_sent: list[str] | None = None  # preset labels the device's screen last got
+        self.labels_sent: dict | None = None  # the screen command the device last got
 
 
 class Petasos:
@@ -232,12 +243,13 @@ class Petasos:
 
     @staticmethod
     def _screen(state, mapping) -> list[dict]:
-        """The preset labels for the device's screen: on hello, then whenever they change."""
-        labels = preset_labels(mapping)
-        if labels == state.labels_sent:
+        """The preset labels and agent name for the device's screen: on hello, then whenever they
+        change."""
+        screen = {"do": "screen", "presets": preset_labels(mapping), "agent": agent_name(mapping)}
+        if screen == state.labels_sent:
             return []
-        state.labels_sent = labels
-        return [{"do": "screen", "presets": labels}]
+        state.labels_sent = screen
+        return [screen]
 
     def status(self) -> dict:
         now = self.clock()

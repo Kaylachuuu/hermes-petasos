@@ -33,6 +33,7 @@ type screenState struct {
 	VolumeID int       `json:"volume_id"` // bumped on every change, so the page lights the meander
 	Muted    bool      `json:"muted"`
 	Presets  []string  `json:"presets"`
+	Agent    string    `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
 	Links    links     `json:"links"`
 	BT       *btScreen `json:"bt,omitempty"` // the Bluetooth screens, when open
 }
@@ -54,7 +55,7 @@ type screen struct {
 }
 
 var display = &screen{
-	state: screenState{Phase: "idle", Volume: -1, Presets: []string{"", "", "", ""}},
+	state: screenState{Phase: "idle", Volume: -1, Presets: []string{"", "", "", ""}, Agent: "Hermes"},
 	subs:  map[chan []byte]struct{}{},
 }
 
@@ -88,6 +89,13 @@ func (s *screen) setPhase(phase string) {
 			st.Heard, st.Reply, st.ReplyMs = "", "", 0
 		}
 	})
+}
+
+// agent is the agent's name, for messages on the screen.
+func (s *screen) agent() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.Agent
 }
 
 func (s *screen) notice(text string) {

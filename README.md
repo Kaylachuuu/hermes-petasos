@@ -116,6 +116,8 @@ Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures:
 "preset-3": { "press": { "action": "prompt", "text": "What's the weather today?", "label": "Weather" } }
 ```
 
+`agent_name` at the top of the file is the name of the agent the Car Thing talks to, as its screen shows it ("Hold the front button to talk to …", "Messenger of …") and in its messages. It defaults to `Hermes`; set it to your agent's name, for example `"agent_name": "Athena"`.
+
 `label` is the name the Car Thing's screen shows under the button (up to 32 characters, on two lines when it needs them). Without one, the screen shows the start of the prompt.
 
 ### Routes (behind the dashboard login)
