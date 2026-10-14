@@ -2,7 +2,7 @@
 
 Turns a Spotify Car Thing into a pocket voice interface for Athena on Hermes: a Hermes plugin plus a thin on-device client for push-to-talk, knob and button controls, and replies played wherever you are.
 
-The server plugin lives in `petasos/`. Nothing runs on the Car Thing yet; the device program comes next.
+The server plugin lives in `petasos/`, and the program that runs on the Car Thing in `client/`.
 
 ## Step 1: can a non-browser client chat with Hermes?
 
@@ -135,3 +135,34 @@ Events: `press` and `release` for buttons, `turn` with `delta` for the knob, and
 ```
 
 Tested inside a fresh `hermes-agent` (`8f817911`): 26 tests in `petasos/tests`, and `try_buttons.py` against a running dashboard with password login.
+
+## Step 4: the program on the Car Thing
+
+`client/` is a small Go program (one static file, about 5 MB) that runs on the Car Thing. It reads the buttons and the knob, sends each press to the petasos plugin, and carries out the commands that come back. Sound isn't wired up yet, so for now it logs each command; the voice step fills them in.
+
+- **Where it lives:** `/var/lib/petasos/`, on the Car Thing's data partition. Nocturne's system partition and `/etc` are read-only, but `/var` is writable and survives Nocturne updates.
+- **Start at boot:** a systemd unit in `/etc/systemd/system`. Because `/etc` is read-only, the installer makes the system partition writable just long enough to add it. A Nocturne system update replaces that partition, so run the installer again afterwards.
+- **Updates itself:** on start and every half hour it asks the plugin for the current version (`GET /api/plugins/petasos/client`), and if it differs, downloads it, checks its SHA-256 and restarts into it. Updating the plugin with the sync script is all it takes.
+- **Signs in once:** the installer signs in to Hermes and gives the Car Thing its own session. The program renews it through `/auth/native/refresh` and saves each rotated token.
+- **Takes the buttons:** by default it grabs the button and knob inputs, so Nocturne's own screen stops reacting to them. Install with `--no-grab` to share them.
+- **Offline:** presses made while Hermes can't be reached are dropped, not replayed; it retries every 10 seconds and says `hello` on reconnecting so the plugin starts fresh.
+
+### Install it
+
+With the Car Thing plugged into a Mac by USB, from a folder holding `install_device.py` and `chat_probe.py`:
+
+```sh
+~/.venvs/petasos/bin/python install_device.py http://10.0.0.20:9119
+```
+
+It asks for your dashboard login, downloads the program from the plugin, and copies everything over one SSH connection (press Enter if ssh asks for a password). It finishes by printing the program's version, whether it's running, and its latest log lines. To watch it later: `ssh root@nocturne.local journalctl -u petasos -f`.
+
+### Build it
+
+```sh
+client/build.sh            # writes client/dist/petasos-linux-arm64
+```
+
+Bump `client/VERSION` with every change: the Car Thing updates whenever the version the plugin serves differs from its own. The build is reproducible, so the committed binary can be checked against the source.
+
+Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event decoding (`go test`), a full run against a test Hermes (it updated itself from 0.0.9 to 0.1.0, then turned recorded presses into the expected commands), and the installer against a stand-in for ssh. Not yet run on the Car Thing itself.

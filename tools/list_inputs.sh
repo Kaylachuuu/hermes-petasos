@@ -69,5 +69,11 @@ for ev in /dev/input/event*; do
 done
 sleep "$SECONDS_TO_LISTEN"
 kill $pids 2>/dev/null
+# Each reader may be blocked in a dd waiting for one more event; stop those too, or they linger
+# until the next press.
+for stat in /proc/[0-9]*/stat; do
+    set -- $(cat "$stat" 2>/dev/null)
+    for p in $pids; do [ "${4:-}" = "$p" ] && kill "$1" 2>/dev/null; done
+done
 echo
 echo "== Done"

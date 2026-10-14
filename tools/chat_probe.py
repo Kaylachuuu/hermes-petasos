@@ -78,6 +78,14 @@ class Http:
         except json.JSONDecodeError:
             return status, text
 
+    def download(self, path: str, bearer: str | None = None) -> bytes:
+        """A binary GET; raises on any status but 200."""
+        req = urllib.request.Request(self.base + path)
+        if bearer:
+            req.add_header("Authorization", f"Bearer {bearer}")
+        with self.opener.open(req, timeout=300) as resp:
+            return resp.read()
+
     def cookie(self, name: str) -> str | None:
         # The cookie may carry a __Host- / __Secure- prefix on HTTPS.
         for c in self.jar:

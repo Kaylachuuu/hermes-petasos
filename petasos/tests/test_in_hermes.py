@@ -65,3 +65,14 @@ def test_slash_command_shows_the_layout(hermes):
     text = get_plugin_command_handler("petasos")("")
     assert "Front button: hold = push-to-talk; tap = start or end conversation mode" in text
     assert "mapping.json" in text
+
+
+def test_device_program_is_served_with_its_checksum(hermes):
+    import hashlib
+    client, _ = hermes
+    root = Path(__file__).resolve().parents[2] / "client"
+    info = client.get("/api/plugins/petasos/client").json()
+    assert info["version"] == (root / "VERSION").read_text().strip()
+    body = client.get("/api/plugins/petasos/client/download").content
+    assert hashlib.sha256(body).hexdigest() == info["sha256"] and len(body) == info["size"]
+    assert client.get("/api/plugins/petasos/client?arch=mips").status_code == 400
