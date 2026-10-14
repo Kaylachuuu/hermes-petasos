@@ -28,9 +28,10 @@ const (
 
 // btScreen is what the page draws while the Bluetooth screens are open.
 type btScreen struct {
-	View    string   `json:"view"`    // list, device, scan, pair, message, screen
-	Tab     string   `json:"tab"`     // the settings tab it belongs to: bluetooth or screen
-	Editing bool     `json:"editing"` // the highlighted row's value is being turned
+	View    string   `json:"view"`            // list, device, scan, pair, message, screen
+	Tab     string   `json:"tab"`             // the settings tab it belongs to: bluetooth or screen
+	Editing bool     `json:"editing"`         // the highlighted row's value is being turned
+	Meter   int      `json:"meter,omitempty"` // a level, 1–100, lit along the band at the bottom like the volume
 	Title   string   `json:"title,omitempty"`
 	Note    string   `json:"note,omitempty"`
 	Items   []btItem `json:"items,omitempty"`
@@ -46,7 +47,6 @@ type btItem struct {
 	Detail string `json:"detail,omitempty"`
 	Hot    bool   `json:"hot,omitempty"`   // shown in orange: the speaker Athena uses, the phone's hotspot
 	Value  string `json:"value,omitempty"` // a setting's current value
-	Meter  int    `json:"meter,omitempty"` // a level, 1–100, drawn as a lit meander like the volume
 
 	do   func()
 	turn func(delta int) // changes a setting's value

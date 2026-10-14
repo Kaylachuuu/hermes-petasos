@@ -58,6 +58,7 @@ type light struct {
 	preview  int       // a dim level shown while it is being chosen, or 0
 	sensor   bool      // the light sensor answered
 	dark     bool      // the screen is off
+	level    int       // the brightness now, in percent of the steps that light the panel
 	swallow  map[string]bool
 	lastSeen [2]int // the screen's notice and volume ids, to notice them changing
 }
@@ -116,6 +117,11 @@ func (l *light) start(dir string) {
 		}
 		if next != current && writeInt(backlightDir+"/brightness", next) == nil {
 			current = next
+		}
+		if current > 0 {
+			l.mu.Lock()
+			l.level = max(1, (current-lightFloor)*100/(maxLevel-lightFloor))
+			l.mu.Unlock()
 		}
 	}
 }
@@ -226,6 +232,16 @@ func (l *light) settings() lightSettings {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.set
+}
+
+// percent is the screen's brightness now, for showing auto brightness; 100 until known.
+func (l *light) percent() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.level == 0 {
+		return 100
+	}
+	return l.level
 }
 
 func (l *light) hasSensor() bool {

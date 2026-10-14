@@ -80,10 +80,7 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 			func(s lightSettings) int { return s.DimTo }, func(s *lightSettings, v int) { s.DimTo = v; backlight.showDim(v) }),
 		setting("power", "Turn off after", labelFor(offAfterChoices, s.OffAfter), offAfterChoices,
 			func(s lightSettings) int { return s.OffAfter }, func(s *lightSettings, v int) { s.OffAfter = v }),
-		{Kind: "row", Icon: "close", Label: "Close", do: b.close},
 	}
-	items[0].Meter = s.Brightness // 0, auto, shows the word
-	items[2].Meter = s.DimTo
 	for i := range items {
 		if items[i].turn != nil {
 			i := i
@@ -92,8 +89,16 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 	}
 	sel = firstRow(items, sel)
 	note := "Any button wakes a dark screen. A preset pressed while it is dark only wakes it."
+	// The band at the bottom shows the brightness, or the dim level while that is chosen.
+	meter := s.Brightness
+	if meter == 0 {
+		meter = backlight.percent()
+	}
+	if editing && items[sel].Label == "Dim to" {
+		meter = s.DimTo
+	}
 	b.show(&btScreen{View: "screen", Note: note, Items: items, Sel: sel,
-		Editing: editing && items[sel].turn != nil})
+		Editing: editing && items[sel].turn != nil, Meter: max(1, meter)})
 	if editing && items[sel].Label == "Dim to" {
 		backlight.showDim(s.DimTo)
 	} else {

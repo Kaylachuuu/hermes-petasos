@@ -70,7 +70,8 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row b { font-weight: 400; font-size: 2.4cqw; color: var(--bronze); white-space: nowrap; }
 .row.edit b { color: var(--ember); }
 .row.edit b::before { content: "‹  "; } .row.edit b::after { content: "  ›"; }
-.row b svg { width: 25cqw; height: 3.75cqw; vertical-align: middle; }
+.bt.metered { bottom: 16cqw; }
+.band.meter { top: auto; bottom: 8.5cqw; }
 .pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
 .pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
 .pair .note { max-width: 70cqw; font-size: 2.5cqw; }
@@ -168,6 +169,12 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 
   <div id="bt" hidden>
     <div class="bt" id="bt-body"></div>
+    <svg class="band meter" id="bt-band" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true" hidden>
+      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
+      <rect id="bt-band-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
+      <rect id="bt-band-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
+      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
+    </svg>
     <div class="keys" id="bt-keys"></div>
   </div>
 </div>
@@ -285,13 +292,6 @@ function drawReply(s) {
   }
 }
 
-// A level drawn the way the volume is: the meander, lit in ember up to the level.
-function meter(pct) {
-  const w = 4 * Math.max(0, Math.min(100, pct));
-  return `<svg viewBox="0 0 400 60" preserveAspectRatio="none"><rect width="400" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
-    <rect width="${w}" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/></svg>`;
-}
-
 function drawBT(b) {
   const keys = { list: [["Knob", "choose"], ["Press", "open"], ["Front button", "close"]],
                  device: [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
@@ -301,6 +301,15 @@ function drawBT(b) {
                  message: [] }[b.view] || [];
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
+  // A level (the Screen tab's brightness) lights the band the way the volume does at home.
+  const metered = !!b.meter;
+  body.classList.toggle("metered", metered);
+  $("bt-band").toggleAttribute("hidden", !metered);
+  if (metered) {
+    const w = 8 * Math.max(0, Math.min(100, b.meter));
+    $("bt-band-cover").setAttribute("width", w);
+    $("bt-band-keys").setAttribute("width", w);
+  }
   if (b.view === "pair" || b.view === "message") {
     body.innerHTML = `<div class="pair">${b.view === "pair" ? `<p class="note" style="margin:0">Pair with</p>` : ""}
       <h2>${esc(b.title)}</h2>${b.code ? `<div class="code">${esc(b.code)}</div>` : ""}
@@ -312,7 +321,7 @@ function drawBT(b) {
     if (it.kind === "note") return `<div class="empty">${esc(it.label)}</div>`;
     const sel = i === b.sel;
     return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}" id="${sel ? "sel" : ""}">
-      ${icon(it.icon || "device")}<span>${esc(it.label)}</span>${it.meter ? `<b>${meter(it.meter)}</b>` : it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
+      ${icon(it.icon || "device")}<span>${esc(it.label)}</span>${it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
   }).join("");
   body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
     `<div class="list">${rows}</div>`;
