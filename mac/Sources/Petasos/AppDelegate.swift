@@ -2,7 +2,8 @@ import AppKit
 import WebKit
 
 // The app: one window showing the Petasos screen, served by the petasos program it starts in
-// the background. The first time, it asks for the Hermes address and a sign-in.
+// the background. Sign-in and settings are that program's own pages, the same ones the Windows
+// app shows.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
@@ -21,11 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         buildMenu()
         buildWindow()
         NSApp.activate(ignoringOtherApps: true)
-        if FileManager.default.fileExists(atPath: support.appendingPathComponent("tokens.json").path) {
-            startEngine()
-        } else {
-            DispatchQueue.main.async { self.signIn() }
-        }
+        startEngine() // until it's signed in, it serves only its sign-in page
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -120,72 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     // MARK: signing in
 
     @objc private func signInAgain() {
-        stopEngine()
-        signIn()
-    }
-
-    private func signIn(error: String? = nil) {
-        let alert = NSAlert()
-        alert.messageText = "Sign in to Hermes"
-        alert.informativeText = error ?? "The same address and sign-in as the Hermes dashboard. Petasos keeps its own renewable sign-in, like the Car Thing."
-        if error != nil { alert.alertStyle = .warning }
-        let server = NSTextField(string: UserDefaults.standard.string(forKey: "server") ?? "http://10.0.0.20:9119")
-        let username = NSTextField(string: UserDefaults.standard.string(forKey: "username") ?? "")
-        let password = NSSecureTextField(string: "")
-        server.placeholderString = "Hermes address"
-        username.placeholderString = "Username"
-        password.placeholderString = "Password"
-        let stack = NSStackView(views: [server, username, password])
-        stack.orientation = .vertical
-        stack.spacing = 8
-        stack.frame = NSRect(x: 0, y: 0, width: 280, height: 86)
-        for field in [server, username, password] {
-            field.widthAnchor.constraint(equalToConstant: 280).isActive = true
-        }
-        alert.accessoryView = stack
-        alert.addButton(withTitle: "Sign In")
-        alert.addButton(withTitle: "Quit")
-        alert.window.initialFirstResponder = username.stringValue.isEmpty ? username : password
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            NSApp.terminate(nil)
-            return
-        }
-        UserDefaults.standard.set(server.stringValue, forKey: "server")
-        UserDefaults.standard.set(username.stringValue, forKey: "username")
-        let (ok, output) = runEngine(["-dir", support.path, "signin", server.stringValue, username.stringValue],
-                                     input: password.stringValue + "\n")
-        if ok {
-            startEngine()
-        } else {
-            signIn(error: output.isEmpty ? "Signing in didn't work." : output)
-        }
+        webView.load(URLRequest(url: pageURL.appendingPathComponent("signin.html")))
     }
 
     // MARK: the petasos program
 
     private var engineURL: URL? { Bundle.main.url(forResource: "petasos-engine", withExtension: nil) }
-
-    // runEngine runs the petasos program once and returns whether it worked, and what it said.
-    private func runEngine(_ args: [String], input: String) -> (Bool, String) {
-        guard let url = engineURL else { return (false, "The petasos program is missing from the app.") }
-        let process = Process()
-        process.executableURL = url
-        process.arguments = args
-        let stdin = Pipe(), stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = stdout
-        do {
-            try process.run()
-        } catch {
-            return (false, "Couldn't start the petasos program: \(error.localizedDescription)")
-        }
-        stdin.fileHandleForWriting.write(input.data(using: .utf8)!)
-        try? stdin.fileHandleForWriting.close()
-        let said = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        process.waitUntilExit()
-        return (process.terminationStatus == 0, said.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
 
     private func startEngine() {
         guard let url = engineURL, let me = Bundle.main.executablePath else { return }
@@ -214,13 +151,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         }
         engine = process
         waitForPage(tries: 50)
-    }
-
-    private func stopEngine() {
-        let old = engine
-        engine = nil
-        old?.terminate()
-        old?.waitUntilExit()
     }
 
     // waitForPage loads the screen once the petasos program serves it.

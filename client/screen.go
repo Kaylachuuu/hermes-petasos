@@ -113,11 +113,16 @@ func (s *screen) serve() {
 	pages := http.FileServer(http.FS(files))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store") // a new petasos brings a new page
+		if signInNeeded && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+			http.Redirect(w, r, "/signin.html", http.StatusFound)
+			return
+		}
 		pages.ServeHTTP(w, r)
 	})
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/input", s.pagePress)
 	mux.HandleFunc("/app/settings", appSettings)
+	mux.HandleFunc("/app/signin", appSignIn)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
 		log.Printf("can't serve the screen: %v", err)

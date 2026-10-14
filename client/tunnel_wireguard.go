@@ -1,4 +1,4 @@
-//go:build darwin || tunnel
+//go:build darwin || windows || tunnel
 
 package main
 

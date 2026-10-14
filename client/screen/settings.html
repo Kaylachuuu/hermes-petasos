@@ -80,6 +80,13 @@ button:disabled { opacity: .5; cursor: default; }
       </div>
     </div>
 
+    <h2>Hermes</h2>
+    <div class="row">
+      <label>Signed in to</label>
+      <span id="server"></span>
+      <div class="hint"><button type="button" id="signin">Sign in again…</button></div>
+    </div>
+
     <div class="actions">
       <button type="submit" class="primary" id="save">Save</button>
       <p class="error" id="error" hidden></p>
@@ -129,6 +136,7 @@ async function load() {
   if (!res.ok) throw new Error("This page is only for the Petasos app.");
   current = await res.json();
   $("name").value = current.name;
+  $("server").textContent = current.server || "";
   $("vpn").value = current.vpn ? "wireguard" : "off";
   $("when").value = current.when;
   $("loading").hidden = true;
@@ -156,6 +164,7 @@ $("file").addEventListener("change", async () => {
   showVPN();
 });
 $("back").addEventListener("click", () => { location.href = "/"; });
+$("signin").addEventListener("click", () => { location.href = "signin.html"; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") location.href = "/"; });
 
 $("form").addEventListener("submit", async (e) => {

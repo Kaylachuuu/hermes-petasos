@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -164,8 +163,8 @@ func readEventFile(path, label string, out chan<- map[string]any, grab ...bool) 
 	}
 	defer f.Close()
 	if len(grab) > 0 && grab[0] {
-		if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), eviocgrab, 1); errno != 0 {
-			log.Printf("couldn't take %s from Nocturne's screen (%v); it will see these presses too", label, errno)
+		if err := grabInput(f); err != nil {
+			log.Printf("couldn't take %s from Nocturne's screen (%v); it will see these presses too", label, err)
 		}
 	}
 	log.Printf("reading %s (%s)", label, path)

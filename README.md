@@ -260,8 +260,8 @@ To start it later, `open Petasos.app` from `mac/`, or drag it into Applications.
 winged hat from the boot logo (`mac/icon/`); the window keeps the Car Thing's proportions as it
 is resized.
 
-The first time it asks for the Hermes address and the dashboard sign-in, then keeps its own
-renewable sign-in in `~/Library/Application Support/Petasos`, like the Car Thing. macOS asks for
+The first time it shows a sign-in page for the Hermes address and the dashboard sign-in, then
+keeps its own renewable sign-in in `~/Library/Application Support/Petasos`, like the Car Thing. macOS asks for
 the microphone the first time you talk. **Sign In Again…** and **Show Log** are in the app menu.
 
 ### Controls
@@ -290,6 +290,19 @@ the petasos program, so a Windows app will share it.
   Import a `.conf` (give the Mac a peer of its own), then use it always or only when Hermes
   can't be reached directly. The network icon on the screen turns into a shield while it is in
   use.
+
+### Windows
+
+The Windows app is the petasos program itself, built for Windows: `client/dist/petasos-windows-amd64.exe`
+(or `-arm64.exe`). Copy it anywhere, rename it `Petasos.exe` if you like, and run it. It shows
+the same screen, sign-in and settings pages as the Mac app, in a WebView2 window (part of
+Windows 10 and 11), runs the program behind it from the same file, and records and plays
+through Windows's own audio. It keeps its files in `%APPDATA%\Petasos`, `petasos.log` among
+them. The volume keys (arrows, scroll, − and +) press Windows's own volume keys, so Windows
+shows its volume display. The file isn't signed, so Windows SmartScreen asks once before the
+first run: **More info**, then **Run anyway**.
+
+The screen keeps the Car Thing's shape in a window of any size, in both apps.
 
 ### Petasos chats in the Hermes desktop app
 

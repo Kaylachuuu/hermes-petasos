@@ -17,6 +17,13 @@ import (
 // the VPN. Saving restarts the program, which the app then starts again, so a change takes
 // effect the same way a fresh start would.
 
+// appDir is the app's folder (config.json, tokens.json and the rest); signInNeeded is set while
+// it has no sign-in yet, when the program serves only the sign-in page.
+var (
+	appDir       string
+	signInNeeded bool
+)
+
 var app struct {
 	mu       sync.Mutex
 	h        *hermes
@@ -26,6 +33,7 @@ var app struct {
 type appSettingsView struct {
 	Name      string `json:"name"`
 	Device    string `json:"device"`
+	Server    string `json:"server"`
 	VPN       bool   `json:"vpn"`
 	When      string `json:"when"`
 	HasConfig bool   `json:"has_config"`
@@ -83,7 +91,7 @@ func appSettings(w http.ResponseWriter, r *http.Request) {
 func (h *hermes) appSettingsView() appSettingsView {
 	var set vpnSettings
 	_ = readJSON(filepath.Join(h.dir, "vpn.json"), &set)
-	v := appSettingsView{Name: h.cfg.Name, Device: h.cfg.Device, VPN: set.On, When: set.When,
+	v := appSettingsView{Name: h.cfg.Name, Device: h.cfg.Device, Server: h.cfg.Server, VPN: set.On, When: set.When,
 		Route: map[bool]string{true: "vpn", false: "direct"}[route.use.Load()]}
 	if v.Name == "" {
 		v.Name = titleFromDevice(h.cfg.Device)
@@ -189,4 +197,39 @@ func writeJSONResponse(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// appSignIn is the sign-in page's: GET fills it in, POST signs in and restarts the program.
+func appSignIn(w http.ResponseWriter, r *http.Request) {
+	if !virtual || appDir == "" {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		var cfg config
+		_ = readJSON(filepath.Join(appDir, "config.json"), &cfg)
+		if cfg.Server == "" {
+			cfg.Server = "http://10.0.0.20:9119"
+		}
+		writeJSONResponse(w, http.StatusOK, map[string]any{"server": cfg.Server, "username": cfg.Username, "needed": signInNeeded})
+	case http.MethodPost:
+		var in struct{ Server, Username, Password string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in); err != nil || strings.TrimSpace(in.Server) == "" {
+			writeJSONResponse(w, http.StatusBadRequest, map[string]string{"error": "Give the Hermes address, your username and password."})
+			return
+		}
+		if err := signIn(appDir, strings.TrimSpace(in.Server), strings.TrimSpace(in.Username), strings.NewReader(in.Password+"\n")); err != nil {
+			writeJSONResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, map[string]bool{"restarting": true})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			log.Printf("signed in; restarting")
+			os.Exit(0) // the app starts it again, signed in
+		}()
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }

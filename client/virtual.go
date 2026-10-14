@@ -52,6 +52,10 @@ func (v *voice) playCommand() *exec.Cmd {
 
 // macVolume nudges the Mac's own output volume, for the knob on the virtual Petasos.
 func macVolume(delta int) {
+	if runtime.GOOS == "windows" {
+		computerVolume(delta)
+		return
+	}
 	out, err := exec.Command("osascript", "-e", "output volume of (get volume settings)").Output()
 	level, convErr := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil || convErr != nil {
@@ -196,7 +200,14 @@ func signIn(dir, server, username string, password io.Reader) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "config.json"), config{Server: server, Device: defaultComputerID()}, 0o644); err != nil {
+	// Signing in again keeps this computer's name.
+	var cfg config
+	_ = readJSON(filepath.Join(dir, "config.json"), &cfg)
+	cfg.Server, cfg.Username = server, username
+	if cfg.Device == "" {
+		cfg.Device = defaultComputerID()
+	}
+	if err := writeJSON(filepath.Join(dir, "config.json"), cfg, 0o644); err != nil {
 		return err
 	}
 	return writeJSON(filepath.Join(dir, "tokens.json"), t, 0o600)

@@ -5,3 +5,5 @@ client/dist/*
 !client/dist/petasos-linux-arm64
 !client/dist/petasos-darwin-arm64
 !client/dist/petasos-darwin-amd64
+!client/dist/petasos-windows-amd64.exe
+!client/dist/petasos-windows-arm64.exe

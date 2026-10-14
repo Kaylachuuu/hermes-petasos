@@ -13,4 +13,10 @@ for arch in arm64 amd64; do
     CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "-s -w -buildid= -X main.version=$v" \
         -o "dist/petasos-darwin-$arch" .
 done
+# The Windows app is petasos.exe itself (app_windows.go); rsrc_windows_*.syso carries its icon,
+# made from winres/ with: go run github.com/tc-hib/go-winres@latest make --in winres/winres.json --arch amd64,arm64
+for arch in amd64 arm64; do
+    CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-s -w -buildid= -H windowsgui -X main.version=$v" \
+        -o "dist/petasos-windows-$arch.exe" .
+done
 sha256sum dist/petasos-*

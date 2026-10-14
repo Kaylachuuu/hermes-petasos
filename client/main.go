@@ -34,20 +34,20 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
 var version = "dev" // set at build time from VERSION
 
 type config struct {
-	Server  string `json:"server"`
-	Device  string `json:"device,omitempty"`  // name the plugin keeps state under; default "car-thing"
-	Name    string `json:"name,omitempty"`    // the app's own name for this computer, shown in its settings
-	Grab    *bool  `json:"grab,omitempty"`    // take the buttons from Nocturne's own screen; default true
-	Phone   string `json:"phone,omitempty"`   // Bluetooth address of the phone to tether to; default any paired one
-	Mic     string `json:"mic,omitempty"`     // ALSA device to record from (32-bit samples); default hw:0,0
-	Speaker string `json:"speaker,omitempty"` // ALSA device to play on; default bluealsa (the connected Bluetooth speaker)
+	Server   string `json:"server"`
+	Device   string `json:"device,omitempty"`   // name the plugin keeps state under; default "car-thing"
+	Name     string `json:"name,omitempty"`     // the app's own name for this computer, shown in its settings
+	Username string `json:"username,omitempty"` // who the app signed in as, to fill in its sign-in page
+	Grab     *bool  `json:"grab,omitempty"`     // take the buttons from Nocturne's own screen; default true
+	Phone    string `json:"phone,omitempty"`    // Bluetooth address of the phone to tether to; default any paired one
+	Mic      string `json:"mic,omitempty"`      // ALSA device to record from (32-bit samples); default hw:0,0
+	Speaker  string `json:"speaker,omitempty"`  // ALSA device to play on; default bluealsa (the connected Bluetooth speaker)
 }
 
 type tokens struct {
@@ -68,6 +68,9 @@ type hermes struct {
 
 func main() {
 	log.SetFlags(0)
+	if windowsApp() { // petasos.exe run as the Windows app, or as its recorder or player
+		return
+	}
 	dir := flag.String("dir", "/var/lib/petasos", "folder holding config.json and tokens.json")
 	events := flag.String("events", "", "read raw input events from this file instead of the Car Thing's buttons (testing)")
 	flag.StringVar(&audioHelper, "audio", "", "the virtual Petasos's recorder and player (the Mac app's executable)")
@@ -113,9 +116,13 @@ func main() {
 			log.Fatal("the virtual Petasos needs -audio, the app that records and plays")
 		}
 		virtual = true
+		appDir = *dir
 		h, err := load(*dir)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("not signed in yet (%v); the app shows its sign-in page", err)
+			signInNeeded = true
+			display.serve()
+			return
 		}
 		h.run("")
 	case "run":
@@ -301,12 +308,12 @@ func adopt(dir string) {
 	}
 	if out, err := exec.Command(live, "version").Output(); err == nil && !newer(version, strings.TrimSpace(string(out))) {
 		log.Printf("handing over to %s", live)
-		log.Print(syscall.Exec(live, append([]string{live}, os.Args[1:]...), os.Environ()))
+		log.Print(execReplace(live, append([]string{live}, os.Args[1:]...)))
 		return
 	}
 	if err := copyFile(self, live+".new"); err == nil && os.Rename(live+".new", live) == nil {
 		log.Printf("installed %s as %s", version, live)
-		log.Print(syscall.Exec(live, append([]string{live}, os.Args[1:]...), os.Environ()))
+		log.Print(execReplace(live, append([]string{live}, os.Args[1:]...)))
 		return
 	}
 	log.Printf("couldn't install into %s; running from %s", dir, self)
@@ -414,7 +421,7 @@ func (h *hermes) update() error {
 		return err
 	}
 	log.Printf("updated to %s; restarting", latest.Version)
-	return syscall.Exec(self, os.Args, os.Environ())
+	return execReplace(self, os.Args)
 }
 
 // --- the main loop -------------------------------------------------------------------------
