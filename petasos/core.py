@@ -25,7 +25,10 @@ import time
 from pathlib import Path
 from typing import Callable
 
-INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob")
+# The car-* inputs are a car's steering wheel media buttons, reaching the Car Thing over Bluetooth
+# (AVRCP) while it plays to the car.
+INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob",
+          "car-play", "car-next", "car-previous")
 GESTURES = ("press", "hold", "tap", "turn")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt", "none")
 
@@ -42,6 +45,9 @@ DEFAULT_MAPPING: dict = {
         "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
         "preset-3": {"press": {"action": "none"}},
         "preset-4": {"press": {"action": "none"}},
+        "car-play": {"press": {"action": "conversation"}},
+        "car-next": {"press": {"action": "stop_speaking"}},
+        "car-previous": {"press": {"action": "none"}},
     },
 }
 
@@ -226,7 +232,11 @@ class Petasos:
                 if action == "conversation_ended" and state.listening == "conversation":
                     state.listening = None
                 return []
-            controls = mapping["controls"].get(name, {})
+            controls = mapping["controls"].get(name)
+            if controls is None and name.startswith("car-"):
+                # A mapping written before the car buttons existed gets their defaults.
+                controls = DEFAULT_MAPPING["controls"][name]
+            controls = controls or {}
             if action == "press":
                 out = self._press(state, mapping, name, controls, now_ms)
             elif action == "release":

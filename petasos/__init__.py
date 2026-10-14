@@ -13,7 +13,8 @@ from pathlib import Path
 _CORE = "hermes_petasos_core"
 
 _LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3",
-           "preset-4": "Preset 4", "mute": "Top-right button", "front": "Front button", "knob": "Knob"}
+           "preset-4": "Preset 4", "mute": "Top-right button", "front": "Front button", "knob": "Knob",
+           "car-play": "Car play/pause", "car-next": "Car next track", "car-previous": "Car previous track"}
 
 
 def _core():
@@ -43,7 +44,10 @@ def _slash(_args: str = "") -> str:
     agent = core.agent_name(mapping)
     lines = [f"Car Thing layout (talking to {agent}):"]
     for name in core.INPUTS:
-        gestures = mapping["controls"].get(name, {})
+        gestures = mapping["controls"].get(name)
+        if gestures is None and name.startswith("car-"):
+            gestures = core.DEFAULT_MAPPING["controls"][name]
+        gestures = gestures or {}
         parts = [f"{g} = {_describe(s, agent)}" for g, s in gestures.items()] or ["nothing"]
         lines.append(f"- {_LABELS[name]}: {'; '.join(parts)}")
     lines.append(f"Edit {petasos.mapping.path} to change it; edits apply on the next button press.")

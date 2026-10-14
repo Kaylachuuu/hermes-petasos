@@ -120,6 +120,8 @@ Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures:
 
 `agent_name` at the top of the file is the name of the agent the Car Thing talks to, as its screen shows it ("Hold the front button to talk to …", "Messenger of …") and in its messages. It defaults to `Hermes`; set it to your agent's name, for example `"agent_name": "Athena"`.
 
+`car-play`, `car-next` and `car-previous` are a car's steering wheel media buttons, which reach the Car Thing over Bluetooth while it plays to the car. By default play/pause starts or ends a conversation and next track stops the reply; a mapping written before they existed gets those defaults.
+
 `label` is the name the Car Thing's screen shows under the button (up to 32 characters, on two lines when it needs them). Without one, the screen shows the start of the prompt.
 
 ### Routes (behind the dashboard login)

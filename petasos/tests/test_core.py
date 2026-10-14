@@ -201,3 +201,16 @@ def test_agent_name_reaches_the_screen(setup):
         "do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Athena"}
     mapping["agent_name"] = ""
     assert any("agent_name" in p for p in core.validate(mapping))
+
+
+def test_car_buttons_work_with_a_mapping_written_before_them(setup):
+    petasos, _ = setup
+    old = copy.deepcopy(core.DEFAULT_MAPPING)
+    for name in ("car-play", "car-next", "car-previous"):
+        del old["controls"][name]
+    petasos.mapping.replace(old)
+    started = petasos.handle(ev("car-play", "press"))
+    assert started[-1]["do"] == "listen" and started[-1]["mode"] == "conversation"
+    assert petasos.handle(ev("car-play", "release")) == []
+    assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "listen_stop"}
+    assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "stop_speaking"}

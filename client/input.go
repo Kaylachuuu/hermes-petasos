@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -30,6 +31,10 @@ var keyNames = map[uint16]string{
 	50: "mute",  // KEY_M, the top-right button
 	1:  "front", // KEY_ESC, the front button
 	28: "knob",  // KEY_ENTER, pressing the knob
+
+	// A car's steering wheel media buttons, as BlueZ passes them on from AVRCP.
+	164: "car-play", 200: "car-play", 201: "car-play", // KEY_PLAYPAUSE, KEY_PLAYCD, KEY_PAUSECD
+	163: "car-next", 165: "car-previous", // KEY_NEXTSONG, KEY_PREVIOUSSONG
 }
 
 // watchInputs finds the button and knob devices by name and reports their events, reopening
@@ -49,6 +54,43 @@ func watchInputs(grab bool, out chan<- map[string]any) {
 			}
 		}(name)
 	}
+}
+
+// watchCarButtons reads the media buttons of whatever is connected over Bluetooth: while the
+// Car Thing plays to a car, BlueZ turns its steering wheel buttons (AVRCP) into an input device
+// named after the car (see isMediaRemote). Those come and go with the connection.
+func watchCarButtons(out chan<- map[string]any) {
+	reading := map[string]bool{}
+	var mu sync.Mutex
+	for ; ; time.Sleep(5 * time.Second) {
+		paths, _ := filepath.Glob("/sys/class/input/event*/device/name")
+		for _, p := range paths {
+			data, err := os.ReadFile(p)
+			if err != nil || !isMediaRemote(strings.TrimSpace(string(data))) {
+				continue
+			}
+			dev := "/dev/input/" + filepath.Base(filepath.Dir(filepath.Dir(p)))
+			mu.Lock()
+			busy := reading[dev]
+			reading[dev] = true
+			mu.Unlock()
+			if busy {
+				continue
+			}
+			go func(dev, name string) {
+				readEventFile(dev, name, out)
+				mu.Lock()
+				delete(reading, dev)
+				mu.Unlock()
+			}(dev, strings.TrimSpace(string(data)))
+		}
+	}
+}
+
+// isMediaRemote is BlueZ's naming for a connected device's media buttons: "(AVRCP)" for classic
+// Bluetooth, "(MCS)" for LE Audio.
+func isMediaRemote(name string) bool {
+	return strings.HasSuffix(name, "(AVRCP)") || strings.HasSuffix(name, "(MCS)")
 }
 
 // watchTouch wakes the screen when the touchscreen is touched. Touches only wake it: nothing on

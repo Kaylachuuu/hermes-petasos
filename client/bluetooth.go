@@ -94,12 +94,35 @@ func (b *bluetooth) start() {
 			b.conn = conn
 			b.mu.Unlock()
 			log.Printf("Bluetooth pairing agent ready")
+			b.nameAdapter()
 			go b.watchLinks()
 			return
 		}
 		log.Printf("Bluetooth pairing agent not ready (%v); trying again in 10s", err)
 		time.Sleep(10 * time.Second)
 	}
+}
+
+// btName is what other devices (a phone, a car) see the Car Thing as.
+const btName = "Petasos"
+
+// nameAdapter makes sure the Car Thing shows up as Petasos. BlueZ keeps the adapter's name in
+// /var/lib/bluetooth, where an earlier system (Nocturne) may have left its own.
+func (b *bluetooth) nameAdapter() {
+	b.mu.Lock()
+	conn := b.conn
+	b.mu.Unlock()
+	obj := conn.Object("org.bluez", adapterPath)
+	v, err := obj.GetProperty("org.bluez.Adapter1.Alias")
+	if err == nil && v.Value() == btName {
+		return
+	}
+	if err := obj.Call("org.freedesktop.DBus.Properties.Set", 0, "org.bluez.Adapter1", "Alias",
+		dbus.MakeVariant(btName)).Err; err != nil {
+		log.Printf("can't name the Bluetooth adapter %s: %v", btName, err)
+		return
+	}
+	log.Printf("Bluetooth name set to %s (was %v)", btName, v.Value())
 }
 
 // devices lists every device BlueZ knows, paired or merely seen.
