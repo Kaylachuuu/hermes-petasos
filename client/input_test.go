@@ -37,3 +37,14 @@ func TestNewer(t *testing.T) {
 		}
 	}
 }
+
+func TestKnobTurnsMoveTheBluetoothList(t *testing.T) {
+	// Knob events come from translate with an int delta, unlike the plugin's JSON commands.
+	ev := translate(evRel, relHWhee, -1, 0)
+	if got := intOf(ev["delta"], 0); got != -1 {
+		t.Fatalf("delta read as %d", got)
+	}
+	if got := intOf(float64(3), 0); got != 3 {
+		t.Fatalf("JSON number read as %d", got)
+	}
+}

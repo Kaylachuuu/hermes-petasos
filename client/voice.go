@@ -618,9 +618,13 @@ func parseWav(wav []byte) (channels, rate, bits int, pcm []byte, err error) {
 	return 0, 0, 0, nil, fmt.Errorf("no samples")
 }
 
+// intOf reads a number from a decoded JSON command (float64) or a local event (int).
 func intOf(v any, fallback int) int {
-	if f, ok := v.(float64); ok {
-		return int(f)
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
 	}
 	return fallback
 }
