@@ -1,0 +1,7 @@
+{
+  "name": "petasos",
+  "label": "Petasos",
+  "description": "Routes for the Car Thing: input events in, device commands out; the button mapping.",
+  "api": "plugin_api.py",
+  "tab": { "hidden": true }
+}

@@ -2,7 +2,7 @@
 
 Turns a Spotify Car Thing into a pocket voice interface for Athena on Hermes: a Hermes plugin plus a thin on-device client for push-to-talk, knob and button controls, and replies played wherever you are.
 
-Nothing here runs on the Car Thing yet. This repository starts with the groundwork checks.
+The server plugin lives in `petasos/`. Nothing runs on the Car Thing yet; the device program comes next.
 
 ## Step 1: can a non-browser client chat with Hermes?
 
@@ -81,9 +81,9 @@ The other inputs are the touchscreen (`tlsc6x`, `event2`, multitouch absolute ev
 
 Older Nocturne builds (3.0.0 and 4.0.x) use RNDIS at `172.16.42.2`, which macOS doesn't support; current Nocturne is the target.
 
-## Planned control layout (step 3)
+## Step 3: the petasos plugin
 
-Agreed 2026-10-14. The mapping will live in an editable file on the Hermes server.
+Agreed with Kayla on 2026-10-14. The plugin in `petasos/` turns the Car Thing's button and knob events into commands for the device, using a layout file on the Hermes server.
 
 | Control | Action |
 | --- | --- |
@@ -95,3 +95,43 @@ Agreed 2026-10-14. The mapping will live in an editable file on the Hermes serve
 | Top-right button | Mic off |
 
 The first version won't support interrupting by voice, because the mic would hear Athena through a nearby speaker. Press the knob instead.
+
+### Install it
+
+On Athenaeum, with the sync script (until this is merged, pass the branch):
+
+```sh
+sync-plugin petasos --branch claude/project-thread-48e57q --restart
+```
+
+The sync script links the plugin from the checkout, the same way it handles Talaria. Then turn it on with `hermes plugins enable petasos` (or add `petasos` under `plugins: enabled:` in `config.yaml`) and restart Hermes.
+
+### Change the layout
+
+The first button press creates `petasos/mapping.json` in the Hermes folder, holding the layout above. Edit it and the change applies on the next press; no restart needed. A file with a mistake is reported by `/petasos` and the last good layout stays in use. `/petasos` in any chat shows the current layout.
+
+Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures: `press`, or `hold` and `tap` (told apart by `hold_ms`), and `turn` for the knob. Actions are `push_to_talk` (hold only), `conversation`, `stop_speaking`, `volume` (turn only), `mic_toggle`, `prompt` (with `"text"`) and `none`. For example, to make preset 3 ask about the weather:
+
+```json
+"preset-3": { "press": { "action": "prompt", "text": "What's the weather today?" } }
+```
+
+### Routes (behind the dashboard login)
+
+| Route | What it does |
+| --- | --- |
+| `POST /api/plugins/petasos/input` | One event in, e.g. `{"input": "front", "action": "press", "t": 1234}`; returns `{"commands": [...]}` |
+| `GET` / `PUT /api/plugins/petasos/mapping` | Read or replace the layout (a bad one is refused with the reasons) |
+| `GET /api/plugins/petasos/status` | Each device's mic and listening state, and any layout problems |
+
+Events: `press` and `release` for buttons, `turn` with `delta` for the knob, and from the client itself `device` `hello` (when it starts) and `conversation_ended`. `t` is the device's own clock in milliseconds; send it on every event or on none. Commands back: `listen` (`hold` or `conversation`, with the silence timings), `send`, `cancel`, `listen_stop`, `stop_speaking`, `volume`, `mic`, `prompt` and `notice`.
+
+### Try it without the Car Thing
+
+`tools/try_buttons.py` signs in like `chat_probe.py` and plays a set of presses against your server, printing what comes back:
+
+```sh
+~/.venvs/petasos/bin/python tools/try_buttons.py http://10.0.0.20:9119
+```
+
+Tested inside a fresh `hermes-agent` (`8f817911`): 26 tests in `petasos/tests`, and `try_buttons.py` against a running dashboard with password login.
