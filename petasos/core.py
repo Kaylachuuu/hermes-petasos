@@ -37,12 +37,35 @@ DEFAULT_MAPPING: dict = {
         "front": {"hold": {"action": "push_to_talk"}, "tap": {"action": "conversation"}},
         "knob": {"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}},
         "mute": {"press": {"action": "mic_toggle"}},
-        "preset-1": {"press": {"action": "prompt", "text": "What's next on my calendar?"}},
-        "preset-2": {"press": {"action": "prompt", "text": "Read me my last message."}},
+        "preset-1": {"press": {"action": "prompt", "text": "What's next on my calendar?", "label": "Calendar"}},
+        "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
         "preset-3": {"press": {"action": "none"}},
         "preset-4": {"press": {"action": "none"}},
     },
 }
+
+
+LABEL_MAX = 20
+
+
+def preset_labels(mapping: dict) -> list[str]:
+    """What the screen shows under each preset button: its label, else the start of its prompt,
+    else "" for a button that does nothing."""
+    labels = []
+    for i in range(1, 5):
+        gestures = mapping.get("controls", {}).get(f"preset-{i}") or {}
+        step = next((s for s in gestures.values() if isinstance(s, dict) and s.get("action") not in (None, "none")), None)
+        label = ""
+        if step:
+            label = (step.get("label") or "").strip()
+            if not label and step.get("action") == "prompt":
+                label = step["text"].strip().rstrip("?.!")
+                if len(label) > LABEL_MAX:
+                    label = label[:LABEL_MAX - 1].rsplit(" ", 1)[0] + "…"
+            elif not label:
+                label = step["action"].replace("_", " ").capitalize()
+        labels.append(label)
+    return labels
 
 
 class MappingError(ValueError):
@@ -91,6 +114,9 @@ def validate(mapping: dict) -> list[str]:
             action = step["action"]
             if action == "prompt" and not (isinstance(step.get("text"), str) and step["text"].strip()):
                 problems.append(f"{where} is a prompt and needs some text.")
+            label = step.get("label")
+            if label is not None and not (isinstance(label, str) and 0 < len(label.strip()) <= LABEL_MAX):
+                problems.append(f"{where}: a label is a short name for the screen, 1 to {LABEL_MAX} characters.")
             if action == "push_to_talk" and gesture != "hold":
                 problems.append(f"{where}: push_to_talk only works on hold.")
             if action == "volume" and gesture != "turn":
@@ -156,6 +182,7 @@ class DeviceState:
         self.listening: str | None = None   # "hold" or "conversation"
         self.down: dict[str, float] = {}     # input -> press time in ms, for hold/tap
         self.last_seen = 0.0
+        self.labels_sent: list[str] | None = None  # preset labels the device's screen last got
 
 
 class Petasos:
@@ -184,20 +211,33 @@ class Petasos:
                 if action == "hello":  # the client (re)started: forget mic, listening and held buttons
                     self._devices[device_id] = DeviceState()
                     self._devices[device_id].last_seen = state.last_seen
-                elif action == "conversation_ended" and state.listening == "conversation":
+                    return self._screen(self._devices[device_id], mapping)
+                if action == "conversation_ended" and state.listening == "conversation":
                     state.listening = None
                 return []
             controls = mapping["controls"].get(name, {})
             if action == "press":
-                return self._press(state, mapping, name, controls, now_ms)
-            if action == "release":
-                return self._release(state, mapping, name, controls, now_ms)
-            if action == "turn":
+                out = self._press(state, mapping, name, controls, now_ms)
+            elif action == "release":
+                out = self._release(state, mapping, name, controls, now_ms)
+            elif action == "turn":
                 delta = event.get("delta")
                 if not isinstance(delta, int) or isinstance(delta, bool):
                     raise MappingError("A turn needs a whole-number delta.")
-                return self._run(state, mapping, controls.get("turn"), delta=delta)
-            raise MappingError(f"Unknown action {action!r}; actions are press, release and turn.")
+                out = self._run(state, mapping, controls.get("turn"), delta=delta)
+            else:
+                raise MappingError(f"Unknown action {action!r}; actions are press, release and turn.")
+            changed = self._screen(state, mapping) if state.labels_sent is not None else []
+            return changed + out
+
+    @staticmethod
+    def _screen(state, mapping) -> list[dict]:
+        """The preset labels for the device's screen: on hello, then whenever they change."""
+        labels = preset_labels(mapping)
+        if labels == state.labels_sent:
+            return []
+        state.labels_sent = labels
+        return [{"do": "screen", "presets": labels}]
 
     def status(self) -> dict:
         now = self.clock()

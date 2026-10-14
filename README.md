@@ -113,8 +113,10 @@ The first button press creates `petasos/mapping.json` in the Hermes folder, hold
 Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures: `press`, or `hold` and `tap` (told apart by `hold_ms`), and `turn` for the knob. Actions are `push_to_talk` (hold only), `conversation`, `stop_speaking`, `volume` (turn only), `mic_toggle`, `prompt` (with `"text"`) and `none`. For example, to make preset 3 ask about the weather:
 
 ```json
-"preset-3": { "press": { "action": "prompt", "text": "What's the weather today?" } }
+"preset-3": { "press": { "action": "prompt", "text": "What's the weather today?", "label": "Weather" } }
 ```
+
+`label` is the name the Car Thing's screen shows under the button (up to 20 characters). Without one, the screen shows the start of the prompt.
 
 ### Routes (behind the dashboard login)
 
@@ -221,3 +223,11 @@ tts:
 ```
 
 (The speech side needs some `api_key`; any text works for a local server.)
+
+## Step 7: the screen
+
+The Car Thing's screen shows what's going on: the preset labels under their buttons, the phone, home, speaker and mic links in the top-right corner, and in the middle, the Petasos title with a line that follows Athena: "Getting ready…" from the press until the mic is really recording, then "Athena is listening", "Athena is thinking…" under what she heard, and her reply while she speaks (a long one scrolls). Turning the knob lights the top Greek key band up to the volume. When a link drops, the warning emblem appears on the left and the line says what to do.
+
+- **Served by petasos** (`client/screen.go`, `client/screen/`): the page and its fonts are built into the program and served on `127.0.0.1:8187`; the state reaches the page as server-sent events from `/events`. The image's kiosk browser is pointed at it over its DevTools port, 9223 (`client/kiosk.go`), so the screen arrives with petasos's own updates and works on an image built before it existed.
+- **Bluetooth screens** (`client/bluetooth.go`): hold the mic button for two seconds. The knob moves and chooses, and the front button goes back. They list the paired phone and speakers, connect, disconnect and forget them, and pair new ones: "Pair a new device" looks for speakers in pairing mode and makes the Car Thing visible as Petasos to a phone's Bluetooth settings. Pairing codes show on the screen, confirmed with the knob. A short press of the mic button still mutes, on release.
+- Fonts: Caladea (Apache 2.0) and Source Sans 3 (OFL 1.1); see `client/screen/fonts/README`.

@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Petasos</title>
+<style>
+/* The Car Thing's screen, 800x480. 1cqw is 8 pixels; the layout follows the splash. */
+@font-face { font-family: "Caladea"; src: url(fonts/caladea.woff2) format("woff2"); font-weight: 400; }
+@font-face { font-family: "Source Sans 3"; src: url(fonts/source-sans-3.woff2) format("woff2"); font-weight: 400 600; }
+:root {
+  --night: #1f1b17; --bronze: #c9b48a; --dust: #9c8a68; --ember: #d97a3a; --alarm: #d9543a;
+  --rule: #3a2f25; --row: #2a1f16;
+  --display: "Caladea", Georgia, serif; --body: "Source Sans 3", sans-serif;
+}
+html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden; cursor: none; }
+.screen { container-type: inline-size; position: relative; width: 100vw; height: 100vh; overflow: hidden;
+          font-family: var(--body); color: var(--bronze); }
+[hidden] { display: none !important; }
+
+.topbar { position: absolute; left: 0; right: 0; top: 0; height: 10cqw; display: grid;
+          grid-template-columns: repeat(4, 1fr) 1.3fr; align-items: center; }
+.topbar > span { text-align: center; font-size: 2.3cqw; letter-spacing: .06em; padding: 0 .8cqw;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar > span.off { color: #5a4f42; }
+.links { display: flex; justify-content: center; align-items: center; gap: 1.6cqw; }
+.links svg { width: 2.8cqw; height: 2.8cqw; color: var(--dust); }
+.links svg.lost { color: var(--alarm); }
+.band { position: absolute; left: 0; right: 0; height: 7.5cqw; display: block; }
+.band.top { top: 11cqw; } .band.bottom { top: 51.5cqw; }
+.band .lit { transition: opacity .6s ease; }
+
+.middle { position: absolute; left: 0; right: 0; top: 19.5cqw; height: 31cqw; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; text-align: center; gap: 1.3cqw; }
+.greek { font-family: var(--display); color: var(--ember); font-size: 8.6cqw; line-height: 1; letter-spacing: .24em; margin-right: -.24em; }
+.latin { font-family: var(--display); font-size: 3.6cqw; letter-spacing: .5em; margin-right: -.5em; }
+.motto { font-size: 2.2cqw; letter-spacing: .45em; margin-right: -.45em; color: var(--dust); }
+.hint { font-size: 2.7cqw; letter-spacing: .02em; margin-top: 1cqw; max-width: 64cqw; }
+.hint.wait { color: var(--dust); }
+.hint.live { color: var(--ember); font-family: var(--display); font-size: 3.2cqw; letter-spacing: .12em; animation: breathe 1.8s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .55 } }
+.heard { font-size: 2.6cqw; color: var(--dust); font-style: italic; max-width: 76cqw;
+         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.speaking { position: absolute; left: 8cqw; right: 8cqw; top: 20.5cqw; height: 29cqw; overflow: hidden; }
+.speaking b { display: block; color: var(--ember); font-weight: 400; font-family: var(--display); font-size: 2.2cqw;
+              letter-spacing: .45em; margin-bottom: 1cqw; }
+.reply { font-family: var(--display); font-size: 3.4cqw; line-height: 1.4; }
+.reply.long { font-size: 3cqw; }
+.emblem { position: absolute; left: 2.5cqw; width: 16cqw; }
+
+/* Bluetooth screens */
+.bt { position: absolute; left: 0; right: 0; top: 10cqw; bottom: 8cqw; border-top: .2cqw solid var(--bronze);
+      display: flex; flex-direction: column; padding: 2cqw 5cqw 1cqw; gap: 1cqw; }
+.bt h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 3.2cqw; letter-spacing: .12em; }
+.bt .note { color: var(--dust); font-size: 2.2cqw; line-height: 1.35; margin: 0; }
+.bt .list { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: .6cqw; }
+.bt h3 { margin: .8cqw 0 0; font-family: var(--display); font-weight: 400; font-size: 2.1cqw; letter-spacing: .28em;
+         text-transform: uppercase; color: var(--dust); flex: none; }
+.bt .empty { color: #6b5f50; font-size: 2.2cqw; padding: .4cqw 1.8cqw; flex: none; }
+.row { display: grid; grid-template-columns: 3.4cqw 1fr auto; align-items: center; gap: 1.6cqw; padding: 1cqw 1.8cqw;
+       font-size: 2.6cqw; border: .15cqw solid transparent; border-radius: .8cqw; flex: none; }
+.row svg { width: 3cqw; height: 3cqw; }
+.row em { font-style: normal; font-size: 2cqw; color: var(--dust); }
+.row.hot em { color: var(--ember); }
+.row.sel { border-color: var(--ember); background: var(--row); }
+.pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
+.pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
+.pair .note { max-width: 70cqw; font-size: 2.5cqw; }
+.keys { position: absolute; left: 0; right: 0; bottom: 0; height: 8cqw; display: flex; justify-content: center; align-items: center;
+        gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
+.keys b { color: var(--bronze); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="key-band" width="40" height="60" patternUnits="userSpaceOnUse">
+      <path d="M4 48 V13 H33 V42 H13 V22 H24 V33" fill="none" stroke="#c9b48a" stroke-width="3.5" stroke-linecap="square"/>
+      <path d="M4 48 H40" fill="none" stroke="#c9b48a" stroke-width="3.5"/>
+    </pattern>
+    <pattern id="key-band-ember" width="40" height="60" patternUnits="userSpaceOnUse">
+      <path d="M4 48 V13 H33 V42 H13 V22 H24 V33" fill="none" stroke="#e8823a" stroke-width="3.5" stroke-linecap="square"/>
+      <path d="M4 48 H40" fill="none" stroke="#e8823a" stroke-width="3.5"/>
+    </pattern>
+    <pattern id="key-small" width="12" height="16" patternUnits="userSpaceOnUse">
+      <path d="M1 14 V2 H10 V12 H4 V5 H7 V9" fill="none" stroke="#d97a3a" stroke-width="1.5" stroke-linecap="square"/>
+      <path d="M1 14 H12" fill="none" stroke="#d97a3a" stroke-width="1.5"/>
+    </pattern>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".25"/><stop offset=".55" stop-color="#fff" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="fade" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="190"><rect width="200" height="190" fill="url(#glow)"/></mask>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 18.5h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M4 4l16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-forget" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-device" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="emblem" viewBox="0 0 200 190">
+      <g mask="url(#fade)" filter="url(#soft)">
+        <g id="side"><rect x="58" y="153" width="84" height="16" fill="url(#key-small)"/></g>
+        <use href="#side" transform="rotate(120 100 118)"/>
+        <use href="#side" transform="rotate(240 100 118)"/>
+      </g>
+      <path d="M100 8 L195.3 173 L4.7 173 Z" fill="none" stroke="#c9b48a" stroke-width="3"/>
+      <path d="M100 58 L152 148 L48 148 Z" fill="none" stroke="#c9b48a" stroke-width="3"/>
+      <circle cx="100" cy="36" r="4" fill="#c9b48a"/><circle cx="163" cy="154.5" r="4" fill="#c9b48a"/><circle cx="37" cy="154.5" r="4" fill="#c9b48a"/>
+      <g fill="#d97a3a">
+        <rect x="83" y="66" width="34" height="6"/><rect x="87" y="72" width="26" height="3"/>
+        <path d="M89 75 H111 L109 124 H91 Z"/><rect x="87" y="124" width="26" height="5"/><circle cx="100" cy="139" r="6"/>
+      </g>
+      <g stroke="#1f1b17" stroke-width="1.2"><path d="M95 78 V121 M100 78 V121 M105 78 V121"/></g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="screen">
+  <div class="topbar">
+    <span id="p0" class="off">—</span><span id="p1" class="off">—</span><span id="p2" class="off">—</span><span id="p3" class="off">—</span>
+    <div class="links">
+      <svg id="l-phone"><use href="#i-phone"/></svg><svg id="l-home"><use href="#i-home"/></svg>
+      <svg id="l-speaker"><use href="#i-speaker"/></svg><svg id="l-mic"><use href="#i-mic"/></svg>
+    </div>
+  </div>
+
+  <div id="home">
+    <svg class="band top" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
+      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
+      <g class="lit" id="vol" opacity="0">
+        <rect id="vol-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
+        <rect id="vol-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
+      </g>
+      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
+    </svg>
+    <div class="middle" id="stack">
+      <div class="greek">ΠΕΤΑΣΟΣ</div>
+      <div class="latin" id="latin">PETASOS</div>
+      <div class="motto" id="motto">MESSENGER OF ATHENA</div>
+      <div class="heard" id="heard" hidden></div>
+      <div class="hint" id="hint">Starting…</div>
+    </div>
+    <div class="speaking" id="speaking" hidden><div id="scroller"><b>ATHENA</b><div class="reply" id="reply"></div></div></div>
+    <svg class="emblem" id="warn" viewBox="0 0 200 190" hidden><use href="#emblem"/></svg>
+    <svg class="band bottom" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
+      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
+      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
+    </svg>
+  </div>
+
+  <div id="bt" hidden>
+    <div class="bt" id="bt-body"></div>
+    <div class="keys" id="bt-keys"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const icon = (name) => `<svg><use href="#i-${name}"/></svg>`;
+const REST = "Hold the front button to talk to Athena";
+let state = null, noticeSeen = 0, noticeUntil = 0, volumeSeen = null, volumeTimer = 0, lastReply = "", scrollAnim = null;
+
+function warning(s) {
+  const l = s.links;
+  if (!l.checked) return "";
+  if (!l.phone_paired) return "Pair your phone: hold the mic button for two seconds";
+  if (!l.phone) return "Turn on Personal Hotspot to reach Athena";
+  if (!l.home) return "Can't reach Athena's server";
+  if (!l.speaker_paired) return "Pair a speaker: hold the mic button for two seconds";
+  if (!l.speaker) return `Turn on ${l.speaker_name || "the speaker"} to hear Athena`;
+  return "";
+}
+
+function drawTop(s) {
+  s.presets.forEach((label, i) => {
+    const el = $("p" + i);
+    el.textContent = label || "—";
+    el.className = label ? "" : "off";
+  });
+  const l = s.links, checked = l.checked;
+  $("l-phone").classList.toggle("lost", checked && !l.phone);
+  $("l-home").classList.toggle("lost", checked && !l.home);
+  $("l-speaker").classList.toggle("lost", checked && !l.speaker);
+  const mic = $("l-mic");
+  mic.classList.toggle("lost", s.muted);
+  mic.firstElementChild.setAttribute("href", s.muted ? "#i-mic-off" : "#i-mic");
+}
+
+function drawVolume(s) {
+  if (volumeSeen === null) { volumeSeen = s.volume_id; return; } // not on first load
+  if (s.volume_id === volumeSeen || s.volume < 0) return;
+  volumeSeen = s.volume_id;
+  const w = 8 * Math.max(0, Math.min(100, s.volume));
+  $("vol-cover").setAttribute("width", w);
+  $("vol-keys").setAttribute("width", w);
+  $("vol").setAttribute("opacity", "1");
+  clearTimeout(volumeTimer);
+  volumeTimer = setTimeout(() => $("vol").setAttribute("opacity", "0"), 2000);
+}
+
+function drawHome(s) {
+  const speaking = s.phase === "speaking" && s.reply;
+  $("stack").hidden = !!speaking;
+  $("speaking").hidden = !speaking;
+  if (speaking) {
+    drawReply(s);
+    showEmblem(false);
+    return;
+  }
+  lastReply = "";
+  const thinking = s.phase === "thinking";
+  $("latin").hidden = $("motto").hidden = thinking && !!s.heard;
+  $("heard").hidden = !(thinking && s.heard);
+  $("heard").textContent = s.heard ? `“${s.heard}”` : "";
+  if (s.notice_id && s.notice_id !== noticeSeen) {
+    noticeSeen = s.notice_id;
+    noticeUntil = Date.now() + 4000;
+    setTimeout(() => state && draw(state), 4100);
+  }
+  const warn = warning(s);
+  let text = REST, cls = "";
+  if (s.phase === "ready") [text, cls] = ["Getting ready…", "wait"];
+  else if (s.phase === "listening") [text, cls] = ["Athena is listening", "live"];
+  else if (thinking) [text, cls] = ["Athena is thinking…", "wait"];
+  else if (Date.now() < noticeUntil && s.notice) [text, cls] = [s.notice, "wait"];
+  else if (warn) [text, cls] = [warn, "wait"];
+  else if (s.muted) [text, cls] = ["The mic is off. Press the mic button to turn it on.", "wait"];
+  const hint = $("hint");
+  hint.textContent = text;
+  hint.className = "hint " + cls;
+  showEmblem(s.phase === "idle" && !!warn && !(Date.now() < noticeUntil && s.notice));
+}
+
+// The emblem is an <svg>, which has no hidden property; the attribute works.
+function showEmblem(on) {
+  $("warn").toggleAttribute("hidden", !on);
+  if (on) placeEmblem();
+}
+
+// The emblem's bottom line sits on the warning's baseline, wherever the text wraps to.
+function placeEmblem() {
+  const hint = $("hint"), mark = document.createElement("span");
+  mark.style.cssText = "display:inline-block;width:0;height:0";
+  hint.appendChild(mark);
+  const screen = document.querySelector(".screen").getBoundingClientRect();
+  const baseline = mark.getBoundingClientRect().bottom - screen.top;
+  mark.remove();
+  const em = $("warn"), h = em.getBoundingClientRect().height || screen.width * 0.16 * 190 / 200;
+  em.style.top = (baseline - h * 174.5 / 190) + "px";
+}
+
+// A long reply scrolls up through the panel over the time it takes to play.
+function drawReply(s) {
+  if (s.reply === lastReply) return;
+  lastReply = s.reply;
+  const reply = $("reply"), scroller = $("scroller"), box = $("speaking");
+  reply.textContent = s.reply;
+  reply.classList.toggle("long", s.reply.length > 220);
+  if (scrollAnim) scrollAnim.cancel();
+  scrollAnim = null;
+  const extra = scroller.scrollHeight - box.clientHeight;
+  if (extra > 0 && s.reply_ms > 0) {
+    const ms = s.reply_ms;
+    scrollAnim = scroller.animate(
+      [{ transform: "translateY(0)", offset: 0 }, { transform: "translateY(0)", offset: 0.12 },
+       { transform: `translateY(${-extra}px)`, offset: 0.95 }, { transform: `translateY(${-extra}px)`, offset: 1 }],
+      { duration: ms, fill: "forwards", easing: "linear" });
+  }
+}
+
+function drawBT(b) {
+  const keys = { list: [["Knob", "choose"], ["Press", "open"], ["Front button", "back"]],
+                 device: [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
+                 scan: [["Knob", "choose"], ["Press", "pair"], ["Front button", "back"]],
+                 pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
+                 message: [] }[b.view] || [];
+  $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
+  const body = $("bt-body");
+  if (b.view === "pair" || b.view === "message") {
+    body.innerHTML = `<div class="pair">${b.view === "pair" ? `<p class="note" style="margin:0">Pair with</p>` : ""}
+      <h2>${esc(b.title)}</h2>${b.code ? `<div class="code">${esc(b.code)}</div>` : ""}
+      <p class="note">${esc(b.note)}</p></div>`;
+    return;
+  }
+  const rows = (b.items || []).map((it, i) => {
+    if (it.kind === "header") return `<h3>${esc(it.label)}</h3>`;
+    if (it.kind === "note") return `<div class="empty">${esc(it.label)}</div>`;
+    return `<div class="row${i === b.sel ? " sel" : ""}${it.hot ? " hot" : ""}" id="${i === b.sel ? "sel" : ""}">
+      ${icon(it.icon || "device")}<span>${esc(it.label)}</span><em>${esc(it.detail)}</em></div>`;
+  }).join("");
+  body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
+    `<div class="list">${rows}</div>`;
+  const sel = $("sel");
+  if (sel) sel.scrollIntoView({ block: "nearest" });
+}
+
+function draw(s) {
+  drawTop(s);
+  $("bt").hidden = !s.bt;
+  $("home").hidden = !!s.bt;
+  if (s.bt) drawBT(s.bt);
+  else drawHome(s);
+  drawVolume(s);
+}
+
+function connect() {
+  const events = new EventSource("/events");
+  events.onmessage = (e) => { state = JSON.parse(e.data); draw(state); };
+  events.onerror = () => { $("hint").textContent = "Starting…"; $("hint").className = "hint wait"; };
+}
+document.fonts.ready.then(connect);
+</script>
+</body>
+</html>

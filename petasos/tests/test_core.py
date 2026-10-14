@@ -164,7 +164,27 @@ def test_hello_resets_the_device(setup):
     petasos, _ = setup
     petasos.handle(ev("mute", "press"))
     petasos.handle(ev("front", "press", t=0))
-    assert petasos.handle(ev("device", "hello")) == []
+    assert petasos.handle(ev("device", "hello")) == [{"do": "screen", "presets": ["Calendar", "Last message", "", ""]}]
     assert petasos.status()["devices"]["car-thing"]["muted"] is False
     assert petasos.handle(ev("front", "release", t=50)) == []
     assert petasos.handle(ev("front", "press", t=100)) == [{"do": "listen", "mode": "hold"}]
+
+
+def test_screen_gets_preset_labels_on_hello_and_when_they_change(setup):
+    petasos, _ = setup
+    assert petasos.handle(ev("device", "hello")) == [
+        {"do": "screen", "presets": ["Calendar", "Last message", "", ""]}]
+    assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
+    mapping = petasos.mapping.current()
+    mapping["controls"]["preset-3"] = {"press": {"action": "prompt", "text": "What's the weather tomorrow in Casper?"}}
+    mapping["controls"]["preset-1"]["press"].pop("label")
+    petasos.mapping.replace(mapping)
+    assert petasos.handle(ev("knob", "press")) == [
+        {"do": "screen", "presets": ["What's next on my…", "Last message", "What's the weather…", ""]},
+        {"do": "stop_speaking"}]
+
+
+def test_labels_must_be_short(setup):
+    mapping = copy.deepcopy(core.DEFAULT_MAPPING)
+    mapping["controls"]["preset-1"]["press"]["label"] = "x" * 21
+    assert any("label" in p for p in core.validate(mapping))

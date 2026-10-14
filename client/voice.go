@@ -46,6 +46,7 @@ type voice struct {
 	idleS   int
 	player  *exec.Cmd
 	turnGen int // bumped by cancel/stop so a reply that arrives late is dropped
+	hushed  int // bumped by stopSpeaking, to cut short a reply shown without sound
 }
 
 func newVoice(h *hermes, presses chan<- map[string]any) *voice {
@@ -77,17 +78,32 @@ func (v *voice) carryOut(c map[string]any) {
 		v.turnGen++
 		v.mu.Unlock()
 		v.finish(false)
+		display.setPhase("idle")
 	case "stop_speaking":
-		v.stopSpeaking()
+		v.stopSpeaking() // the turn then ends as usual, starting the next one in conversation mode
 	case "prompt":
 		if text, _ := c["text"].(string); text != "" {
 			v.stopSpeaking()
+			display.update(func(st *screenState) { st.Phase, st.Heard, st.Reply = "thinking", text, "" })
 			go v.ask("/api/plugins/petasos/ask", "application/json", mustJSON(map[string]string{"text": text}))
 		}
 	case "volume":
 		go v.volume(intOf(c["delta"], 0))
-	case "mic", "notice":
-		// Shown on the screen once it's live; the plugin already keeps the mic state.
+	case "mic":
+		muted, _ := c["muted"].(bool)
+		display.update(func(st *screenState) { st.Muted = muted })
+	case "notice":
+		if text, _ := c["text"].(string); text != "" {
+			display.notice(text)
+		}
+	case "screen":
+		if raw, ok := c["presets"].([]any); ok {
+			labels := make([]string, 4)
+			for i := 0; i < 4 && i < len(raw); i++ {
+				labels[i], _ = raw[i].(string)
+			}
+			display.update(func(st *screenState) { st.Presets = labels })
+		}
 	}
 }
 
@@ -115,6 +131,7 @@ func (v *voice) listen(mode string, endMs, idleS int) {
 }
 
 func (v *voice) startRecording() {
+	display.setPhase("ready")
 	cmd := exec.Command("arecord", "-q", "-D", v.mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
 		"-c", "1", "-t", "raw")
 	out, err := cmd.StdoutPipe()
@@ -125,6 +142,8 @@ func (v *voice) startRecording() {
 	}
 	if err != nil {
 		log.Printf("can't record from %s: %v", v.mic, err)
+		display.setPhase("idle")
+		display.notice("The microphone isn't working.")
 		return
 	}
 	rec := &recording{cmd: cmd, stderr: &stderr, done: make(chan struct{})}
@@ -138,9 +157,17 @@ func (v *voice) startRecording() {
 		r := bufio.NewReaderSize(out, frameBytes*8)
 		wide := make([]byte, frameBytes*2)
 		frame := make([]byte, frameBytes)
-		for {
+		for first := true; ; first = false {
 			if _, err := io.ReadFull(r, wide); err != nil {
 				return
+			}
+			if first { // the microphone is really recording now: tell the person to speak
+				v.mu.Lock()
+				current := v.rec == rec
+				v.mu.Unlock()
+				if current {
+					display.setPhase("listening")
+				}
 			}
 			to16(wide, frame)
 			rec.mu.Lock()
@@ -192,9 +219,10 @@ func (v *voice) finish(send bool) {
 		if msg := strings.TrimSpace(rec.stderr.String()); msg != "" {
 			log.Printf("the microphone (%s) said: %s", v.mic, truncate(msg, 300))
 		}
-		v.relisten(gen)
+		v.idleOrRelisten(gen)
 		return
 	}
+	display.setPhase("thinking")
 	go v.askWithGen(gen, "/api/plugins/petasos/voice", "audio/wav", wavFile(pcm, sampleRate))
 }
 
@@ -209,6 +237,7 @@ func (v *voice) endConversation() {
 		_ = rec.cmd.Wait()
 	}
 	log.Printf("conversation ended (quiet)")
+	display.setPhase("idle")
 	select {
 	case v.presses <- map[string]any{"input": "device", "action": "conversation_ended"}:
 	default:
@@ -216,12 +245,26 @@ func (v *voice) endConversation() {
 }
 
 // relisten starts the next turn of a conversation, unless it was ended or cancelled meanwhile.
-func (v *voice) relisten(gen int) {
+func (v *voice) relisten(gen int) bool {
 	v.mu.Lock()
 	again := v.mode == "conversation" && v.turnGen == gen && v.rec == nil
 	v.mu.Unlock()
 	if again {
 		v.startRecording()
+	}
+	return again
+}
+
+// idleOrRelisten ends a turn: the next one starts in conversation mode, otherwise the screen
+// goes back to rest (unless something newer has taken over it).
+func (v *voice) idleOrRelisten(gen int) {
+	if !v.relisten(gen) && v.current(gen) {
+		v.mu.Lock()
+		recording := v.rec != nil
+		v.mu.Unlock()
+		if !recording {
+			display.setPhase("idle")
+		}
 	}
 }
 
@@ -249,31 +292,73 @@ func (v *voice) askWithGen(gen int, path, contentType string, payload []byte) {
 		contentType, payload, v.slow, 1<<20)
 	if err != nil {
 		log.Printf("asking Athena failed: %v", err)
-		v.relisten(gen)
+		if v.current(gen) {
+			display.notice("Athena couldn't answer just now.")
+		}
+		v.idleOrRelisten(gen)
 		return
 	}
 	var a answer
 	if err := json.Unmarshal(data, &a); err != nil {
 		log.Printf("unexpected reply from the plugin: %v", err)
+		v.idleOrRelisten(gen)
 		return
 	}
 	if a.Heard == "" {
 		log.Printf("heard nothing")
-		v.relisten(gen)
+		if v.current(gen) {
+			display.notice("I didn't catch that.")
+		}
+		v.idleOrRelisten(gen)
 		return
 	}
 	log.Printf("heard: %s", a.Heard)
 	log.Printf("Athena: %s", a.Reply)
+	if !v.current(gen) {
+		return
+	}
+	display.update(func(st *screenState) { st.Heard = a.Heard })
+	var audio []byte
 	if a.Audio != nil {
-		audio, err := v.h.exchange("GET", "/api/plugins/petasos/voice/audio/"+url.PathEscape(*a.Audio),
+		audio, err = v.h.exchange("GET", "/api/plugins/petasos/voice/audio/"+url.PathEscape(*a.Audio),
 			"", nil, v.slow, 64<<20)
 		if err != nil {
 			log.Printf("fetching the spoken reply failed: %v", err)
-		} else if v.current(gen) {
-			v.play(audio)
 		}
 	}
-	v.relisten(gen)
+	if a.Reply != "" && v.current(gen) {
+		v.speak(gen, a.Reply, audio)
+	}
+	v.idleOrRelisten(gen)
+}
+
+// speak shows the reply while it plays, or long enough to read when there's no sound for it.
+func (v *voice) speak(gen int, reply string, audio []byte) {
+	ms := readingMs(reply)
+	if audio != nil {
+		if converted, err := toSpeakerFormat(audio); err == nil {
+			audio = converted
+			ms = len(audio) * 1000 / (speakerRate * speakerChannels * 2)
+		}
+	}
+	display.update(func(st *screenState) { st.Phase, st.Reply, st.ReplyMs = "speaking", reply, ms })
+	if audio == nil || !display.snapshot().Links.Speaker && display.snapshot().Links.Checked {
+		// No speaker to hear it on: leave the words up to read, unless stopped first.
+		v.mu.Lock()
+		hushed := v.hushed
+		v.mu.Unlock()
+		deadline := time.Now().Add(time.Duration(ms) * time.Millisecond)
+		for time.Now().Before(deadline) && v.current(gen) && v.notHushedSince(hushed) {
+			time.Sleep(200 * time.Millisecond)
+		}
+		return
+	}
+	v.play(audio)
+}
+
+// readingMs is roughly how long a reply takes to read: 200 words a minute, at least 5 seconds.
+func readingMs(text string) int {
+	return max(5000, len(strings.Fields(text))*300)
 }
 
 func (v *voice) current(gen int) bool {
@@ -287,7 +372,7 @@ func (v *voice) play(wav []byte) {
 	// BlueALSA can't resample: the Bluetooth link runs at the codec's own rate (48 kHz stereo
 	// for SBC on most speakers), and asking for anything else fails. Text-to-speech comes at
 	// 24 kHz mono, so convert first.
-	if converted, err := toSpeakerFormat(wav); err != nil {
+	if converted, err := toSpeakerFormat(wav); err != nil { // a no-op when speak converted it already
 		log.Printf("can't read the spoken reply: %v", err)
 		return
 	} else {
@@ -317,10 +402,17 @@ func (v *voice) play(wav []byte) {
 	}
 }
 
+func (v *voice) notHushedSince(n int) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.hushed == n
+}
+
 func (v *voice) stopSpeaking() {
 	v.mu.Lock()
 	p := v.player
 	v.player = nil
+	v.hushed++
 	v.mu.Unlock()
 	if p != nil && p.Process != nil {
 		_ = p.Process.Kill()
@@ -330,6 +422,8 @@ func (v *voice) stopSpeaking() {
 // volume nudges the speaker's own volume through BlueALSA's mixer control for it.
 var a2dpControl = regexp.MustCompile(`Simple mixer control '([^']*A2DP[^']*)'`)
 
+var mixerLevel = regexp.MustCompile(`\[(\d+)%\]`)
+
 func (v *voice) volume(delta int) {
 	if delta == 0 {
 		return
@@ -338,14 +432,22 @@ func (v *voice) volume(delta int) {
 	m := a2dpControl.FindSubmatch(out)
 	if err != nil || m == nil {
 		log.Printf("no speaker volume to change (is the speaker connected?)")
+		display.notice("No speaker connected.")
 		return
 	}
 	step := fmt.Sprintf("%d%%+", delta)
 	if delta < 0 {
 		step = fmt.Sprintf("%d%%-", -delta)
 	}
-	if out, err := exec.Command("amixer", "-q", "-D", v.speaker, "sset", string(m[1]), step).CombinedOutput(); err != nil {
+	out, err = exec.Command("amixer", "-D", v.speaker, "sset", string(m[1]), step).CombinedOutput()
+	if err != nil {
 		log.Printf("changing the volume failed: %v %s", err, strings.TrimSpace(string(out)))
+		return
+	}
+	if level := mixerLevel.FindSubmatch(out); level != nil {
+		var n int
+		fmt.Sscan(string(level[1]), &n)
+		display.update(func(st *screenState) { st.Volume = n; st.VolumeID++ })
 	}
 }
 

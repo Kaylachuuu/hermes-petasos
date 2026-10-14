@@ -390,14 +390,20 @@ func (h *hermes) update() error {
 func (h *hermes) run(eventsFile string) {
 	log.Printf("petasos %s starting, server %s", version, h.cfg.Server)
 	presses := make(chan map[string]any, 64)
+	raw := make(chan map[string]any, 64)
 	grab := h.cfg.Grab == nil || *h.cfg.Grab
+	go display.serve()
+	go filterInputs(raw, presses)
 	if eventsFile != "" {
-		go readEventFile(eventsFile, "test", presses)
+		go readEventFile(eventsFile, "test", raw)
 	} else {
-		go watchInputs(grab, presses)
+		go watchInputs(grab, raw)
 		setUpTunnel(h.dir)
 		go keepTethered(h.cfg.Phone)
 		go keepSpeakerConnected()
+		go keepKioskOnScreen()
+		go bt.start()
+		go h.watchHome()
 	}
 
 	v := newVoice(h, presses)
@@ -405,7 +411,8 @@ func (h *hermes) run(eventsFile string) {
 	lastUpdate := time.Time{}
 	for {
 		if !online {
-			if err := h.connect(&lastUpdate); err != nil {
+			commands, err := h.connect(&lastUpdate)
+			if err != nil {
 				log.Printf("can't reach Hermes yet: %v", err)
 				wait := 10 * time.Second
 				if errors.Is(err, errSignedOut) {
@@ -416,6 +423,10 @@ func (h *hermes) run(eventsFile string) {
 			}
 			online = true
 			log.Printf("connected")
+			setHome(true)
+			for _, c := range commands {
+				v.carryOut(c)
+			}
 		}
 		select {
 		case ev := <-presses:
@@ -423,6 +434,7 @@ func (h *hermes) run(eventsFile string) {
 			if err != nil {
 				log.Printf("lost Hermes: %v", err)
 				online = false
+				setHome(false)
 				continue
 			}
 			for _, c := range commands {
@@ -441,16 +453,31 @@ func (h *hermes) run(eventsFile string) {
 
 // connect checks for an update, then says hello so the plugin forgets any half-finished press
 // from before the connection dropped.
-func (h *hermes) connect(lastUpdate *time.Time) error {
+func (h *hermes) connect(lastUpdate *time.Time) ([]map[string]any, error) {
 	if err := h.update(); err != nil {
 		if errors.Is(err, errSignedOut) {
-			return err
+			return nil, err
 		}
 		log.Printf("update check failed: %v", err)
 	}
 	*lastUpdate = time.Now()
-	_, err := h.input(map[string]any{"input": "device", "action": "hello"})
-	return err
+	display.update(func(st *screenState) { st.Muted = false }) // hello resets the mic on the plugin too
+	return h.input(map[string]any{"input": "device", "action": "hello"})
+}
+
+// watchHome checks every 20 seconds that Hermes answers, for the home icon on the screen. Any
+// answer will do, even "signed out": it never renews the sign-in itself, since two renewals at
+// once would race for Hermes's single-use refresh token.
+func (h *hermes) watchHome() {
+	quick := &http.Client{Transport: h.http.Transport, Timeout: 8 * time.Second}
+	for ; ; time.Sleep(20 * time.Second) {
+		_, _, err := h.send("GET", "/api/plugins/petasos/status", "", nil, quick, 1<<16)
+		setHome(err == nil)
+	}
+}
+
+func setHome(ok bool) {
+	display.update(func(st *screenState) { st.Links.Home = ok })
 }
 
 // drainFor waits, throwing away presses made while Hermes can't be reached: replaying them

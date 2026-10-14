@@ -117,3 +117,58 @@ func translate(typ, code uint16, value int32, ms int64) map[string]any {
 	}
 	return nil
 }
+
+// btHold is how long the mic button is held to open the Bluetooth screens.
+const btHold = 2 * time.Second
+
+// filterInputs sits between the controls and the plugin. While the Bluetooth screens are open
+// it keeps every press for them. It also holds back the mic button's press until the button is
+// let go, since holding it opens the Bluetooth screens instead of muting.
+func filterInputs(in <-chan map[string]any, out chan<- map[string]any) {
+	var muteDown map[string]any
+	var opened bool
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+	for {
+		select {
+		case ev := <-in:
+			name, _ := ev["input"].(string)
+			action, _ := ev["action"].(string)
+			if name == "mute" {
+				switch action {
+				case "press":
+					muteDown, opened = ev, false
+					timer.Reset(btHold)
+					continue
+				case "release":
+					timer.Stop()
+					if muteDown == nil || opened {
+						muteDown, opened = nil, false
+						continue // the hold opened the Bluetooth screens
+					}
+					press := muteDown
+					muteDown = nil
+					if bt.handle(press) {
+						continue
+					}
+					out <- press
+					out <- ev
+					continue
+				}
+			}
+			if bt.handle(ev) {
+				continue
+			}
+			out <- ev
+		case <-timer.C:
+			if muteDown != nil {
+				opened = true
+				if bt.isOpen() {
+					bt.close()
+				} else {
+					bt.openScreens()
+				}
+			}
+		}
+	}
+}
