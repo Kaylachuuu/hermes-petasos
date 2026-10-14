@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
-// Getting online: the Car Thing reaches the internet through the phone's hotspot over Bluetooth
-// (BlueZ's network access point profile, "nap"). Pairing is done once by hand with bluetoothctl;
-// from then on this keeps the link up, reconnecting whenever it drops and the phone is in range
-// with its hotspot on. systemd-networkd takes the bnep interface BlueZ creates and gets an
+// Getting online: the Car Thing reaches the internet through a phone's hotspot, or a computer
+// sharing its connection, over Bluetooth (BlueZ's network access point profile, "nap"). Devices
+// are paired on the Bluetooth tab; this keeps the link up, reconnecting whenever it drops, trying
+// the device chosen to go first (network.json) before the others. systemd-networkd takes the bnep interface BlueZ creates and gets an
 // address from the phone (50-petasos-pan.network in the image).
 //
 // It talks to BlueZ through busctl, which the image already has, so the program stays free of
@@ -27,13 +29,52 @@ const (
 )
 
 type btDevice struct {
-	Path, Address, Name       string
+	Path, Address, Name, Icon string
 	Paired, Connected, Offers bool
 }
 
-// keepTethered runs for the life of the program. prefer is the phone's Bluetooth address from
-// config.json; when empty, any paired device offering a hotspot will do.
-func keepTethered(prefer string) {
+// netFirst is the device to get online through first, chosen on the Bluetooth tab and kept in
+// network.json next to config.json.
+var netFirst = &firstChoice{}
+
+type firstChoice struct {
+	mu    sync.Mutex
+	file  string
+	First string `json:"first"` // a Bluetooth address
+}
+
+func (c *firstChoice) load(dir string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.file = filepath.Join(dir, "network.json")
+	if raw, err := os.ReadFile(c.file); err == nil {
+		_ = json.Unmarshal(raw, c)
+	}
+}
+
+func (c *firstChoice) get() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.First
+}
+
+func (c *firstChoice) set(address string) {
+	c.mu.Lock()
+	c.First = address
+	file := c.file
+	raw, _ := json.Marshal(c)
+	c.mu.Unlock()
+	if file != "" {
+		if err := os.WriteFile(file, append(raw, '\n'), 0o644); err != nil {
+			log.Printf("saving the first network: %v", err)
+		}
+	}
+}
+
+// keepTethered runs for the life of the program. pinned is a Bluetooth address from config.json
+// to use and no other; when empty, every paired device sharing internet is tried, the one chosen
+// to go first before the rest.
+func keepTethered(pinned string) {
 	lastProblem := ""
 	problem := func(format string, args ...any) {
 		// The phone is often just out of range or its hotspot off; say so once, not every round.
@@ -58,13 +99,16 @@ func keepTethered(prefer string) {
 			problem("can't list Bluetooth devices: %v", err)
 			continue
 		}
-		phones, err := pairedOffering(out, napUUID, prefer)
+		phones, err := pairedOffering(out, napUUID, pinned)
+		if pinned == "" {
+			phones = firstOf(phones, netFirst.get())
+		}
 		if err != nil {
 			problem("can't read the Bluetooth device list: %v", err)
 			continue
 		}
 		if len(phones) == 0 {
-			problem("no paired phone with a hotspot; pair one with bluetoothctl (see the README)")
+			problem("no paired phone or computer sharing internet; pair one on the Bluetooth tab")
 			continue
 		}
 		var failures []string
@@ -74,15 +118,26 @@ func keepTethered(prefer string) {
 				failures = append(failures, fmt.Sprintf("%s: %v", p.Name, err))
 				continue
 			}
-			log.Printf("connected to %s's hotspot over Bluetooth", p.Name)
+			log.Printf("online through %s over Bluetooth", p.Name)
 			lastProblem = ""
 			break
 		}
 		if len(failures) == len(phones) {
-			problem("can't reach the phone's hotspot (is it nearby, with Personal Hotspot on?): %s",
+			problem("can't get online over Bluetooth (is a phone nearby with its hotspot on, or a computer sharing?): %s",
 				strings.Join(failures, "; "))
 		}
 	}
+}
+
+// firstOf moves the device with the given address to the front.
+func firstOf(devs []btDevice, address string) []btDevice {
+	for i, d := range devs {
+		if address != "" && strings.EqualFold(d.Address, address) {
+			out := append([]btDevice{d}, devs[:i]...)
+			return append(out, devs[i+1:]...)
+		}
+	}
+	return devs
 }
 
 // tethered reports whether a Bluetooth network link exists already.
@@ -127,6 +182,7 @@ func pairedOffering(raw []byte, uuid, prefer string) ([]btDevice, error) {
 		_ = json.Unmarshal(props["Alias"].Data, &d.Name)
 		_ = json.Unmarshal(props["Paired"].Data, &d.Paired)
 		_ = json.Unmarshal(props["Connected"].Data, &d.Connected)
+		_ = json.Unmarshal(props["Icon"].Data, &d.Icon)
 		var uuids []string
 		_ = json.Unmarshal(props["UUIDs"].Data, &uuids)
 		for _, u := range uuids {
@@ -134,6 +190,10 @@ func pairedOffering(raw []byte, uuid, prefer string) ([]btDevice, error) {
 		}
 		if d.Name == "" {
 			d.Name = d.Address
+		}
+		// A computer may share its internet without having said so when it was paired.
+		if uuid == napUUID && strings.HasPrefix(d.Icon, "computer") {
+			d.Offers = true
 		}
 		if d.Paired && d.Offers {
 			found = append(found, d)

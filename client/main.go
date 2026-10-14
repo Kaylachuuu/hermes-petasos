@@ -394,6 +394,7 @@ func (h *hermes) run(eventsFile string) {
 	grab := h.cfg.Grab == nil || *h.cfg.Grab
 	go display.serve()
 	go backlight.start(h.dir)
+	netFirst.load(h.dir)
 	go filterInputs(raw, presses)
 	if eventsFile != "" {
 		go readEventFile(eventsFile, "test", raw)

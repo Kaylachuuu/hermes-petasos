@@ -39,6 +39,27 @@ func TestHotspotPhones(t *testing.T) {
 	}
 }
 
+func TestComputersShareInternetAndOneGoesFirst(t *testing.T) {
+	mac := strings.Replace(managedObjects, `"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF":{"org.bluez.Device1":{
+   "Address":{"type":"s","data":"AA:BB:CC:DD:EE:FF"},"Alias":{"type":"s","data":"Stranger"},
+   "Paired":{"type":"b","data":false},`, `"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF":{"org.bluez.Device1":{
+   "Address":{"type":"s","data":"AA:BB:CC:DD:EE:FF"},"Alias":{"type":"s","data":"MacBook"},
+   "Paired":{"type":"b","data":true},"Icon":{"type":"s","data":"computer"},`, 1)
+	mac = strings.Replace(mac, `"data":["00001116-0000-1000-8000-00805f9b34fb"]}}}
+}]}`, `"data":[]}}}
+}]}`, 1)
+	got, err := pairedOffering([]byte(mac), napUUID, "")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("a paired computer can share internet: %+v %v", got, err)
+	}
+	if got := firstOf(got, "e8:98:ee:dc:6d:ae"); got[0].Name != "Kayla's iPhone" {
+		t.Fatalf("the phone first: %+v", got)
+	}
+	if got := firstOf(got, "AA:BB:CC:DD:EE:FF"); got[0].Name != "MacBook" || len(got) != 2 {
+		t.Fatalf("the MacBook first: %+v", got)
+	}
+}
+
 const wgQuick = `[Interface]
 PrivateKey = cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MDA=
 Address = 10.8.0.7/24, fd00::7/64

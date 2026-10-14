@@ -141,7 +141,8 @@ func (b *bluetooth) devices() ([]btDev, error) {
 			d.Phone = d.Phone || strings.EqualFold(u, napUUID)
 			d.Speaker = d.Speaker || strings.EqualFold(u, audioSinkUUID)
 		}
-		if strings.HasPrefix(d.Icon, "phone") {
+		// Phone means any device that can share internet: a phone's hotspot, or a computer.
+		if strings.HasPrefix(d.Icon, "phone") || strings.HasPrefix(d.Icon, "computer") {
 			d.Phone = true
 		}
 		if net, ok := ifaces["org.bluez.Network1"]; ok {
@@ -379,8 +380,9 @@ func (b *bluetooth) listViewAt(sel int) {
 		b.message("Bluetooth isn't ready", err.Error())
 		return
 	}
-	items := []btItem{{Kind: "header", Label: "Phone"}}
+	items := []btItem{{Kind: "header", Label: "Internet"}}
 	phones, speakers := 0, 0
+	first := netFirst.get()
 	for _, d := range devs {
 		if !d.Paired || !d.Phone {
 			continue
@@ -388,16 +390,19 @@ func (b *bluetooth) listViewAt(sel int) {
 		d := d
 		detail := "Paired"
 		if d.NetUp {
-			detail = "Connected · hotspot"
+			detail = "Online through it"
 		} else if d.Connected {
 			detail = "Connected"
 		}
-		items = append(items, btItem{Kind: "row", Icon: "phone", Label: d.Name, Detail: detail, Hot: d.NetUp,
+		if strings.EqualFold(d.Address, first) {
+			detail += " · first"
+		}
+		items = append(items, btItem{Kind: "row", Icon: netIcon(d), Label: d.Name, Detail: detail, Hot: d.NetUp,
 			do: func() { b.deviceView(d.Path) }})
 		phones++
 	}
 	if phones == 0 {
-		items = append(items, btItem{Kind: "note", Label: "No phone paired yet"})
+		items = append(items, btItem{Kind: "note", Label: "No phone or computer paired yet"})
 	}
 	items = append(items, btItem{Kind: "header", Label: "Sound"})
 	for _, d := range devs {
@@ -451,12 +456,25 @@ func (b *bluetooth) deviceViewAt(sel int) {
 	var items []btItem
 	note := "Paired"
 	if d.Phone {
-		if d.NetUp {
-			note = "Sharing its hotspot"
-		} else {
-			note = "Paired. The Car Thing connects to its hotspot on its own whenever it's nearby."
-			items = append(items, btItem{Kind: "row", Icon: "phone", Label: "Connect to its hotspot now",
-				do: func() { b.act(d.Name, "Connecting to the hotspot", b.connectHotspot(d.Path)) }})
+		first := strings.EqualFold(d.Address, netFirst.get())
+		switch {
+		case d.NetUp && first:
+			note = "Online through it. It goes first whenever it's nearby and sharing."
+		case d.NetUp:
+			note = "Online through it."
+		case first:
+			note = "Paired. It goes first whenever it's nearby and sharing."
+		default:
+			note = "Paired. The Car Thing gets online through it on its own when nothing else is sharing."
+		}
+		if !d.NetUp {
+			items = append(items, btItem{Kind: "row", Icon: netIcon(*d), Label: "Use its internet now",
+				do: func() { b.act(d.Name, "Getting online", b.useNetwork(d.Path)) }})
+		}
+		if !first {
+			address := d.Address
+			items = append(items, btItem{Kind: "row", Icon: "plus", Label: "Try this one first",
+				do: func() { netFirst.set(address); b.deviceViewAt(-1) }})
 		}
 	} else if d.Speaker {
 		if d.Connected {
@@ -522,6 +540,33 @@ func (b *bluetooth) call(path dbus.ObjectPath, method string, args ...any) func(
 
 func (b *bluetooth) connectHotspot(path dbus.ObjectPath) func() error {
 	return b.call(path, "org.bluez.Network1.Connect", "nap")
+}
+
+// useNetwork gets online through one device, letting go of the one in use, and makes it the one
+// tried first from now on.
+func (b *bluetooth) useNetwork(path dbus.ObjectPath) func() error {
+	return func() error {
+		devs, err := b.devices()
+		if err != nil {
+			return err
+		}
+		for _, d := range devs {
+			if d.Path == path {
+				netFirst.set(d.Address)
+			} else if d.NetUp {
+				_ = b.call(d.Path, "org.bluez.Network1.Disconnect")()
+			}
+		}
+		return b.connectHotspot(path)()
+	}
+}
+
+// netIcon is a laptop for a computer, otherwise a phone.
+func netIcon(d btDev) string {
+	if strings.HasPrefix(d.Icon, "computer") {
+		return "laptop"
+	}
+	return "phone"
 }
 
 // useSpeaker connects one speaker and lets go of any other, since BlueALSA plays to the one most
@@ -605,7 +650,7 @@ func (b *bluetooth) scanList(sel int) {
 		d := d
 		icon := "device"
 		if d.Phone {
-			icon = "phone"
+			icon = netIcon(d)
 		} else if d.Speaker || strings.HasPrefix(d.Icon, "audio") {
 			icon = "speaker"
 		}
@@ -679,6 +724,9 @@ func (b *bluetooth) afterPairing(path dbus.ObjectPath, name string) {
 	}
 	note := "Paired"
 	switch {
+	case d != nil && d.Phone && netIcon(*d) == "laptop":
+		note = "Paired. Share its internet over Bluetooth PAN and the Car Thing connects on its own."
+		_ = b.connectHotspot(path)()
 	case d != nil && d.Phone:
 		note = "Paired. Turn on Personal Hotspot and the Car Thing connects on its own."
 		_ = b.connectHotspot(path)()
