@@ -125,7 +125,9 @@ def main() -> None:
     print(f"\nCopying it to the Car Thing at {args.host} (if ssh asks for a password, press Enter)")
     remote = ("rm -rf /var/lib/petasos/.incoming && mkdir -p /var/lib/petasos/.incoming && "
               "tar -x -f - -C /var/lib/petasos/.incoming && sh /var/lib/petasos/.incoming/install.sh")
-    done = subprocess.run(["ssh", "-o", "ConnectTimeout=10", f"root@{args.host}", remote], input=bundle.getvalue())
+    # -4: over USB the Mac may pick the IPv6 link-local address, which the image's USB-only login
+    # rule doesn't match; the cable's IPv4 network always works.
+    done = subprocess.run(["ssh", "-4", "-o", "ConnectTimeout=10", f"root@{args.host}", remote], input=bundle.getvalue())
     if done.returncode != 0:
         sys.exit(f"\nThe install on the Car Thing stopped with exit code {done.returncode}; see the messages above.")
     print("\nInstalled. It starts by itself whenever the Car Thing boots.")
