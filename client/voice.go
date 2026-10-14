@@ -153,6 +153,21 @@ func (v *voice) startRecording() {
 	v.rec = rec
 	mode := v.mode
 	v.mu.Unlock()
+	heard := make(chan struct{})
+	go func() { // a recorder that starts but never gives audio is stopped, so the screen says so
+		select {
+		case <-heard:
+		case <-rec.done:
+		case <-time.After(micTimeout):
+			v.mu.Lock()
+			current := v.rec == rec
+			v.mu.Unlock()
+			if current {
+				log.Printf("the microphone gave no audio in %v; stopping it", micTimeout)
+				_ = rec.cmd.Process.Kill()
+			}
+		}
+	}()
 	go func() {
 		defer close(rec.done)
 		var vad *endpointer
@@ -168,6 +183,7 @@ func (v *voice) startRecording() {
 				return
 			}
 			if first { // the microphone is really recording now: tell the person to speak
+				close(heard)
 				v.mu.Lock()
 				current := v.rec == rec
 				v.mu.Unlock()
@@ -205,6 +221,9 @@ func (v *voice) startRecording() {
 	}()
 	log.Printf("listening (%s)", mode)
 }
+
+// micTimeout is how long a recorder may take to give its first audio.
+var micTimeout = 5 * time.Second
 
 // micFailed is a recorder that stopped before giving any audio. Unless the recording was
 // stopped on purpose, say so rather than waiting for audio that won't come.

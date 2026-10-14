@@ -82,3 +82,30 @@ func TestMicThatFailsIsReported(t *testing.T) {
 	}
 	t.Fatal("still waiting on a microphone that gave up")
 }
+
+// A recorder that starts but never gives audio is stopped and reported too.
+func TestMicThatHangsIsReported(t *testing.T) {
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "audio")
+	os.WriteFile(helper, []byte("#!/bin/sh\nexec sleep 60\n"), 0o755)
+	oldV, oldA, oldT := virtual, audioHelper, micTimeout
+	virtual, audioHelper, micTimeout = true, helper, 300*time.Millisecond
+	defer func() { virtual, audioHelper, micTimeout = oldV, oldA, oldT }()
+	h := &hermes{dir: dir, cfg: config{Device: "test"}, http: http.DefaultClient}
+	v := newVoice(h, make(chan map[string]any, 8))
+	display.mu.Lock()
+	before := display.state.NoticeID
+	display.mu.Unlock()
+	v.carryOut(map[string]any{"do": "listen", "mode": "hold"})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		display.mu.Lock()
+		phase, notices := display.state.Phase, display.state.NoticeID
+		display.mu.Unlock()
+		if phase == "idle" && notices > before {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("still waiting on a microphone that never started")
+}

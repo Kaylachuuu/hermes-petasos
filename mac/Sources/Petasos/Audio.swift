@@ -9,16 +9,83 @@ enum Audio {
     static func record(rate: Double) -> Never {
         signal(SIGPIPE, SIG_IGN) // a closed pipe then shows up as a failed write, and ends the recording
         checkAccess()
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0,
-              let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
-                                            channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: inFormat, to: outFormat) else {
-            FileHandle.standardError.write("no microphone to record from (input format \(inFormat))\n".data(using: .utf8)!)
+        let recorder = Recorder(rate: rate)
+        // The engine stops when the microphone changes under it, such as a Bluetooth headset
+        // switching to its call mode as recording starts; start again with the new one.
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                               object: recorder.engine, queue: .main) { _ in
+            recorder.restart()
+        }
+        recorder.start()
+        dispatchMain()
+    }
+
+    static func fail(_ message: String) -> Never {
+        FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
+        exit(1)
+    }
+
+    // checkAccess makes sure macOS lets Petasos use the microphone, asking the first time.
+    // Without access the microphone gives nothing, so say why in the log instead.
+    private static func checkAccess() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return
+        case .notDetermined:
+            let asked = DispatchSemaphore(value: 0)
+            var granted = false
+            AVCaptureDevice.requestAccess(for: .audio) { ok in
+                granted = ok
+                asked.signal()
+            }
+            asked.wait()
+            if granted { return }
+        default:
+            break
+        }
+        fail("macOS isn't letting Petasos use the microphone (System Settings > Privacy & Security > Microphone)")
+    }
+
+    // play plays a WAV file from stdin and returns when it has finished.
+    static func play() -> Never {
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        guard let player = try? AVAudioPlayer(data: data) else {
+            FileHandle.standardError.write("can't read the audio to play\n".data(using: .utf8)!)
             exit(1)
         }
+        player.prepareToPlay()
+        guard player.play() else { exit(1) }
+        while player.isPlaying {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        exit(0)
+    }
+}
+
+// Recorder is the microphone, converted to the rate petasos asked for.
+final class Recorder {
+    let engine = AVAudioEngine()
+    private let rate: Double
+    private let outFormat: AVAudioFormat
+    private var restarts = 0
+
+    init(rate: Double) {
+        self.rate = rate
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate,
+                                         channels: 1, interleaved: false) else {
+            Audio.fail("can't record at \(rate) Hz")
+        }
+        outFormat = format
+    }
+
+    func start() {
+        let input = engine.inputNode
+        let inFormat = input.outputFormat(forBus: 0)
+        guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
+              let converter = AVAudioConverter(from: inFormat, to: outFormat) else {
+            Audio.fail("no microphone to record from (input format \(inFormat))")
+        }
+        let rate = self.rate, outFormat = self.outFormat
         let out = FileHandle.standardOutput
         input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { buffer, _ in
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * rate / inFormat.sampleRate) + 32
@@ -50,49 +117,22 @@ enum Audio {
                 exit(0)
             }
         }
+        engine.prepare()
         do {
             try engine.start()
         } catch {
-            FileHandle.standardError.write("can't start the microphone: \(error)\n".data(using: .utf8)!)
-            exit(1)
+            Audio.fail("can't start the microphone: \(error)")
         }
-        dispatchMain()
     }
 
-    // checkAccess makes sure macOS lets Petasos use the microphone, asking the first time.
-    // Without access the microphone gives nothing, so say why in the log instead.
-    private static func checkAccess() {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            return
-        case .notDetermined:
-            let asked = DispatchSemaphore(value: 0)
-            var granted = false
-            AVCaptureDevice.requestAccess(for: .audio) { ok in
-                granted = ok
-                asked.signal()
-            }
-            asked.wait()
-            if granted { return }
-        default:
-            break
+    func restart() {
+        restarts += 1
+        if restarts > 5 {
+            Audio.fail("the microphone keeps changing; giving up")
         }
-        FileHandle.standardError.write("macOS isn't letting Petasos use the microphone (System Settings > Privacy & Security > Microphone)\n".data(using: .utf8)!)
-        exit(1)
-    }
-
-    // play plays a WAV file from stdin and returns when it has finished.
-    static func play() -> Never {
-        let data = FileHandle.standardInput.readDataToEndOfFile()
-        guard let player = try? AVAudioPlayer(data: data) else {
-            FileHandle.standardError.write("can't read the audio to play\n".data(using: .utf8)!)
-            exit(1)
-        }
-        player.prepareToPlay()
-        guard player.play() else { exit(1) }
-        while player.isPlaying {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-        exit(0)
+        FileHandle.standardError.write("the microphone changed; starting it again\n".data(using: .utf8)!)
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        start()
     }
 }
