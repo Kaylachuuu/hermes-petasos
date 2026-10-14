@@ -21,11 +21,14 @@ import (
 // It talks to BlueZ through busctl, which the image already has, so the program stays free of
 // D-Bus libraries.
 
-const napUUID = "00001116-0000-1000-8000-00805f9b34fb"
+const (
+	napUUID       = "00001116-0000-1000-8000-00805f9b34fb" // a phone's hotspot
+	audioSinkUUID = "0000110b-0000-1000-8000-00805f9b34fb" // a speaker, headphones or car stereo
+)
 
 type btDevice struct {
-	Path, Address, Name string
-	Paired, NAP         bool
+	Path, Address, Name       string
+	Paired, Connected, Offers bool
 }
 
 // keepTethered runs for the life of the program. prefer is the phone's Bluetooth address from
@@ -55,7 +58,7 @@ func keepTethered(prefer string) {
 			problem("can't list Bluetooth devices: %v", err)
 			continue
 		}
-		phones, err := hotspotPhones(out, prefer)
+		phones, err := pairedOffering(out, napUUID, prefer)
 		if err != nil {
 			problem("can't read the Bluetooth device list: %v", err)
 			continue
@@ -98,9 +101,9 @@ func busctl(timeout time.Duration, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-// hotspotPhones picks the paired devices offering a hotspot out of busctl's JSON for BlueZ's
-// GetManagedObjects, the preferred address first (or only, when it is among them).
-func hotspotPhones(raw []byte, prefer string) ([]btDevice, error) {
+// pairedOffering picks the paired devices offering a service (by UUID) out of busctl's JSON for
+// BlueZ's GetManagedObjects, the preferred address first (or only, when it is among them).
+func pairedOffering(raw []byte, uuid, prefer string) ([]btDevice, error) {
 	type variant struct {
 		Data json.RawMessage `json:"data"`
 	}
@@ -123,15 +126,16 @@ func hotspotPhones(raw []byte, prefer string) ([]btDevice, error) {
 		_ = json.Unmarshal(props["Address"].Data, &d.Address)
 		_ = json.Unmarshal(props["Alias"].Data, &d.Name)
 		_ = json.Unmarshal(props["Paired"].Data, &d.Paired)
+		_ = json.Unmarshal(props["Connected"].Data, &d.Connected)
 		var uuids []string
 		_ = json.Unmarshal(props["UUIDs"].Data, &uuids)
 		for _, u := range uuids {
-			d.NAP = d.NAP || strings.EqualFold(u, napUUID)
+			d.Offers = d.Offers || strings.EqualFold(u, uuid)
 		}
 		if d.Name == "" {
 			d.Name = d.Address
 		}
-		if d.Paired && d.NAP {
+		if d.Paired && d.Offers {
 			found = append(found, d)
 		}
 	}
@@ -144,4 +148,41 @@ func hotspotPhones(raw []byte, prefer string) ([]btDevice, error) {
 		}
 	}
 	return found, nil
+}
+
+// keepSpeakerConnected reconnects a paired Bluetooth speaker (or headphones, or a car stereo)
+// whenever none is connected, so Athena's voice has somewhere to go after the speaker was
+// switched off or out of range. It checks less often than the hotspot: a speaker that's off
+// costs a few seconds of Bluetooth paging on every try.
+func keepSpeakerConnected() {
+	lastProblem := ""
+	for ; ; time.Sleep(30 * time.Second) {
+		out, err := busctl(10*time.Second, "--json=short", "call", "org.bluez", "/",
+			"org.freedesktop.DBus.ObjectManager", "GetManagedObjects")
+		if err != nil {
+			continue // keepTethered reports Bluetooth trouble
+		}
+		speakers, err := pairedOffering(out, audioSinkUUID, "")
+		if err != nil || len(speakers) == 0 {
+			continue
+		}
+		connected := false
+		for _, s := range speakers {
+			connected = connected || s.Connected
+		}
+		if connected {
+			lastProblem = ""
+			continue
+		}
+		for _, s := range speakers {
+			if _, err := busctl(20*time.Second, "call", "org.bluez", s.Path, "org.bluez.Device1", "Connect"); err == nil {
+				log.Printf("connected to %s for sound", s.Name)
+				lastProblem = ""
+				break
+			} else if msg := fmt.Sprintf("can't reach %s for sound (is it on?)", s.Name); msg != lastProblem {
+				log.Print(msg)
+				lastProblem = msg
+			}
+		}
+	}
 }

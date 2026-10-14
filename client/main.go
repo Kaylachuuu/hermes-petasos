@@ -397,6 +397,7 @@ func (h *hermes) run(eventsFile string) {
 		go watchInputs(grab, presses)
 		setUpTunnel(h.dir)
 		go keepTethered(h.cfg.Phone)
+		go keepSpeakerConnected()
 	}
 
 	v := newVoice(h, presses)

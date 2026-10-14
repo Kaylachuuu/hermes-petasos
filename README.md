@@ -190,7 +190,7 @@ The Car Thing uses the phone's Personal Hotspot over Bluetooth. Pair once, over 
 bluetoothctl          # then: power on, scan on, pair <address> while the scan runs, trust <address>, quit
 ```
 
-From then on petasos reconnects to the hotspot by itself whenever the link drops (`client/tether.go`). With more than one phone paired, pick one with the installer's `--phone <address>`.
+From then on petasos reconnects to the hotspot by itself whenever the link drops (`client/tether.go`). A paired Bluetooth speaker (or headphones, or car stereo) is reconnected the same way, checked every 30 seconds. With more than one phone paired, pick one with the installer's `--phone <address>`.
 
 The phone's own VPN doesn't carry hotspot traffic, so the Car Thing has its own WireGuard peer. Make one on the home WireGuard server with `AllowedIPs` set to the home network only (such as `10.0.0.0/24`) and `PersistentKeepalive = 25`, save the config on the Mac, and install with:
 

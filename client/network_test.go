@@ -23,15 +23,19 @@ const managedObjects = `{"type":"a{oa{sa{sv}}}","data":[{
 }]}`
 
 func TestHotspotPhones(t *testing.T) {
-	got, err := hotspotPhones([]byte(managedObjects), "")
+	got, err := pairedOffering([]byte(managedObjects), napUUID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Name != "Kayla's iPhone" || got[0].Path != "/org/bluez/hci0/dev_E8_98_EE_DC_6D_AE" {
 		t.Fatalf("got %+v", got)
 	}
-	if got, _ := hotspotPhones([]byte(managedObjects), "e8:98:ee:dc:6d:ae"); len(got) != 1 {
+	if got, _ := pairedOffering([]byte(managedObjects), napUUID, "e8:98:ee:dc:6d:ae"); len(got) != 1 {
 		t.Fatalf("preferred: got %+v", got)
+	}
+	speakers, _ := pairedOffering([]byte(managedObjects), audioSinkUUID, "")
+	if len(speakers) != 1 || speakers[0].Name != "Headphones" || speakers[0].Connected {
+		t.Fatalf("speakers: got %+v", speakers)
 	}
 }
 
