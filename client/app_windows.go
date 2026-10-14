@@ -102,7 +102,8 @@ func runWindow() {
 	}
 	defer w.Destroy()
 	w.SetSize(800, 544, webview2.HintNone) // the inside of the window: the screen and its controls
-	w.SetSize(560, 381, webview2.HintMin)
+	w.SetSize(420, 286, webview2.HintMin)
+	go keepOnTop(w, dir)
 	w.SetHtml(`<html><body style="margin:0;background:#1f1b17"></body></html>`)
 	go func() {
 		// Show the screen once the program behind it answers.
@@ -120,6 +121,27 @@ func runWindow() {
 		})
 	}()
 	w.Run()
+}
+
+// keepOnTop keeps the window above other windows while the settings page says so
+// (window.json), checking every two seconds.
+func keepOnTop(w webview2.WebView, dir string) {
+	applied := false
+	for first := true; ; first = false {
+		on := loadWindowSettings(dir).OnTop
+		if first || on != applied {
+			applied = on
+			after := uintptr(^uintptr(1)) // HWND_NOTOPMOST (-2)
+			if on {
+				after = ^uintptr(0) // HWND_TOPMOST (-1)
+			}
+			w.Dispatch(func() {
+				// SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+				user32.NewProc("SetWindowPos").Call(uintptr(w.Window()), after, 0, 0, 0, 0, 0x1|0x2|0x10)
+			})
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // winEngine keeps the petasos program running behind the window: saving settings or signing

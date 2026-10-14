@@ -45,6 +45,7 @@ type appSettingsView struct {
 	MicName   string    `json:"mic_name"` // the chosen one's name
 	Mics      []micInfo `json:"mics"`     // the microphones connected now
 	MicsError string    `json:"mics_error,omitempty"`
+	OnTop     bool      `json:"on_top"` // the app keeps its window above other windows
 }
 
 type appSettingsChange struct {
@@ -54,6 +55,7 @@ type appSettingsChange struct {
 	WireGuard *string `json:"wireguard,omitempty"` // a new config's text; absent keeps the old one
 	Mic       *string `json:"mic,omitempty"`       // absent keeps the microphone as it is
 	MicName   string  `json:"mic_name,omitempty"`
+	OnTop     *bool   `json:"on_top,omitempty"` // absent leaves it as it is
 }
 
 func (h *hermes) servesAppSettings() {
@@ -119,6 +121,7 @@ func (h *hermes) appSettingsView() appSettingsView {
 	app.mu.Unlock()
 	a := loadAudioSettings(h.dir)
 	v.Mic, v.MicName = a.Mic, a.MicName
+	v.OnTop = loadWindowSettings(h.dir).OnTop
 	mics, err := listMics()
 	v.Mics = mics
 	if err != nil {
@@ -172,6 +175,11 @@ func (h *hermes) saveAppSettings(c appSettingsChange) string {
 		}
 		if err := writeJSON(filepath.Join(h.dir, "audio.json"), a, 0o644); err != nil {
 			return "Couldn't save the microphone: " + err.Error()
+		}
+	}
+	if c.OnTop != nil {
+		if err := writeJSON(filepath.Join(h.dir, "window.json"), windowSettings{OnTop: *c.OnTop}, 0o644); err != nil {
+			return "Couldn't save the window setting: " + err.Error()
 		}
 	}
 	cfg := h.cfg
@@ -255,4 +263,16 @@ func appSignIn(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+// windowSettings is window.json, which the Mac and Windows apps read themselves: they keep the
+// window above other windows while on_top is set.
+type windowSettings struct {
+	OnTop bool `json:"on_top"`
+}
+
+func loadWindowSettings(dir string) windowSettings {
+	var w windowSettings
+	_ = readJSON(filepath.Join(dir, "window.json"), &w)
+	return w
 }

@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(red: 0x1f / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0, alpha: 1)
         window.contentAspectRatio = NSSize(width: 800, height: 544) // the Car Thing's screen, plus the buttons under it
-        window.contentMinSize = NSSize(width: 560, height: 381)
+        window.contentMinSize = NSSize(width: 420, height: 286)
         window.contentView = webView
         window.delegate = self
         window.setFrameAutosaveName("Petasos")
@@ -57,6 +57,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         }
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(webView)
+        applyWindowSettings()
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.applyWindowSettings() }
+    }
+
+    // The settings page's "Keep on top" (window.json, beside the rest of the app's settings).
+    private func applyWindowSettings() {
+        var onTop = false
+        if let data = try? Data(contentsOf: support.appendingPathComponent("window.json")),
+           let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            onTop = settings["on_top"] as? Bool ?? false
+        }
+        let level: NSWindow.Level = onTop ? .floating : .normal
+        if window.level != level {
+            window.level = level
+        }
     }
 
     private func buildMenu() {
