@@ -117,6 +117,7 @@ func main() {
 		}
 		virtual = true
 		appDir = *dir
+		handOver(*dir)
 		h, err := load(*dir)
 		if err != nil {
 			log.Printf("not signed in yet (%v); the app shows its sign-in page", err)
@@ -359,32 +360,43 @@ func copyFile(from, to string) error {
 
 type clientInfo struct {
 	Version string `json:"version"`
+	OS      string `json:"os"` // which system the build is for; older plugins only had Linux
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
 }
 
 // update replaces this program with the server's version when they differ, then restarts in
-// place. It returns only when there was nothing to do or the update failed.
+// place. It returns only when there was nothing to do or the update failed. The app's copy
+// saves the update beside its settings instead (engine.go), and only ever moves forward.
 func (h *hermes) update() error {
-	if virtual {
-		return nil // the Mac app brings its own copy
-	}
+	build := "os=" + runtime.GOOS + "&arch=" + runtime.GOARCH
 	var latest clientInfo
-	if err := h.call("GET", "/api/plugins/petasos/client?arch="+runtime.GOARCH, nil, &latest); err != nil {
+	if err := h.call("GET", "/api/plugins/petasos/client?"+build, nil, &latest); err != nil {
 		return err
 	}
 	if latest.Version == "" || latest.Version == version {
 		return nil
 	}
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if self, err = filepath.EvalSymlinks(self); err != nil {
-		return err
+	var target string
+	if virtual {
+		if latest.OS != runtime.GOOS || !versionNewer(latest.Version, version) {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Join(appDir, "engine"), 0o755); err != nil {
+			return err
+		}
+		target = filepath.Join(appDir, "engine", engineName(latest.Version))
+	} else {
+		self, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if target, err = filepath.EvalSymlinks(self); err != nil {
+			return err
+		}
 	}
 	log.Printf("updating from %s to %s", version, latest.Version)
-	req, err := http.NewRequest("GET", h.cfg.Server+"/api/plugins/petasos/client/download?arch="+runtime.GOARCH, nil)
+	req, err := http.NewRequest("GET", h.cfg.Server+"/api/plugins/petasos/client/download?"+build, nil)
 	if err != nil {
 		return err
 	}
@@ -400,7 +412,7 @@ func (h *hermes) update() error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download: HTTP %d", resp.StatusCode)
 	}
-	staged := self + ".new"
+	staged := target + ".new"
 	f, err := os.OpenFile(staged, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
@@ -414,14 +426,25 @@ func (h *hermes) update() error {
 		err = errors.New("the download doesn't match the server's checksum")
 	}
 	if err == nil {
-		err = os.Rename(staged, self)
+		err = os.Rename(staged, target)
+	}
+	if err == nil && virtual {
+		err = installEngine(appDir, latest.Version)
 	}
 	if err != nil {
 		os.Remove(staged)
 		return err
 	}
 	log.Printf("updated to %s; restarting", latest.Version)
-	return execReplace(self, os.Args)
+	return restartAs(target)
+}
+
+// restartAs runs the updated program in this one's place.
+var restartAs = func(path string) error {
+	if virtual && runtime.GOOS == "windows" {
+		os.Exit(0) // the app starts the new copy
+	}
+	return execReplace(path, os.Args)
 }
 
 // --- the main loop -------------------------------------------------------------------------

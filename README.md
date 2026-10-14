@@ -171,7 +171,7 @@ It asks for your dashboard login, downloads the program from the plugin, and cop
 client/build.sh            # writes client/dist/petasos-linux-arm64
 ```
 
-Bump `client/VERSION` with every change: the Car Thing updates whenever the version the plugin serves differs from its own. The build is reproducible, so the committed binary can be checked against the source.
+Bump `client/VERSION` with every change: the Car Thing updates whenever the version the plugin serves differs from its own, and the Mac and Windows apps whenever it is newer. The build is reproducible, so the committed binary can be checked against the source.
 
 Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event decoding (`go test`), a full run against a test Hermes (it updated itself from 0.0.9 to 0.1.0, then turned recorded presses into the expected commands), and the installer against a stand-in for ssh. Since then installed and running on the Car Thing (0.2.0, on the petasos image below).
 
@@ -277,6 +277,16 @@ the microphone the first time you talk. **Sign In Again…** and **Show Log** ar
 
 It shows as its own device in the plugin, so the presets and agent name from the dashboard's
 Petasos tab apply here too.
+
+### Updates
+
+The program inside the app updates itself from the plugin, as the Car Thing's does: on start and
+every half hour it asks for the macOS (or Windows) build of the current version, checks its
+SHA-256, saves it in `engine/` beside the app's settings and restarts into it. The copy inside
+the app is never changed (on a Mac it is signed with the app), so it only moves forward: a
+download runs only while it is newer than the app's own copy, and rebuilding the app with a newer
+version simply wins. Deleting `engine/` goes back to the app's own copy. The window around it
+(menus, the microphone and speakers) still changes only with a rebuild.
 
 ### Settings
 

@@ -76,6 +76,19 @@ def test_device_program_is_served_with_its_checksum(hermes):
     body = client.get("/api/plugins/petasos/client/download").content
     assert hashlib.sha256(body).hexdigest() == info["sha256"] and len(body) == info["size"]
     assert client.get("/api/plugins/petasos/client?arch=mips").status_code == 400
+    assert client.get("/api/plugins/petasos/client?os=plan9").status_code == 400
+
+
+def test_app_programs_are_served(hermes):
+    import hashlib
+    client, _ = hermes
+    for system, arch, name in (("darwin", "arm64", "petasos-darwin-arm64"),
+                               ("windows", "amd64", "petasos-windows-amd64.exe")):
+        info = client.get(f"/api/plugins/petasos/client?os={system}&arch={arch}").json()
+        assert info["os"] == system
+        resp = client.get(f"/api/plugins/petasos/client/download?os={system}&arch={arch}")
+        assert name in resp.headers["content-disposition"]
+        assert hashlib.sha256(resp.content).hexdigest() == info["sha256"]
 
 
 def test_voice_routes(hermes, monkeypatch):

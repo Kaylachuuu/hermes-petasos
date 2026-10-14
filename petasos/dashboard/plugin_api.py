@@ -129,34 +129,42 @@ def status() -> dict:
     return _core().shared().status()
 
 
-# The Car Thing program, built into client/dist/ beside this plugin in the hermes-petasos checkout.
+# The device program, built into client/dist/ beside this plugin in the hermes-petasos checkout:
+# Linux for the Car Thing, macOS and Windows for the Petasos app, which update themselves from here.
 _CLIENT = Path(__file__).resolve().parents[2] / "client"
 _ARCHES = {"arm64", "amd64"}
+_SYSTEMS = {"linux", "darwin", "windows"}
 _digests: dict[tuple, str] = {}
 
 
-def _client_binary(arch: str) -> Path:
+def _client_name(os: str, arch: str) -> str:
+    if os not in _SYSTEMS:
+        raise HTTPException(status_code=400, detail=f"no build for {os!r}; systems are {sorted(_SYSTEMS)}")
     if arch not in _ARCHES:
         raise HTTPException(status_code=400, detail=f"no build for {arch!r}; builds are {sorted(_ARCHES)}")
-    path = _CLIENT / "dist" / f"petasos-linux-{arch}"
+    return f"petasos-{os}-{arch}" + (".exe" if os == "windows" else "")
+
+
+def _client_binary(os: str, arch: str) -> Path:
+    path = _CLIENT / "dist" / _client_name(os, arch)
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"no device program at {path}; is the plugin a checkout of hermes-petasos?")
     return path
 
 
 @router.get("/client")
-def client_info(arch: str = "arm64") -> dict:
-    """The current device program's version and checksum, for the Car Thing to update itself."""
-    path = _client_binary(arch)
+def client_info(arch: str = "arm64", os: str = "linux") -> dict:
+    """The current device program's version and checksum, for the Car Thing and the app to update themselves."""
+    path = _client_binary(os, arch)
     stat = path.stat()
     key = (str(path), stat.st_mtime_ns, stat.st_size)
     if key not in _digests:
         _digests[key] = hashlib.sha256(path.read_bytes()).hexdigest()
     version = (_CLIENT / "VERSION").read_text(encoding="utf-8").strip()
-    return {"version": version, "sha256": _digests[key], "size": stat.st_size}
+    return {"version": version, "os": os, "sha256": _digests[key], "size": stat.st_size}
 
 
 @router.get("/client/download")
-def client_download(arch: str = "arm64") -> FileResponse:
-    return FileResponse(_client_binary(arch), media_type="application/octet-stream",
-                        filename=f"petasos-linux-{arch}")
+def client_download(arch: str = "arm64", os: str = "linux") -> FileResponse:
+    return FileResponse(_client_binary(os, arch), media_type="application/octet-stream",
+                        filename=_client_name(os, arch))

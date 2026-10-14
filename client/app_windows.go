@@ -125,7 +125,11 @@ type winEngine struct {
 
 func (e *winEngine) start() {
 	logFile, _ := os.OpenFile(filepath.Join(e.dir, "petasos.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	cmd := exec.Command(e.self, "-dir", e.dir, "-audio", e.self, "virtual")
+	engine := e.self
+	if newer, ok := newerEngine(e.dir); ok {
+		engine = newer // an update from the plugin (engine.go)
+	}
+	cmd := exec.Command(engine, "-dir", e.dir, "-audio", e.self, "virtual")
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {

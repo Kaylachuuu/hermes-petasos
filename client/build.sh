@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build the device program into dist/. The plugin serves dist/petasos-linux-arm64 to the Car
 # Thing, which updates itself whenever VERSION changes, so bump VERSION with every change. The
-# macOS builds go inside the Mac app (see ../mac/build.sh).
+# macOS builds go inside the Mac app (see ../mac/build.sh); the plugin serves them and the
+# Windows builds too, so the apps update themselves the same way.
 set -e
 cd "$(dirname "$0")"
 v=$(cat VERSION)
