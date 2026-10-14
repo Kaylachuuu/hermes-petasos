@@ -65,12 +65,18 @@ While it listens, press each top button from left to right, then the front butto
   - A `172.16.42.x` address means an older, stock-based firmware. The Car Thing is then `172.16.42.2`.
   - No such address means the Mac sees no USB network at all: pick **Connect to PC** on the Car Thing, then try another cable or port.
 
-Expected from the community device tree, to be confirmed by the run:
+### Confirmed on hardware
 
-| Control | Linux event |
-| --- | --- |
-| Top buttons 1–4 | `KEY_1`–`KEY_4` (codes 2–5) |
-| Top-right button | `KEY_M` (50) |
-| Front button | `KEY_ESC` (1) |
-| Knob press | `KEY_ENTER` (28) |
-| Knob turn | `REL_HWHEEL` (relative axis 6), ±1 per click |
+Kayla ran it on 2026-10-14 against current Nocturne (yocto, flashed with Terbium), reached at `nocturne.local` over USB from a Mac with an empty root password. Every control matched the community device tree:
+
+| Control | Input device | Linux event |
+| --- | --- | --- |
+| Top buttons 1–4, left to right | `gpio-keys-polled` (`event0`) | `KEY_1`–`KEY_4` (codes 2–5) |
+| Top-right button | `gpio-keys-polled` (`event0`) | `KEY_M` (50) |
+| Front button | `gpio-keys-polled` (`event0`) | `KEY_ESC` (1) |
+| Knob press | `gpio-keys-polled` (`event0`) | `KEY_ENTER` (28) |
+| Knob turn | `rotary` (`event1`) | `REL_HWHEEL` (relative axis 6), ±1 per click; the first direction turned gave −1 |
+
+The other inputs are the touchscreen (`tlsc6x`, `event2`, multitouch absolute events) and `Nocturne (… ) (MCS)` (`event3`), a Bluetooth media-control input Nocturne creates. The client should find devices by name, not by `eventN` number, since numbering can change.
+
+Older Nocturne builds (3.0.0 and 4.0.x) use RNDIS at `172.16.42.2`, which macOS doesn't support; current Nocturne is the target.
