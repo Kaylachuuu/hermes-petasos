@@ -53,8 +53,8 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .emblem { position: absolute; right: 4cqw; top: 27.4cqw; width: 16cqw; }
 
 /* Settings: the Bluetooth and Screen tabs */
-.bt { position: absolute; left: 0; right: 0; top: 10cqw; bottom: 16cqw; border-top: .2cqw solid var(--bronze);
-      display: flex; flex-direction: column; padding: 2cqw 5cqw 1cqw; gap: 1cqw; }
+.bt { position: absolute; left: 0; right: 0; top: 18.5cqw; bottom: 8cqw;
+      display: flex; flex-direction: column; padding: 1.2cqw 5cqw 1cqw; gap: 1cqw; }
 .bt h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 3.2cqw; letter-spacing: .12em; }
 .bt .note { color: var(--dust); font-size: 2.2cqw; line-height: 1.35; margin: 0; }
 .bt .list { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: .6cqw; }
@@ -71,7 +71,6 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row.edit b { color: var(--ember); }
 .row.edit b::before { content: "‹  "; } .row.edit b::after { content: "  ›"; }
 
-.band.meter { top: auto; bottom: 8.5cqw; }
 .pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
 .pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
 .pair .note { max-width: 70cqw; font-size: 2.5cqw; }
@@ -169,7 +168,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 
   <div id="bt" hidden>
     <div class="bt" id="bt-body"></div>
-    <svg class="band meter" id="bt-band" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
+    <svg class="band top" id="bt-band" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
       <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
       <rect id="bt-band-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
       <rect id="bt-band-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
@@ -302,8 +301,8 @@ function drawBT(b) {
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
   // A level (the Screen tab's brightness) lights the band the way the volume does at home.
-  // The band runs along the bottom of every settings screen, lit up to a level (the Screen
-  // tab's brightness or dim level) the way the volume lights the band at home.
+  // The band sits where it does at home, under the tabs, and lights up to a level (the Screen
+  // tab's brightness or dim level) the way the volume lights it there.
   const w = 8 * Math.max(0, Math.min(100, b.meter || 0));
   $("bt-band-cover").setAttribute("width", w);
   $("bt-band-keys").setAttribute("width", w);
