@@ -1,0 +1,12 @@
+# Bluetooth tethering to the phone: BlueZ creates bnep0 when petasos connects to the phone's
+# network access point, and the phone hands out an address.
+[Match]
+Name=bnep*
+
+[Network]
+DHCP=ipv4
+IPv6AcceptRA=yes
+LinkLocalAddressing=ipv6
+
+[DHCPv4]
+RouteMetric=100

@@ -6,11 +6,11 @@ to the Car Thing over SSH in one go, together with the server address and a sign
 It then sets the program to start at boot and starts it.
 
   python install_device.py http://10.0.0.20:9119
-  python install_device.py http://10.0.0.20:9119 --host 10.42.1.130 --no-grab
+  python install_device.py http://10.0.0.20:9119 --host nocturne.local --no-grab
 
-Run it again any time to reinstall, for example after a Nocturne system update (those replace
-the read-only system, which removes the start-at-boot entry). Updates to the program itself
-need no reinstall: it updates itself from the plugin.
+Works on the petasos image (start-at-boot is built in) and on Nocturne (where it adds a
+start-at-boot entry, which a Nocturne system update removes; run it again after one). Updates to
+the program itself need no reinstall: it updates itself from the plugin.
 
 Needs the same Python setup as chat_probe.py, which sits beside it, and ssh.
 """
@@ -50,7 +50,9 @@ cd /var/lib/petasos/.incoming
 install -m 0755 petasos ../petasos.new && mv ../petasos.new ../petasos
 install -m 0644 config.json ../config.json
 install -m 0600 tokens.json ../tokens.json
-if ! cmp -s petasos.service /etc/systemd/system/petasos.service 2>/dev/null \
+if [ -e /usr/lib/systemd/system/petasos.service ]; then
+    : # the petasos image: starting at boot is built in
+elif ! cmp -s petasos.service /etc/systemd/system/petasos.service 2>/dev/null \
    || [ ! -e /etc/systemd/system/multi-user.target.wants/petasos.service ]; then
     mount -o remount,rw /
     trap 'mount -o remount,ro / || echo "Warning: the system partition is still writable until the next restart." >&2' EXIT
@@ -77,7 +79,8 @@ def tar_member(tar: tarfile.TarFile, name: str, data: bytes, mode: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("base_url", help="the address you open the Hermes dashboard on, as the Car Thing will reach it")
-    parser.add_argument("--host", default="nocturne.local", help="the Car Thing's address (default nocturne.local)")
+    parser.add_argument("--host", default="petasos.local",
+                        help="the Car Thing's address (default petasos.local; nocturne.local on Nocturne)")
     parser.add_argument("--no-grab", action="store_true",
                         help="let Nocturne's own screen keep seeing the buttons too")
     parser.add_argument("--token", help=argparse.SUPPRESS)

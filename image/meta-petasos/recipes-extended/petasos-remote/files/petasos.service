@@ -1,0 +1,14 @@
+[Unit]
+Description=Petasos: the Car Thing as a voice remote for Athena
+After=network.target bluetooth.service superbird-weston.service
+Wants=bluetooth.service
+RequiresMountsFor=/var/lib
+
+[Service]
+# The rootfs copy hands over to /var/lib/petasos/petasos (its self-updating copy) on start.
+ExecStart=/usr/lib/petasos/petasos run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

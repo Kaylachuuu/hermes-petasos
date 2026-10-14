@@ -1,0 +1,29 @@
+# Petasos image for the Car Thing, built on yocto-superbird (the BSP Nocturne also builds on).
+#
+# Build from a yocto-superbird checkout so the build cache is shared with its own images:
+#   cd ~/Projects/yocto-superbird
+#   KAS_CONTAINER_ENGINE=podman kas-container build ~/Projects/hermes-petasos/image/kas/petasos.yml
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/superbird.yml
+
+distro: petasos
+
+target:
+  - petasos-image
+
+repos:
+  # Pinned to the commit Nocturne 4.1 builds on, so the public build cache covers most of it.
+  yocto-superbird:
+    url: https://github.com/JoeyEamigh/yocto-superbird.git
+    commit: bcba74441aa9e35b3a07cc8f087277e8281a5a46
+    path: sources/yocto-superbird
+    layers:
+      meta-superbird:
+
+  # This repository (the one holding this file).
+  petasos:
+    layers:
+      image/meta-petasos:

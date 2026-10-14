@@ -26,8 +26,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -75,16 +77,24 @@ func main() {
 		fmt.Println(version)
 		return
 	}
-	h, err := load(*dir)
-	if err != nil {
-		log.Fatal(err)
-	}
 	switch cmd {
 	case "check":
+		h, err := load(*dir)
+		if err != nil {
+			log.Fatal(err)
+		}
 		if err := h.check(); err != nil {
 			log.Fatal(err)
 		}
 	case "run":
+		adopt(*dir)
+		h, err := load(*dir)
+		for err != nil {
+			// A fresh image starts this before the installer has given it a server and sign-in.
+			log.Printf("waiting for setup (%v); run install_device.py from a computer", err)
+			time.Sleep(30 * time.Second)
+			h, err = load(*dir)
+		}
 		h.run(*events)
 	default:
 		flag.Usage()
@@ -230,6 +240,70 @@ func (h *hermes) check() error {
 }
 
 // --- self-update ---------------------------------------------------------------------------
+
+// adopt hands over to the copy in dir, which is the one that updates itself. The petasos image
+// starts the read-only copy in /usr/lib/petasos; on first boot, or when a reflash brings a newer
+// one, it copies itself into dir first. It returns only if it should keep running as it is.
+func adopt(dir string) {
+	self, err := os.Executable()
+	if err != nil {
+		return
+	}
+	self, _ = filepath.EvalSymlinks(self)
+	live := filepath.Join(dir, "petasos")
+	if self == live {
+		return
+	}
+	if out, err := exec.Command(live, "version").Output(); err == nil && !newer(version, strings.TrimSpace(string(out))) {
+		log.Printf("handing over to %s", live)
+		log.Print(syscall.Exec(live, append([]string{live}, os.Args[1:]...), os.Environ()))
+		return
+	}
+	if err := copyFile(self, live+".new"); err == nil && os.Rename(live+".new", live) == nil {
+		log.Printf("installed %s as %s", version, live)
+		log.Print(syscall.Exec(live, append([]string{live}, os.Args[1:]...), os.Environ()))
+		return
+	}
+	log.Printf("couldn't install into %s; running from %s", dir, self)
+}
+
+// newer reports whether version a is newer than b, comparing dotted numbers ("0.10.0" > "0.9.1").
+func newer(a, b string) bool {
+	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y int
+		if i < len(pa) {
+			x, _ = strconv.Atoi(pa[i])
+		}
+		if i < len(pb) {
+			y, _ = strconv.Atoi(pb[i])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+
+func copyFile(from, to string) error {
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(to, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
 
 type clientInfo struct {
 	Version string `json:"version"`
