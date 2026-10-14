@@ -47,16 +47,17 @@ WantedBy=multi-user.target
 # it is made writable just long enough to add the start-at-boot entry, then made read-only again.
 INSTALL_SH = r"""set -e
 cd /var/lib/petasos/.incoming
-install -m 0755 petasos ../petasos.new && mv ../petasos.new ../petasos
-install -m 0644 config.json ../config.json
-install -m 0600 tokens.json ../tokens.json
+# cp and chmod rather than install(1), which the petasos image leaves out.
+cp petasos ../petasos.new && chmod 0755 ../petasos.new && mv ../petasos.new ../petasos
+cp config.json ../config.json && chmod 0644 ../config.json
+(umask 077 && cp tokens.json ../tokens.json.new) && mv ../tokens.json.new ../tokens.json
 if [ -e /usr/lib/systemd/system/petasos.service ]; then
     : # the petasos image: starting at boot is built in
 elif ! cmp -s petasos.service /etc/systemd/system/petasos.service 2>/dev/null \
    || [ ! -e /etc/systemd/system/multi-user.target.wants/petasos.service ]; then
     mount -o remount,rw /
     trap 'mount -o remount,ro / || echo "Warning: the system partition is still writable until the next restart." >&2' EXIT
-    install -m 0644 petasos.service /etc/systemd/system/petasos.service
+    cp petasos.service /etc/systemd/system/petasos.service && chmod 0644 /etc/systemd/system/petasos.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf ../petasos.service /etc/systemd/system/multi-user.target.wants/petasos.service
     sync
