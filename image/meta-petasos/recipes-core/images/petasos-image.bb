@@ -7,7 +7,15 @@ inherit superbird-headroom-check
 inherit superbird-image
 inherit mainline-flashthing
 
-IMAGE_FEATURES += "ssh-server-openssh post-install-logging"
+# Root logs in with no password, as on yocto-superbird's own BSP image. The openssh bbappend limits
+# that to the USB cable.
+IMAGE_FEATURES += " \
+    ssh-server-openssh \
+    allow-empty-password \
+    allow-root-login \
+    empty-root-password \
+    post-install-logging \
+"
 
 IMAGE_INSTALL = " \
     packagegroup-core-boot \
