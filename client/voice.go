@@ -13,8 +13,10 @@ import (
 	"net/url"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -222,6 +224,17 @@ func (v *voice) startRecording() {
 	log.Printf("listening (%s)", mode)
 }
 
+// stopRecorder asks the recorder to stop, so it closes the microphone properly (AirPods are left
+// half switched by one that is simply killed), and kills it if it hasn't within a second.
+func stopRecorder(cmd *exec.Cmd) {
+	if runtime.GOOS == "windows" || cmd.Process.Signal(syscall.SIGTERM) != nil {
+		_ = cmd.Process.Kill()
+		return
+	}
+	p := cmd.Process
+	time.AfterFunc(time.Second, func() { _ = p.Kill() }) // nothing once it has exited and been waited for
+}
+
 // micTimeout is how long a recorder may take to give its first audio.
 var micTimeout = 5 * time.Second
 
@@ -254,7 +267,7 @@ func (v *voice) finish(send bool) {
 	if rec == nil {
 		return
 	}
-	_ = rec.cmd.Process.Kill()
+	stopRecorder(rec.cmd)
 	_ = rec.cmd.Wait()
 	<-rec.done
 	rec.mu.Lock()
@@ -282,7 +295,7 @@ func (v *voice) endConversation() {
 	v.mode = ""
 	v.mu.Unlock()
 	if rec != nil {
-		_ = rec.cmd.Process.Kill()
+		stopRecorder(rec.cmd)
 		_ = rec.cmd.Wait()
 	}
 	log.Printf("conversation ended (quiet)")

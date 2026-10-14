@@ -16,9 +16,21 @@ enum Audio {
                                                object: recorder.engine, queue: .main) { _ in
             recorder.restart()
         }
+        // petasos asks it to stop with SIGTERM at the end of each turn: close the microphone
+        // properly first, so AirPods aren't left half switched for the next one.
+        signal(SIGTERM, SIG_IGN)
+        let stop = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        stop.setEventHandler {
+            recorder.stop()
+            exit(0)
+        }
+        stop.resume()
+        stopSource = stop
         recorder.start()
         dispatchMain()
     }
+
+    private static var stopSource: DispatchSourceSignal?
 
     static func fail(_ message: String) -> Never {
         FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
@@ -125,14 +137,18 @@ final class Recorder {
         }
     }
 
+    func stop() {
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+    }
+
     func restart() {
         restarts += 1
         if restarts > 5 {
             Audio.fail("the microphone keeps changing; giving up")
         }
         FileHandle.standardError.write("the microphone changed; starting it again\n".data(using: .utf8)!)
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
+        stop()
         start()
     }
 }
