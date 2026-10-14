@@ -1,4 +1,4 @@
 name: petasos
-version: 0.6.1
+version: 0.7.0
 description: "The Car Thing as a voice remote for your Hermes agent: maps its buttons and knob to push-to-talk, conversation mode, stop, volume and presets."
 author: "Kaylachuuu"
