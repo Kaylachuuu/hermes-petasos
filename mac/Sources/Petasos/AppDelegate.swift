@@ -48,7 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.title = "Petasos"
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(red: 0x1f / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0, alpha: 1)
-        window.contentMinSize = NSSize(width: 480, height: 352)
+        window.contentAspectRatio = NSSize(width: 800, height: 544) // the Car Thing's screen, plus the buttons under it
+        window.contentMinSize = NSSize(width: 560, height: 381)
         window.contentView = webView
         window.delegate = self
         window.setFrameAutosaveName("Petasos")

@@ -256,6 +256,10 @@ cd mac && ./build.sh
 open Petasos.app
 ```
 
+To start it later, `open Petasos.app` from `mac/`, or drag it into Applications. Its icon is the
+winged hat from the boot logo (`mac/icon/`); the window keeps the Car Thing's proportions as it
+is resized.
+
 The first time it asks for the Hermes address and the dashboard sign-in, then keeps its own
 renewable sign-in in `~/Library/Application Support/Petasos`, like the Car Thing. macOS asks for
 the microphone the first time you talk. **Sign In Again…** and **Show Log** are in the app menu.

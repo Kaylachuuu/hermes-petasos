@@ -78,22 +78,23 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
 
-/* The virtual Petasos (the Mac app): the screen above, its controls below. */
+/* The virtual Petasos (the Mac app): the screen above, its controls below. Sized in vw, so the
+   window (locked to 800:544) scales as one picture with the screen keeping the Car Thing's 5:3. */
 body.virtual { cursor: default; }
-body.virtual .screen { height: calc(100vh - 64px); }
+body.virtual .screen { height: calc(100vh - 8vw); }
 body.virtual .topbar > span { cursor: pointer; border-radius: .6cqw; }
 body.virtual .topbar > span:hover { background: var(--row); }
-.controls { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; display: flex; align-items: center;
-            justify-content: center; gap: 10px; border-top: 2px solid var(--bronze); background: var(--night);
+.controls { position: fixed; left: 0; right: 0; bottom: 0; height: 8vw; display: flex; align-items: center;
+            justify-content: center; gap: 1.25vw; border-top: 2px solid var(--bronze); background: var(--night);
             font-family: var(--body); }
-.controls button { font: 600 14px var(--body); letter-spacing: .04em; color: var(--bronze); background: transparent;
-                   border: 1.5px solid var(--rule); border-radius: 8px; height: 38px; padding: 0 14px; cursor: pointer;
-                   display: inline-flex; align-items: center; gap: 8px; }
+.controls button { font: 600 1.75vw var(--body); letter-spacing: .04em; color: var(--bronze); background: transparent;
+                   border: 1.5px solid var(--rule); border-radius: 1vw; height: 4.75vw; padding: 0 1.75vw; cursor: pointer;
+                   display: inline-flex; align-items: center; gap: 1vw; }
 .controls button:hover { border-color: var(--dust); }
 .controls button.down, .controls button.on { border-color: var(--ember); color: var(--ember); background: var(--row); }
-.controls button.talk { min-width: 150px; justify-content: center; }
-.controls kbd { font: 12px var(--body); color: var(--dust); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
-.controls svg { width: 18px; height: 18px; }
+.controls button.talk { min-width: 18.75vw; justify-content: center; }
+.controls kbd { font: 1.5vw var(--body); color: var(--dust); border: 1px solid var(--rule); border-radius: 0.5vw; padding: 0 0.625vw; }
+.controls svg { width: 2.25vw; height: 2.25vw; }
 </style>
 </head>
 <body>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<!-- The Mac app's icon: the winged hat from the boot logo (image/splash/petasos-bootlogo.svg)
+     on a macOS-sized tile (824 of 1024, leaving the usual margin for the shadow). -->
+<defs>
+  <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2a241e"/>
+    <stop offset="1" stop-color="#17140f"/>
+  </linearGradient>
+  <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+    <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".35"/>
+  </filter>
+</defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#shadow)"/>
+<rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#c9b48a" stroke-opacity=".18" stroke-width="3"/>
+<g transform="translate(512,540) scale(1.55) translate(-400,-206)">
+  <g fill="none" stroke="#c9b48a" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="400" cy="236" rx="168" ry="30"/>
+    <path d="M318,228 C318,150 482,150 482,228" fill="#211c17"/>
+    <path d="M338,214 C360,206 440,206 462,214" stroke-width="4" opacity=".7"/>
+  </g>
+  <g fill="#d97a3a"><path d="M478,206 C520,198 566,172 604,134 C590,162 574,174 558,182 C580,178 596,170 612,160 C596,186 574,196 552,202 C568,203 584,200 598,196 C574,216 534,224 482,224 Z"/><path d="M478,206 C520,198 566,172 604,134 C590,162 574,174 558,182 C580,178 596,170 612,160 C596,186 574,196 552,202 C568,203 584,200 598,196 C574,216 534,224 482,224 Z" transform="translate(800,0) scale(-1,1)"/></g>
+</g>
+</svg>
