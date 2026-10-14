@@ -44,9 +44,10 @@ var defaultLight = lightSettings{Brightness: 0, DimAfter: 60, DimTo: 30, OffAfte
 func (s lightSettings) valid() lightSettings {
 	clamp := func(v, lo, hi int) int { return max(lo, min(hi, v)) }
 	s.Brightness = clamp(s.Brightness, 0, 100)
-	s.DimAfter = clamp(s.DimAfter, 0, 3600)
 	s.DimTo = clamp(s.DimTo, 5, 100)
-	s.OffAfter = clamp(s.OffAfter, 0, 24*3600)
+	// Times are kept to the choices the Screen tab offers, so it always shows the one in use.
+	s.DimAfter = dimAfterChoices[nearest(dimAfterChoices, s.DimAfter)].value
+	s.OffAfter = offAfterChoices[nearest(offAfterChoices, s.OffAfter)].value
 	return s
 }
 

@@ -302,10 +302,10 @@ function drawBT(b) {
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
   // A level (the Screen tab's brightness) lights the band the way the volume does at home.
-  const metered = !!b.meter;
-  body.classList.toggle("metered", metered);
-  $("bt-band").toggleAttribute("hidden", !metered);
-  if (metered) {
+  // The Screen tab keeps the band's room even while the band is hidden, so its rows stay put.
+  body.classList.toggle("metered", b.view === "screen");
+  $("bt-band").toggleAttribute("hidden", !b.meter);
+  if (b.meter) {
     const w = 8 * Math.max(0, Math.min(100, b.meter));
     $("bt-band-cover").setAttribute("width", w);
     $("bt-band-keys").setAttribute("width", w);

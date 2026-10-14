@@ -7,18 +7,18 @@ import (
 )
 
 func TestLightDimsAndTurnsOff(t *testing.T) {
-	l := &light{set: lightSettings{Brightness: 100, DimAfter: 60, DimTo: 50, OffAfter: 300}, swallow: map[string]bool{}}
+	l := &light{set: lightSettings{Brightness: 100, DimAfter: 30, DimTo: 50, OffAfter: 60}, swallow: map[string]bool{}}
 	st := display.snapshot()
 	l.lastSeen = [2]int{st.NoticeID, st.VolumeID}
 	l.active = time.Now()
 	if got := l.target(160, -1); got != 160 {
 		t.Fatalf("awake: %d, want 160", got)
 	}
-	l.active = time.Now().Add(-90 * time.Second)
+	l.active = time.Now().Add(-45 * time.Second)
 	if got := l.target(160, -1); got != lightFloor+(160-lightFloor)/2 {
 		t.Fatalf("dimmed: %d", got)
 	}
-	l.active = time.Now().Add(-10 * time.Minute)
+	l.active = time.Now().Add(-2 * time.Minute)
 	if got := l.target(160, -1); got != 0 {
 		t.Fatalf("off: %d, want 0", got)
 	}

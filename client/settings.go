@@ -13,12 +13,11 @@ type choice struct {
 var (
 	brightnessChoices = []choice{{0, "Auto"}, {10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"},
 		{50, "50%"}, {60, "60%"}, {70, "70%"}, {80, "80%"}, {90, "90%"}, {100, "100%"}}
-	dimAfterChoices = []choice{{0, "Never"}, {10, "10 seconds"}, {30, "30 seconds"}, {60, "1 minute"},
-		{120, "2 minutes"}, {300, "5 minutes"}, {600, "10 minutes"}}
-	dimToChoices = []choice{{10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"}, {50, "50%"},
+	waitChoices     = []choice{{0, "Off"}, {15, "15 seconds"}, {30, "30 seconds"}, {45, "45 seconds"}, {60, "60 seconds"}}
+	dimAfterChoices = waitChoices
+	dimToChoices    = []choice{{10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"}, {50, "50%"},
 		{60, "60%"}, {70, "70%"}}
-	offAfterChoices = []choice{{0, "Never"}, {60, "1 minute"}, {120, "2 minutes"}, {300, "5 minutes"},
-		{600, "10 minutes"}, {1800, "30 minutes"}, {3600, "1 hour"}}
+	offAfterChoices = waitChoices
 )
 
 // labelFor is the choice's label for a value, or the nearest choice's.
@@ -89,16 +88,20 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 	}
 	sel = firstRow(items, sel)
 	note := "Any button wakes a dark screen. A preset pressed while it is dark only wakes it."
-	// The band at the bottom shows the brightness, or the dim level while that is chosen.
-	meter := s.Brightness
-	if meter == 0 {
-		meter = backlight.percent()
-	}
-	if editing && items[sel].Label == "Dim to" {
+	// The band at the bottom shows the level of the Brightness or Dim to row while one of them
+	// is highlighted; the other rows are times, shown as words only.
+	meter := 0
+	switch items[sel].Label {
+	case "Brightness":
+		meter = s.Brightness
+		if meter == 0 {
+			meter = backlight.percent()
+		}
+	case "Dim to":
 		meter = s.DimTo
 	}
 	b.show(&btScreen{View: "screen", Note: note, Items: items, Sel: sel,
-		Editing: editing && items[sel].turn != nil, Meter: max(1, meter)})
+		Editing: editing && items[sel].turn != nil, Meter: meter})
 	if editing && items[sel].Label == "Dim to" {
 		backlight.showDim(s.DimTo)
 	} else {
