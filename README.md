@@ -108,6 +108,13 @@ The sync script links the plugin from the checkout, the same way it handles Tala
 
 ### Change the layout
 
+In Hermes Desktop the same settings are under **Settings → Plugins → Petasos**
+(`petasos/desktop/plugin.js`, which saves through the plugin's `/mapping` route). Desktop loads it
+from the plugin's folder when Hermes runs on the same computer; with a remote Hermes, copy
+`petasos/desktop/plugin.js` into `<Hermes home>/desktop-plugins/petasos/` on each computer (on a Mac
+`~/.hermes`, on Windows `%LOCALAPPDATA%\hermes`), press **Rescan** in Capabilities → Plugins and
+turn Petasos on. Repeat after an update that changes `plugin.js`.
+
 The easiest way is the **Petasos** tab in the Hermes dashboard: the agent's name, and for each preset button what it does when pressed, what it asks and its label on the screen, with a preview of the top of the Car Thing's screen. It saves to the same file described below, with the same checks, and the Car Thing picks the change up on its next button press.
 
 The first button press creates `petasos/mapping.json` in the Hermes folder, holding the layout above. Edit it and the change applies on the next press; no restart needed. A file with a mistake is reported by `/petasos` and the last good layout stays in use. `/petasos` in any chat shows the current layout.
