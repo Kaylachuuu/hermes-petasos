@@ -17,12 +17,15 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
           font-family: var(--body); color: var(--bronze); }
 [hidden] { display: none !important; }
 
+/* Four equal columns, one under each preset button; a long label wraps to a second line. */
 .topbar { position: absolute; left: 0; right: 0; top: 0; height: 10cqw; display: grid;
-          grid-template-columns: repeat(4, 1fr) 1.3fr; align-items: center; }
-.topbar > span { text-align: center; font-size: 2.3cqw; letter-spacing: .06em; padding: 0 .8cqw;
-                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          grid-template-columns: repeat(4, 1fr); align-items: center; }
+.topbar > span { text-align: center; font-size: 2.3cqw; line-height: 1.15; letter-spacing: .06em; padding: 0 1.5cqw;
+                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+                 overflow-wrap: anywhere; text-wrap: balance; }
 .topbar > span.off { color: #5a4f42; }
-.links { display: flex; justify-content: center; align-items: center; gap: 1.6cqw; }
+/* The link icons sit in the bottom-right corner, just above the lower meander. */
+.links { position: absolute; right: 3cqw; top: 47.6cqw; display: flex; align-items: center; gap: 1.6cqw; }
 .links svg { width: 2.8cqw; height: 2.8cqw; color: var(--dust); }
 .links svg.lost { color: var(--alarm); }
 .band { position: absolute; left: 0; right: 0; height: 7.5cqw; display: block; }
@@ -40,7 +43,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 @keyframes breathe { 50% { opacity: .55 } }
 .heard { font-size: 2.6cqw; color: var(--dust); font-style: italic; max-width: 76cqw;
          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.speaking { position: absolute; left: 8cqw; right: 8cqw; top: 20.5cqw; height: 29cqw; overflow: hidden; }
+.speaking { position: absolute; left: 8cqw; right: 8cqw; top: 20.5cqw; height: 26.5cqw; overflow: hidden; }
 .speaking b { display: block; color: var(--ember); font-weight: 400; font-family: var(--display); font-size: 2.2cqw;
               letter-spacing: .45em; margin-bottom: 1cqw; }
 .reply { font-family: var(--display); font-size: 3.4cqw; line-height: 1.4; }
@@ -123,13 +126,13 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 <div class="screen">
   <div class="topbar">
     <span id="p0" class="off">—</span><span id="p1" class="off">—</span><span id="p2" class="off">—</span><span id="p3" class="off">—</span>
+  </div>
+
+  <div id="home">
     <div class="links">
       <svg id="l-phone"><use href="#i-phone"/></svg><svg id="l-home"><use href="#i-home"/></svg>
       <svg id="l-speaker"><use href="#i-speaker"/></svg><svg id="l-mic"><use href="#i-mic"/></svg>
     </div>
-  </div>
-
-  <div id="home">
     <svg class="band top" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
       <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
       <g class="lit" id="vol" opacity="0">

@@ -45,7 +45,7 @@ DEFAULT_MAPPING: dict = {
 }
 
 
-LABEL_MAX = 20
+LABEL_MAX = 32  # two lines on the screen
 
 
 def preset_labels(mapping: dict) -> list[str]:

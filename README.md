@@ -116,7 +116,7 @@ Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures:
 "preset-3": { "press": { "action": "prompt", "text": "What's the weather today?", "label": "Weather" } }
 ```
 
-`label` is the name the Car Thing's screen shows under the button (up to 20 characters). Without one, the screen shows the start of the prompt.
+`label` is the name the Car Thing's screen shows under the button (up to 32 characters, on two lines when it needs them). Without one, the screen shows the start of the prompt.
 
 ### Routes (behind the dashboard login)
 

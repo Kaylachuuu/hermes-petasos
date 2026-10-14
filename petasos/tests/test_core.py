@@ -180,11 +180,11 @@ def test_screen_gets_preset_labels_on_hello_and_when_they_change(setup):
     mapping["controls"]["preset-1"]["press"].pop("label")
     petasos.mapping.replace(mapping)
     assert petasos.handle(ev("knob", "press")) == [
-        {"do": "screen", "presets": ["What's next on my…", "Last message", "What's the weather…", ""]},
+        {"do": "screen", "presets": ["What's next on my calendar", "Last message", "What's the weather tomorrow in…", ""]},
         {"do": "stop_speaking"}]
 
 
 def test_labels_must_be_short(setup):
     mapping = copy.deepcopy(core.DEFAULT_MAPPING)
-    mapping["controls"]["preset-1"]["press"]["label"] = "x" * 21
+    mapping["controls"]["preset-1"]["press"]["label"] = "x" * 33
     assert any("label" in p for p in core.validate(mapping))
