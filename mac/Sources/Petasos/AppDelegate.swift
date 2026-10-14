@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     private func buildWindow() {
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = true
+        config.mediaTypesRequiringUserActionForPlayback = [] // the page records and plays without a click first
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 544), configuration: config)
         webView.setValue(false, forKey: "drawsBackground") // the page paints its own night colour
         webView.uiDelegate = self
@@ -108,6 +109,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         panel.beginSheetModal(for: window) { response in
             completionHandler(response == .OK ? panel.urls : nil)
         }
+    }
+
+    // The screen page records from the microphone itself, as the Hermes desktop app does
+    // (client/pagemic.go). Allow it for the petasos program's own pages only; macOS still asks
+    // the first time on Petasos's behalf.
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(origin.host == "127.0.0.1" && type == .microphone ? .grant : .deny)
     }
 
     @objc private func showLog() {

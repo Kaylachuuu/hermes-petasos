@@ -115,11 +115,51 @@ func (v *voice) carryOut(c map[string]any) {
 // --- recording ---------------------------------------------------------------------------------
 
 type recording struct {
+	src  micSource
+	mu   sync.Mutex
+	pcm  bytes.Buffer
+	done chan struct{}
+}
+
+// micSource is where a recording's audio comes from: a recorder program (arecord on the Car
+// Thing, the app's helper on Windows) or, in the Mac app, its own window (pagemic.go). Either
+// gives 32-bit little-endian mono samples at sampleRate.
+type micSource interface {
+	stop()           // asks it to stop, letting it close the microphone properly
+	kill()           // stops it now
+	wait() error     // waits for it to have stopped
+	problem() string // what it said went wrong, if anything
+}
+
+// cmdSource is a recorder program.
+type cmdSource struct {
 	cmd    *exec.Cmd
 	stderr *bytes.Buffer
-	mu     sync.Mutex
-	pcm    bytes.Buffer
-	done   chan struct{}
+}
+
+func (c cmdSource) stop()       { stopRecorder(c.cmd) }
+func (c cmdSource) kill()       { _ = c.cmd.Process.Kill() }
+func (c cmdSource) wait() error { return c.cmd.Wait() }
+func (c cmdSource) problem() string {
+	return strings.TrimSpace(c.stderr.String())
+}
+
+// openMic starts the microphone.
+func (v *voice) openMic() (micSource, io.Reader, error) {
+	if pageMicOn() {
+		return pageMic.open()
+	}
+	cmd := v.recordCommand()
+	out, err := cmd.StdoutPipe()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return cmdSource{cmd: cmd, stderr: &stderr}, out, nil
 }
 
 func (v *voice) listen(mode string, endMs, idleS int) {
@@ -137,20 +177,14 @@ func (v *voice) listen(mode string, endMs, idleS int) {
 
 func (v *voice) startRecording() {
 	display.setPhase("ready")
-	cmd := v.recordCommand()
-	out, err := cmd.StdoutPipe()
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err == nil {
-		err = cmd.Start()
-	}
+	src, out, err := v.openMic()
 	if err != nil {
 		log.Printf("can't record from %s: %v", v.mic, err)
 		display.setPhase("idle")
 		display.notice("The microphone isn't working.")
 		return
 	}
-	rec := &recording{cmd: cmd, stderr: &stderr, done: make(chan struct{})}
+	rec := &recording{src: src, done: make(chan struct{})}
 	v.mu.Lock()
 	v.rec = rec
 	mode := v.mode
@@ -166,7 +200,7 @@ func (v *voice) startRecording() {
 			v.mu.Unlock()
 			if current {
 				log.Printf("the microphone gave no audio in %v; stopping it", micTimeout)
-				_ = rec.cmd.Process.Kill()
+				rec.src.kill()
 			}
 		}
 	}()
@@ -250,9 +284,8 @@ func (v *voice) micFailed(rec *recording) {
 	if !current {
 		return
 	}
-	_ = rec.cmd.Wait()
-	log.Printf("the microphone stopped before recording anything: %s",
-		truncate(strings.TrimSpace(rec.stderr.String()), 300))
+	_ = rec.src.wait()
+	log.Printf("the microphone stopped before recording anything: %s", truncate(rec.src.problem(), 300))
 	display.setPhase("idle")
 	display.notice("The microphone isn't working.")
 }
@@ -267,8 +300,8 @@ func (v *voice) finish(send bool) {
 	if rec == nil {
 		return
 	}
-	stopRecorder(rec.cmd)
-	_ = rec.cmd.Wait()
+	rec.src.stop()
+	_ = rec.src.wait()
 	<-rec.done
 	rec.mu.Lock()
 	pcm := append([]byte(nil), rec.pcm.Bytes()...)
@@ -278,7 +311,7 @@ func (v *voice) finish(send bool) {
 	}
 	if len(pcm) < sampleRate*2/4 { // under a quarter second: a slip of the finger
 		log.Printf("recording too short (%d ms); not sent", len(pcm)*1000/(sampleRate*2))
-		if msg := strings.TrimSpace(rec.stderr.String()); msg != "" {
+		if msg := rec.src.problem(); msg != "" {
 			log.Printf("the microphone (%s) said: %s", v.mic, truncate(msg, 300))
 		}
 		v.idleOrRelisten(gen)
@@ -295,8 +328,8 @@ func (v *voice) endConversation() {
 	v.mode = ""
 	v.mu.Unlock()
 	if rec != nil {
-		stopRecorder(rec.cmd)
-		_ = rec.cmd.Wait()
+		rec.src.stop()
+		_ = rec.src.wait()
 	}
 	log.Printf("conversation ended (quiet)")
 	display.setPhase("idle")

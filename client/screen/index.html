@@ -379,6 +379,85 @@ function draw(s) {
   else drawHome(s);
   drawVolume(s);
   drawMic(s);
+  drawCapture(s);
+}
+
+// --- the Mac app's microphone ------------------------------------------------------------------
+
+// In the Mac app this page records, as the Hermes desktop app does (pagemic.go): while the
+// state has the microphone open it captures it and posts the audio to /mic, one piece at a
+// time, until petasos says that recording is over.
+let capture = null;
+
+function drawCapture(s) {
+  if (!s.page_mic) return;
+  if (s.mic_open && (!capture || capture.id !== s.mic_id)) {
+    if (capture) capture.stop();
+    capture = startCapture(s.mic_id, s.mic_name || "");
+  } else if (!s.mic_open && capture) {
+    capture.stop();
+    capture = null;
+  }
+}
+
+function startCapture(id, wanted) {
+  const run = { id, stopped: false, queue: [], sending: false, rate: 0, cleanup: null };
+  run.stop = () => { run.stopped = true; if (run.cleanup) run.cleanup(); };
+  const fail = (err) => {
+    if (run.stopped) return;
+    run.stop();
+    const why = `${err && err.name || "Error"}: ${err && err.message || err}`;
+    fetch(`/mic?id=${id}&error=${encodeURIComponent(why)}`, { method: "POST" }).catch(() => {});
+  };
+  (async () => {
+    const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    if (wanted) {
+      const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+      const device = devices.find((d) => d.kind === "audioinput" && d.label === wanted);
+      if (device) audio.deviceId = { exact: device.deviceId };
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio });
+    if (run.stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const tap = ctx.createScriptProcessor(2048, 1, 1);
+    const hush = ctx.createGain();
+    hush.gain.value = 0; // the tap only runs while connected to the speakers, so connect it silently
+    source.connect(tap); tap.connect(hush); hush.connect(ctx.destination);
+    run.rate = ctx.sampleRate;
+    run.cleanup = () => {
+      tap.onaudioprocess = null;
+      source.disconnect(); tap.disconnect(); hush.disconnect();
+      stream.getTracks().forEach((t) => t.stop());
+      ctx.close().catch(() => {});
+    };
+    tap.onaudioprocess = (e) => {
+      if (run.stopped) return;
+      const f = e.inputBuffer.getChannelData(0);
+      const pcm = new Int16Array(f.length);
+      for (let i = 0; i < f.length; i++) pcm[i] = Math.max(-1, Math.min(1, f[i])) * 32767;
+      run.queue.push(pcm);
+      sendCapture(run);
+    };
+    if (ctx.state === "suspended") await ctx.resume();
+  })().catch(fail);
+  return run;
+}
+
+async function sendCapture(run) {
+  if (run.sending) return;
+  run.sending = true;
+  while (run.queue.length && !run.stopped) {
+    const parts = run.queue.splice(0);
+    const joined = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { joined.set(p, at); at += p.length; }
+    try {
+      const res = await fetch(`/mic?id=${run.id}&rate=${run.rate}`, { method: "POST", body: joined.buffer });
+      if (res.status === 410) run.stop(); // that recording is over
+    } catch (_) {}
+  }
+  run.sending = false;
 }
 
 // While listening, the bottom band lights to the microphone's level, as the top one does to

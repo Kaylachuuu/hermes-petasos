@@ -246,6 +246,8 @@ The Car Thing's screen shows what's going on: the preset labels under their butt
 same way the Car Thing does, without the Hermes desktop app. It runs the petasos program (built
 for macOS into `client/dist`) in the background, in a mode with no device behind it: buttons
 under the screen stand in for the hardware, and the Mac's microphone and speakers do the audio.
+The window records the microphone itself, the way the Hermes desktop app does
+(`client/pagemic.go`), which copes with AirPods switching into call mode as recording starts.
 
 ### Build it
 

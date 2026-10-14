@@ -78,6 +78,7 @@ func macVolume(delta int) {
 func (h *hermes) startVirtual(raw chan<- map[string]any) {
 	display.update(func(st *screenState) {
 		st.Virtual = true
+		st.PageMic = pageMicOn()
 		// No phone or speaker to watch: Phone stands for whether the Mac is online, and the
 		// Mac has its own speakers.
 		st.Links = links{Phone: true, Speaker: true, PhonePaired: true, SpeakerKnown: true, Checked: true}

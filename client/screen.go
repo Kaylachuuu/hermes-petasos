@@ -37,8 +37,12 @@ type screenState struct {
 	Presets  []string  `json:"presets"`
 	Agent    string    `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
 	Links    links     `json:"links"`
-	BT       *btScreen `json:"bt,omitempty"`      // the Bluetooth screens, when open
-	Virtual  bool      `json:"virtual,omitempty"` // the virtual Petasos on a Mac: the page draws its own controls
+	BT       *btScreen `json:"bt,omitempty"`       // the Bluetooth screens, when open
+	Virtual  bool      `json:"virtual,omitempty"`  // the virtual Petasos on a Mac: the page draws its own controls
+	PageMic  bool      `json:"page_mic,omitempty"` // the page itself records (pagemic.go)
+	MicOpen  bool      `json:"mic_open,omitempty"` // ...and should be recording now
+	MicID    int       `json:"mic_id,omitempty"`   // which recording, for its posts to /mic
+	MicName  string    `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
 }
 
 type links struct {
@@ -139,6 +143,7 @@ func (s *screen) serve() {
 	})
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/input", s.pagePress)
+	mux.HandleFunc("/mic", pagePost)
 	mux.HandleFunc("/app/settings", appSettings)
 	mux.HandleFunc("/app/signin", appSignIn)
 	l, err := net.Listen("tcp", screenAddr)
