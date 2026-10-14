@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"testing"
@@ -62,5 +63,31 @@ func TestTo16(t *testing.T) {
 	to16(wide, out)
 	if binary.LittleEndian.Uint16(out) != 0x1234 || int16(binary.LittleEndian.Uint16(out[2:])) != -1 {
 		t.Fatalf("got % x", out)
+	}
+}
+
+func TestToSpeakerFormat(t *testing.T) {
+	// One second of 24 kHz mono at a constant level becomes one second of 48 kHz stereo.
+	pcm := make([]byte, 24000*2)
+	for i := 0; i < 24000; i++ {
+		binary.LittleEndian.PutUint16(pcm[2*i:], uint16(int16(1000)))
+	}
+	out, err := toSpeakerFormat(wavFile(pcm, 24000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, rate, bits, data, err := parseWav(out)
+	if err != nil || ch != 2 || rate != 48000 || bits != 16 || len(data) != 48000*4 {
+		t.Fatalf("got ch=%d rate=%d bits=%d len=%d err=%v", ch, rate, bits, len(data), err)
+	}
+	if v := int16(binary.LittleEndian.Uint16(data[4*1000+2:])); v != 1000 {
+		t.Fatalf("sample changed: %d", v)
+	}
+	if _, err := toSpeakerFormat([]byte("ID3 not a wav")); err == nil {
+		t.Fatal("accepted an MP3")
+	}
+	same := wavFileWith(make([]byte, 16), 48000, 2)
+	if got, _ := toSpeakerFormat(same); !bytes.Equal(got, same) {
+		t.Fatal("re-encoded audio that was already right")
 	}
 }

@@ -284,6 +284,15 @@ func (v *voice) current(gen int) bool {
 
 // play blocks until the reply has played or was stopped.
 func (v *voice) play(wav []byte) {
+	// BlueALSA can't resample: the Bluetooth link runs at the codec's own rate (48 kHz stereo
+	// for SBC on most speakers), and asking for anything else fails. Text-to-speech comes at
+	// 24 kHz mono, so convert first.
+	if converted, err := toSpeakerFormat(wav); err != nil {
+		log.Printf("can't read the spoken reply: %v", err)
+		return
+	} else {
+		wav = converted
+	}
 	cmd := exec.Command("aplay", "-q", "-D", v.speaker, "-")
 	cmd.Stdin = bytes.NewReader(wav)
 	var stderr bytes.Buffer
@@ -405,13 +414,15 @@ func rms(frame []byte) float64 {
 
 // --- helpers -----------------------------------------------------------------------------------
 
-func wavFile(pcm []byte, rate int) []byte {
+func wavFile(pcm []byte, rate int) []byte { return wavFileWith(pcm, rate, 1) }
+
+func wavFileWith(pcm []byte, rate, channels int) []byte {
 	var b bytes.Buffer
 	b.WriteString("RIFF")
 	_ = binary.Write(&b, binary.LittleEndian, uint32(36+len(pcm)))
 	b.WriteString("WAVEfmt ")
-	for _, field := range []any{uint32(16), uint16(1), uint16(1), uint32(rate), uint32(rate * 2),
-		uint16(2), uint16(16)} { // PCM, mono, rate, bytes per second, block size, bits
+	for _, field := range []any{uint32(16), uint16(1), uint16(channels), uint32(rate),
+		uint32(rate * 2 * channels), uint16(2 * channels), uint16(16)} { // PCM, channels, rate, bytes/s, block, bits
 		_ = binary.Write(&b, binary.LittleEndian, field)
 	}
 	b.WriteString("data")
@@ -426,6 +437,80 @@ func to16(wide, out []byte) {
 	for i := 0; i+1 < len(out); i += 2 {
 		out[i], out[i+1] = wide[2*i+2], wide[2*i+3]
 	}
+}
+
+const (
+	speakerRate     = 48000
+	speakerChannels = 2
+)
+
+// toSpeakerFormat turns a 16-bit PCM WAV of any rate and channel count into 48 kHz stereo,
+// mixing channels down and resampling by linear interpolation (plenty for speech).
+func toSpeakerFormat(wav []byte) ([]byte, error) {
+	channels, rate, bits, pcm, err := parseWav(wav)
+	if err != nil {
+		return nil, err
+	}
+	if bits != 16 {
+		return nil, fmt.Errorf("%d-bit audio; expected 16-bit", bits)
+	}
+	if rate == speakerRate && channels == speakerChannels {
+		return wav, nil
+	}
+	frames := len(pcm) / (2 * channels)
+	mono := make([]float64, frames)
+	for i := 0; i < frames; i++ {
+		var sum float64
+		for c := 0; c < channels; c++ {
+			sum += float64(int16(binary.LittleEndian.Uint16(pcm[2*(i*channels+c):])))
+		}
+		mono[i] = sum / float64(channels)
+	}
+	outFrames := int(int64(frames) * speakerRate / int64(rate))
+	out := make([]byte, outFrames*2*speakerChannels)
+	for j := 0; j < outFrames; j++ {
+		pos := float64(j) * float64(rate) / speakerRate
+		i := int(pos)
+		sample := mono[min(i, frames-1)]
+		if i+1 < frames {
+			sample += (mono[i+1] - sample) * (pos - float64(i))
+		}
+		value := uint16(int16(math.Max(-32768, math.Min(32767, math.Round(sample)))))
+		for c := 0; c < speakerChannels; c++ {
+			binary.LittleEndian.PutUint16(out[2*(j*speakerChannels+c):], value)
+		}
+	}
+	return wavFileWith(out, speakerRate, speakerChannels), nil
+}
+
+// parseWav finds the format and the samples in a WAV file, skipping any other chunks.
+func parseWav(wav []byte) (channels, rate, bits int, pcm []byte, err error) {
+	if len(wav) < 12 || string(wav[0:4]) != "RIFF" || string(wav[8:12]) != "WAVE" {
+		return 0, 0, 0, nil, fmt.Errorf("not a WAV file")
+	}
+	for p := 12; p+8 <= len(wav); {
+		id, size := string(wav[p:p+4]), int(binary.LittleEndian.Uint32(wav[p+4:]))
+		body := wav[p+8:]
+		if size > len(body) || size < 0 {
+			size = len(body) // streamed WAVs leave the data size unset
+		}
+		switch id {
+		case "fmt ":
+			if size < 16 || binary.LittleEndian.Uint16(body) != 1 {
+				return 0, 0, 0, nil, fmt.Errorf("not plain PCM")
+			}
+			channels = int(binary.LittleEndian.Uint16(body[2:]))
+			rate = int(binary.LittleEndian.Uint32(body[4:]))
+			bits = int(binary.LittleEndian.Uint16(body[14:]))
+		case "data":
+			if channels == 0 || rate == 0 {
+				return 0, 0, 0, nil, fmt.Errorf("no format before the samples")
+			}
+			return channels, rate, bits, body[:size], nil
+		}
+		p += 8 + size + size%2
+	}
+	return 0, 0, 0, nil, fmt.Errorf("no samples")
 }
 
 func intOf(v any, fallback int) int {
