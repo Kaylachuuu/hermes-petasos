@@ -24,8 +24,9 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
                  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
                  overflow-wrap: anywhere; text-wrap: balance; }
 .topbar > span.off { color: #5a4f42; }
-/* The link icons sit in the bottom-right corner, just above the lower meander. */
-.links { position: absolute; right: 3cqw; top: 47.6cqw; display: flex; align-items: center; gap: 1.6cqw; }
+/* The link icons stand in a column at the left edge, centred between the two meanders. */
+.links { position: absolute; left: 2cqw; top: 18.5cqw; height: 33cqw; display: flex; flex-direction: column;
+         justify-content: center; align-items: center; gap: 2cqw; }
 .links svg { width: 2.8cqw; height: 2.8cqw; color: var(--dust); }
 .links svg.lost { color: var(--alarm); }
 .band { position: absolute; left: 0; right: 0; height: 7.5cqw; display: block; }
@@ -43,12 +44,12 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 @keyframes breathe { 50% { opacity: .55 } }
 .heard { font-size: 2.6cqw; color: var(--dust); font-style: italic; max-width: 76cqw;
          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.speaking { position: absolute; left: 8cqw; right: 8cqw; top: 20.5cqw; height: 26.5cqw; overflow: hidden; }
+.speaking { position: absolute; left: 9cqw; right: 8cqw; top: 20.5cqw; height: 29cqw; overflow: hidden; }
 .speaking b { display: block; color: var(--ember); font-weight: 400; font-family: var(--display); font-size: 2.2cqw;
               letter-spacing: .45em; margin-bottom: 1cqw; }
 .reply { font-family: var(--display); font-size: 3.4cqw; line-height: 1.4; }
 .reply.long { font-size: 3cqw; }
-.emblem { position: absolute; left: 2.5cqw; width: 16cqw; }
+.emblem { position: absolute; left: 6cqw; top: 32.25cqw; width: 16cqw; }
 
 /* Bluetooth screens */
 .bt { position: absolute; left: 0; right: 0; top: 10cqw; bottom: 8cqw; border-top: .2cqw solid var(--bronze);
@@ -244,19 +245,6 @@ function drawHome(s) {
 // The emblem is an <svg>, which has no hidden property; the attribute works.
 function showEmblem(on) {
   $("warn").toggleAttribute("hidden", !on);
-  if (on) placeEmblem();
-}
-
-// The emblem's bottom line sits on the warning's baseline, wherever the text wraps to.
-function placeEmblem() {
-  const hint = $("hint"), mark = document.createElement("span");
-  mark.style.cssText = "display:inline-block;width:0;height:0";
-  hint.appendChild(mark);
-  const screen = document.querySelector(".screen").getBoundingClientRect();
-  const baseline = mark.getBoundingClientRect().bottom - screen.top;
-  mark.remove();
-  const em = $("warn"), h = em.getBoundingClientRect().height || screen.width * 0.16 * 190 / 200;
-  em.style.top = (baseline - h * 174.5 / 190) + "px";
 }
 
 // A long reply scrolls up through the panel over the time it takes to play.
