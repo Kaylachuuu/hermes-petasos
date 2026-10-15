@@ -101,7 +101,7 @@ The first version won't support interrupting by voice, because the mic would hea
 On Athenaeum, with the sync script (until this is merged, pass the branch):
 
 ```sh
-sync-plugin petasos --branch claude/project-thread-48e57q --restart
+sync-plugin petasos --restart
 ```
 
 The sync script links the plugin from the checkout, the same way it handles Talaria. Then turn it on with `hermes plugins enable petasos` (or add `petasos` under `plugins: enabled:` in `config.yaml`) and restart Hermes.
