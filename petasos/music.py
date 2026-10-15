@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -343,6 +344,240 @@ class Folders:
         return "", []
 
 
+class SoundCloud:
+    """SoundCloud's public tracks, through an app registered at soundcloud.com/you/apps.
+
+    The app's client credentials get a token (kept in ``soundcloud-token.json`` and renewed
+    with its refresh token, since SoundCloud allows only a few new tokens a day); searches and
+    streams use it. Streams come as HLS AAC, which ffmpeg turns into MP3 for the device."""
+
+    API = "https://api.soundcloud.com"
+    TOKEN_URL = "https://secure.soundcloud.com/oauth/token"
+    _lock = threading.Lock()
+
+    def __init__(self, cfg: dict) -> None:
+        self.client_id = str(cfg.get("client_id") or "")
+        self.client_secret = str(cfg.get("client_secret") or "")
+        if not (self.client_id and self.client_secret):
+            raise MusicError("music.json's soundcloud needs client_id and client_secret")
+
+    @staticmethod
+    def _token_path() -> Path:
+        return petasos_dir() / "soundcloud-token.json"
+
+    def _key(self) -> str:  # which app a saved token belongs to: a changed ID or secret starts over
+        return hashlib.sha256(f"{self.client_id}:{self.client_secret}".encode()).hexdigest()[:16]
+
+    def _grant(self, form: dict) -> dict:
+        import base64
+        basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+        req = urllib.request.Request(self.TOKEN_URL, data=urllib.parse.urlencode(form).encode(), method="POST",
+                                     headers={"Authorization": "Basic " + basic, "Accept": "application/json",
+                                              "Content-Type": "application/x-www-form-urlencoded"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            raise MusicError(f"SoundCloud refused the app's sign-in (HTTP {exc.code}); check the client ID and secret") from None
+        except (OSError, ValueError) as exc:
+            raise MusicError(f"SoundCloud didn't answer: {exc}") from None
+
+    # --- your account: a one-time sign-in (OAuth 2.1 with PKCE) from the Petasos app -------------
+
+    AUTHORIZE_URL = "https://secure.soundcloud.com/authorize"
+
+    @staticmethod
+    def _account_path() -> Path:
+        return petasos_dir() / "soundcloud-account.json"
+
+    def account(self) -> dict:
+        saved = _read_json(self._account_path(), {})
+        return saved if saved.get("app") == self._key() and saved.get("refresh_token") else {}
+
+    def authorize_url(self, redirect_uri: str) -> str:
+        """Where to send the browser to sign in; the PKCE verifier stays here, by state."""
+        import base64
+        verifier = secrets.token_urlsafe(48)
+        state = secrets.token_urlsafe(16)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+        pending = {k: v for k, v in _read_json(petasos_dir() / "soundcloud-pending.json", {}).items()
+                   if time.time() - float(v.get("at") or 0) < 600}
+        pending[state] = {"verifier": verifier, "redirect_uri": redirect_uri, "at": time.time()}
+        _write_json(petasos_dir() / "soundcloud-pending.json", pending)
+        return self.AUTHORIZE_URL + "?" + urllib.parse.urlencode({
+            "client_id": self.client_id, "redirect_uri": redirect_uri, "response_type": "code",
+            "code_challenge": challenge, "code_challenge_method": "S256", "state": state})
+
+    def connect(self, code: str, state: str) -> str:
+        """Finishes the sign-in: the code becomes your tokens. Returns your SoundCloud name."""
+        pending = _read_json(petasos_dir() / "soundcloud-pending.json", {})
+        ask = pending.pop(state, None)
+        _write_json(petasos_dir() / "soundcloud-pending.json", pending)
+        if not ask or time.time() - float(ask.get("at") or 0) > 600:
+            raise MusicError("That sign-in took too long or didn't start here; try again")
+        got = self._grant({"grant_type": "authorization_code", "code": code, "redirect_uri": ask["redirect_uri"],
+                           "code_verifier": ask["verifier"]})
+        if not got.get("refresh_token"):
+            raise MusicError("SoundCloud didn't give a lasting sign-in")
+        account = {"app": self._key(), "access_token": got["access_token"], "refresh_token": got["refresh_token"],
+                   "expires_at": time.time() + float(got.get("expires_in") or 3600)}
+        _write_json(self._account_path(), account)
+        os.chmod(self._account_path(), 0o600)
+        me = self.call("/me")
+        account["username"] = me.get("username") or me.get("permalink") or ""
+        _write_json(self._account_path(), account)
+        return account["username"]
+
+    def disconnect(self) -> None:
+        try:
+            self._account_path().unlink()
+        except FileNotFoundError:
+            pass
+
+    def _account_token(self) -> str | None:
+        account = self.account()
+        if not account:
+            return None
+        if time.time() < float(account.get("expires_at") or 0) - 60:
+            return account["access_token"]
+        # Refresh tokens are single-use: the new one is saved before anything else.
+        got = self._grant({"grant_type": "refresh_token", "refresh_token": account["refresh_token"]})
+        account.update(access_token=got["access_token"], refresh_token=got.get("refresh_token") or account["refresh_token"],
+                       expires_at=time.time() + float(got.get("expires_in") or 3600))
+        _write_json(self._account_path(), account)
+        return account["access_token"]
+
+    def token(self) -> str:
+        """Your account's token when you've signed in, otherwise the app's own."""
+        with SoundCloud._lock:
+            try:
+                mine = self._account_token()
+            except MusicError:
+                mine = None  # a sign-in SoundCloud no longer takes: public tracks still play
+            if mine:
+                return mine
+            return self._app_token()
+
+    def _app_token(self) -> str:
+        saved = _read_json(self._token_path(), {})
+        if saved.get("app") == self._key() and saved.get("access_token") \
+                and time.time() < float(saved.get("expires_at") or 0) - 60:
+            return saved["access_token"]
+        got = None
+        if saved.get("app") == self._key() and saved.get("refresh_token"):
+            try:
+                got = self._grant({"grant_type": "refresh_token", "refresh_token": saved["refresh_token"]})
+            except MusicError:
+                got = None
+        if not got:
+            got = self._grant({"grant_type": "client_credentials"})
+        if not got.get("access_token"):
+            raise MusicError("SoundCloud gave no token")
+        _write_json(self._token_path(), {"app": self._key(), "access_token": got["access_token"],
+                                         "refresh_token": got.get("refresh_token") or saved.get("refresh_token"),
+                                         "expires_at": time.time() + float(got.get("expires_in") or 3600)})
+        os.chmod(self._token_path(), 0o600)
+        return got["access_token"]
+
+    def call(self, path: str, **params):
+        url = self.API + path + ("?" + urllib.parse.urlencode(params) if params else "")
+        req = urllib.request.Request(url, headers={"Authorization": "OAuth " + self.token(), "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:  # a token SoundCloud has dropped: get a new one next time
+                _write_json(self._token_path(), {})
+                account = self.account()
+                if account:
+                    account["expires_at"] = 0
+                    _write_json(self._account_path(), account)
+            raise MusicError(f"SoundCloud: HTTP {exc.code}") from None
+        except (OSError, ValueError) as exc:
+            raise MusicError(f"SoundCloud didn't answer: {exc}") from None
+
+    @staticmethod
+    def _items(answer) -> list:
+        return answer.get("collection", []) if isinstance(answer, dict) else (answer or [])
+
+    @staticmethod
+    def _song(t: dict) -> dict | None:
+        if t.get("access") == "blocked" or t.get("streamable") is False:
+            return None
+        return _track("soundcloud", str(t.get("urn") or t.get("id")), t.get("title"),
+                      (t.get("user") or {}).get("username", ""), "", int(t.get("duration") or 0) // 1000)
+
+    def _songs(self, items: list) -> list[dict]:
+        return [s for s in (self._song(t) for t in items if isinstance(t, dict)) if s]
+
+    def find(self, query: str, kind: str) -> tuple[str, list[dict]]:
+        signed_in = bool(self.account())
+        if kind == "likes" or (kind == "random" and signed_in):
+            if not signed_in:
+                raise MusicError("Your SoundCloud likes need you signed in to SoundCloud (the Petasos app's Settings → Music)")
+            songs = self._songs(self._items(self.call("/me/likes/tracks", limit=200, linked_partitioning="true", access="playable")))
+            return ("your SoundCloud likes", songs) if songs else ("", [])
+        if kind == "random" or not query.strip():
+            return "", []
+        if signed_in and kind in ("playlist", "any"):  # your own playlists, and ones you liked, first
+            mine = self._items(self.call("/me/playlists", limit=200, linked_partitioning="true", show_tracks="false"))
+            try:
+                mine += self._items(self.call("/me/likes/playlists", limit=200, linked_partitioning="true"))
+            except MusicError:
+                pass
+            match = _best(query, mine, lambda p: p.get("title", ""))
+            if match and (kind == "playlist" or _score(query, match.get("title", "")) >= 0.99):
+                songs = self._playlist(match)
+                if songs:
+                    return f"your SoundCloud playlist {match.get('title')}", songs
+        if kind in ("playlist", "any"):
+            lists = self._items(self.call("/playlists", q=query, limit=10, linked_partitioning="true", show_tracks="false"))
+            match = _best(query, lists, lambda p: p.get("title", ""))
+            if match and (kind == "playlist" or _score(query, match.get("title", "")) >= 0.99):
+                songs = self._playlist(match)
+                if songs:
+                    return f"the SoundCloud playlist {match.get('title')}", songs
+            if kind == "playlist":
+                return "", []
+        if kind == "artist":
+            users = self._items(self.call("/users", q=query, limit=5, linked_partitioning="true"))
+            user = _best(query, users, lambda u: u.get("username", ""))
+            if user:
+                ident = str(user.get("urn") or user.get("id"))
+                songs = self._songs(self._items(self.call(f"/users/{urllib.parse.quote(ident, safe=':')}/tracks",
+                                                          limit=50, linked_partitioning="true", access="playable")))
+                if songs:
+                    return f"{user.get('username')} on SoundCloud", songs
+            return "", []
+        songs = self._songs(self._items(self.call("/tracks", q=query, limit=50, linked_partitioning="true", access="playable")))
+        if not songs:
+            return "", []
+        if kind in ("song", "any"):
+            return f"{songs[0]['title']} by {songs[0]['artist']} on SoundCloud", songs[:1] if kind == "song" else songs[:20]
+        return f"SoundCloud tracks matching {query}", songs[:20]
+
+    def _playlist(self, playlist: dict) -> list[dict]:
+        ident = str(playlist.get("urn") or playlist.get("id"))
+        return self._songs(self._items(self.call(f"/playlists/{urllib.parse.quote(ident, safe=':')}/tracks",
+                                                 limit=200, linked_partitioning="true", access="playable")))
+
+    def stream(self, ident: str) -> Iterator[bytes]:
+        urls = self.call(f"/tracks/{urllib.parse.quote(ident, safe=':')}/streams")
+        hls = urls.get("hls_aac_160_url") or urls.get("hls_aac_96_url") or urls.get("hls_mp3_128_url")
+        ffmpeg = shutil.which("ffmpeg")
+        if hls and ffmpeg:
+            proc = subprocess.Popen([ffmpeg, "-v", "error", "-headers", f"Authorization: OAuth {self.token()}\r\n",
+                                     "-i", hls, "-vn", "-ac", "2", "-ar", "48000", "-b:a", f"{BIT_RATE}k",
+                                     "-f", "mp3", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            return _pieces(proc.stdout, proc)
+        if urls.get("http_mp3_128_url"):  # older, plain MP3; SoundCloud is retiring it
+            req = urllib.request.Request(urls["http_mp3_128_url"], headers={"Authorization": "OAuth " + self.token()})
+            return _pieces(urllib.request.urlopen(req, timeout=30))
+        if hls:
+            raise MusicError("SoundCloud streams need ffmpeg installed on Hermes")
+        raise MusicError("SoundCloud has no stream for this track")
+
+
 def sources() -> list:
     cfg = config()
     out: list = []
@@ -350,16 +585,23 @@ def sources() -> list:
         out.append(Navidrome(cfg["navidrome"]))
     if cfg.get("folders"):
         out.append(Folders(cfg["folders"]))
+    if cfg.get("soundcloud"):  # last: your own music first
+        out.append(SoundCloud(cfg["soundcloud"]))
     return out
+
+
+def _name(src) -> str:
+    return {Navidrome: "navidrome", Folders: "folders", SoundCloud: "soundcloud"}[type(src)]
 
 
 def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dict]]:
     """The first source that has something for the request."""
     found_any = False
     problems = []
+    if kind == "likes":
+        source = "soundcloud"
     for src in sources():
-        name = "navidrome" if isinstance(src, Navidrome) else "folders"
-        if source and source != name:
+        if source and source != _name(src):
             continue
         found_any = True
         try:
@@ -370,7 +612,7 @@ def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dic
         if tracks:
             return said, tracks
     if not found_any:
-        raise MusicError("No music library is set up yet: add Navidrome or folders to petasos/music.json on Hermes.")
+        raise MusicError(f"No music source {source + ' ' if source else ''}is set up yet: add Navidrome, folders or SoundCloud to petasos/music.json on Hermes.")
     if problems:
         raise MusicError(" ".join(problems))
     return "", []
@@ -382,11 +624,29 @@ def settings() -> dict:
     """music.json as the dashboard shows it: the Navidrome password is never sent back."""
     cfg = config()
     nav = cfg.get("navidrome") if isinstance(cfg.get("navidrome"), dict) else {}
+    sc = cfg.get("soundcloud") if isinstance(cfg.get("soundcloud"), dict) else {}
     return {"navidrome": {"url": nav.get("url", ""), "username": nav.get("username", ""),
                           "has_password": bool(nav.get("password"))},
             "folders": [f for f in cfg.get("folders") or [] if isinstance(f, str)],
+            "soundcloud": {"client_id": sc.get("client_id", ""), "has_secret": bool(sc.get("client_secret")),
+                           "account": _soundcloud_account(sc)},
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "path": str(petasos_dir() / "music.json")}
+
+
+def _soundcloud_account(sc: dict) -> str:
+    """Your SoundCloud name when you've signed in with this app, else empty."""
+    try:
+        return SoundCloud(sc).account().get("username", "") if sc.get("client_id") else ""
+    except MusicError:
+        return ""
+
+
+def soundcloud() -> "SoundCloud":
+    cfg = config()
+    if not cfg.get("soundcloud"):
+        raise MusicError("Save SoundCloud's client ID and secret first")
+    return SoundCloud(cfg["soundcloud"])
 
 
 def save_settings(body: dict) -> dict:
@@ -413,6 +673,16 @@ def save_settings(body: dict) -> dict:
                 raise MusicError(f"{f} isn't a full path (it starts with /)")
             folders.append(f)
     cfg["folders"] = folders
+    if isinstance(body.get("soundcloud"), dict):  # left out by older settings pages: keep what's saved
+        sc = body["soundcloud"]
+        client_id = str(sc.get("client_id") or "").strip()
+        secret = str(sc.get("client_secret") or "").strip() or (cfg.get("soundcloud") or {}).get("client_secret", "")
+        if client_id:
+            if not secret:
+                raise MusicError("SoundCloud needs the app's client secret too")
+            cfg["soundcloud"] = {"client_id": client_id, "client_secret": secret}
+        else:
+            cfg.pop("soundcloud", None)
     _write_json(petasos_dir() / "music.json", cfg)
     try:
         os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
@@ -424,7 +694,13 @@ def save_settings(body: dict) -> dict:
 def check() -> dict:
     """Whether each source works: Navidrome answers, and how many songs each folder has."""
     cfg = config()
-    out: dict = {"navidrome": None, "folders": []}
+    out: dict = {"navidrome": None, "folders": [], "soundcloud": None}
+    if cfg.get("soundcloud"):
+        try:
+            SoundCloud(cfg["soundcloud"]).token()
+            out["soundcloud"] = {"ok": True, "ffmpeg": shutil.which("ffmpeg") is not None}
+        except MusicError as exc:
+            out["soundcloud"] = {"ok": False, "problem": str(exc)}
     if cfg.get("navidrome"):
         try:
             Navidrome(cfg["navidrome"]).call("ping")
@@ -467,6 +743,10 @@ def stream(source: str, ident: str) -> Iterator[bytes]:
                                  "-b:a", f"{BIT_RATE}k", "-f", "mp3", "pipe:1"],
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         return _pieces(proc.stdout, proc)
+    if source == "soundcloud":
+        if not cfg.get("soundcloud"):
+            raise MusicError("SoundCloud isn't set up")
+        return SoundCloud(cfg["soundcloud"]).stream(ident)
     raise MusicError("unknown source")
 
 
@@ -488,13 +768,16 @@ def _pieces(f, proc=None) -> Iterator[bytes]:
 
 PLAY_MUSIC = {
     "name": "play_music",
-    "description": ("Play music from the user's own library (their Navidrome server and music folders) on a "
+    "description": ("Play music from the user's own library (their Navidrome server and music folders) or "
+                    "SoundCloud on a "
                     "Petasos device: the Car Thing in their car, which plays it through the car's speakers. "
                     "It plays after your reply. Say what you put on, in a few words."),
     "parameters": {"type": "object", "properties": {
         "query": {"type": "string", "description": "What to play: a song, album, artist or playlist name. Empty for a random mix."},
-        "kind": {"type": "string", "enum": ["any", "song", "album", "artist", "playlist", "random"],
-                 "description": "What the query names, if you know; 'any' to let the library decide"},
+        "kind": {"type": "string", "enum": ["any", "song", "album", "artist", "playlist", "random", "likes"],
+                 "description": "What the query names, if you know; 'any' to let the library decide. 'likes' plays their liked tracks on SoundCloud"},
+        "source": {"type": "string", "enum": ["navidrome", "folders", "soundcloud"],
+                   "description": "Only when the user names where to play from; otherwise their own library is tried first, then SoundCloud"},
         "shuffle": {"type": "boolean", "description": "Shuffle the songs"},
         "device": {"type": "string", "description": "Device id, only when the user names another device; normally left out"},
     }},
@@ -515,7 +798,7 @@ def play_music(args: dict | None = None, session_id: str | None = None, **_) -> 
     query = str(args.get("query") or "").strip()
     kind = args.get("kind") if args.get("kind") in PLAY_MUSIC["parameters"]["properties"]["kind"]["enum"] else "any"
     try:
-        said, tracks = find(query, kind)
+        said, tracks = find(query, kind, args.get("source") if args.get("source") in ("navidrome", "folders", "soundcloud") else "")
     except MusicError as exc:
         return json.dumps({"error": str(exc)})
     if not tracks:

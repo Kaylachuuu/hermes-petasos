@@ -114,6 +114,9 @@
           : null));
   }
 
+  // Keeps the browser and password managers from filling these with a saved sign-in, such as Hermes's.
+  const NO_AUTOFILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", spellCheck: false };
+
   // Music Athena can play: a Navidrome server and folders on this machine (music.json).
   function MusicCard() {
     const [loaded, setLoaded] = useState(null);
@@ -121,6 +124,8 @@
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [folders, setFolders] = useState("");
+    const [scId, setScId] = useState("");
+    const [scSecret, setScSecret] = useState("");
     const [busy, setBusy] = useState("");
     const [error, setError] = useState("");
     const [checked, setChecked] = useState(null);
@@ -131,6 +136,8 @@
       setUsername(data.navidrome.username);
       setPassword("");
       setFolders(data.folders.join("\n"));
+      setScId((data.soundcloud || {}).client_id || "");
+      setScSecret("");
     }
 
     useEffect(() => {
@@ -148,6 +155,7 @@
           body: JSON.stringify({
             navidrome: { url: url.trim(), username: username.trim(), password },
             folders: folders.split("\n").map((f) => f.trim()).filter(Boolean),
+            soundcloud: { client_id: scId.trim(), client_secret: scSecret },
           }),
         });
         const body = await res.json().catch(() => ({}));
@@ -168,24 +176,33 @@
       h(C.CardHeader, null, h(C.CardTitle, null, "Music")),
       h(C.CardContent, { className: "petasos-fields" },
         h("p", { className: "petasos-hint" },
-          "Music the agent can play on a Petasos device when asked (“play Rumours”), from Navidrome, folders on this machine, or both."),
-        h(Field, { id: "petasos-navidrome", label: "Navidrome address",
-          hint: "As this machine reaches it, like http://localhost:4533. Leave empty to not use Navidrome." },
-          h(C.Input, { id: "petasos-navidrome", value: url, placeholder: "http://localhost:4533", onChange: edited(setUrl) })),
-        url.trim()
-          ? h("div", { className: "petasos-pair" },
-              h(Field, { id: "petasos-nd-user", label: "Username" },
-                h(C.Input, { id: "petasos-nd-user", value: username, autoComplete: "off", onChange: edited(setUsername) })),
-              h(Field, { id: "petasos-nd-password", label: "Password",
-                hint: loaded.navidrome.has_password ? "Saved. Type a new one to change it." : null },
-                h(C.Input, { id: "petasos-nd-password", type: "password", value: password, autoComplete: "new-password",
-                  placeholder: loaded.navidrome.has_password ? "••••••••" : "", onChange: edited(setPassword) })))
-          : null,
+          "Music the agent can play on a Petasos device when asked (“play Rumours”)."),
+        h("h3", { className: "petasos-sub" }, "Navidrome"),
+        h("p", { className: "petasos-hint" }, "Your Navidrome server and your Navidrome account (not your Hermes sign-in). Leave the address empty to not use it."),
+        h(Field, { id: "petasos-navidrome", label: "Address", hint: "As this machine reaches it, like http://localhost:4533." },
+          h(C.Input, Object.assign({ id: "petasos-navidrome", name: "navidrome-url", value: url, placeholder: "http://localhost:4533", onChange: edited(setUrl) }, NO_AUTOFILL))),
+        h("div", { className: "petasos-pair" },
+          h(Field, { id: "petasos-nd-user", label: "Username" },
+            h(C.Input, Object.assign({ id: "petasos-nd-user", name: "navidrome-user", value: username, onChange: edited(setUsername) }, NO_AUTOFILL))),
+          h(Field, { id: "petasos-nd-password", label: "Password",
+            hint: loaded.navidrome.has_password ? "Saved. Type a new one to change it." : null },
+            h(C.Input, Object.assign({}, NO_AUTOFILL, { id: "petasos-nd-password", name: "navidrome-password", type: "password", value: password, autoComplete: "new-password",
+              placeholder: loaded.navidrome.has_password ? "••••••••" : "", onChange: edited(setPassword) })))),
+        h("h3", { className: "petasos-sub" }, "Folders"),
         h(Field, { id: "petasos-folders", label: "Music folders",
           hint: "One per line, as full paths on this machine. A network share works once it is mounted here (in /etc/fstab, so it comes back after a restart)." +
             (loaded.ffmpeg ? "" : " Only MP3 files play until ffmpeg is installed.") },
           h("textarea", { id: "petasos-folders", className: "petasos-textarea", rows: 3, value: folders,
             placeholder: "/srv/music\n/mnt/nas/music", spellCheck: false, onChange: edited(setFolders) })),
+        h("h3", { className: "petasos-sub" }, "SoundCloud"),
+        h("p", { className: "petasos-hint" }, "Public SoundCloud tracks, through an app you register at soundcloud.com/you/apps. Played after your own music; needs ffmpeg. Leave the client ID empty to not use it."),
+        h("div", { className: "petasos-pair" },
+          h(Field, { id: "petasos-sc-id", label: "Client ID" },
+            h(C.Input, Object.assign({ id: "petasos-sc-id", name: "soundcloud-id", value: scId, onChange: edited(setScId) }, NO_AUTOFILL))),
+          h(Field, { id: "petasos-sc-secret", label: "Client secret",
+            hint: (loaded.soundcloud || {}).has_secret ? "Saved. Type a new one to change it." : null },
+            h(C.Input, Object.assign({}, NO_AUTOFILL, { id: "petasos-sc-secret", name: "soundcloud-secret", type: "password", value: scSecret, autoComplete: "new-password",
+              placeholder: (loaded.soundcloud || {}).has_secret ? "••••••••" : "", onChange: edited(setScSecret) })))),
         h("div", { className: "petasos-actions" },
           h(C.Button, { onClick: saveAndCheck, disabled: !!busy }, busy || "Save and check"),
           error ? h("p", { className: "petasos-error" }, error) : null),
@@ -194,6 +211,12 @@
               checked.navidrome
                 ? h("li", { className: checked.navidrome.ok ? "" : "petasos-error" },
                     checked.navidrome.ok ? "Navidrome answers." : checked.navidrome.problem)
+                : null,
+              checked.soundcloud
+                ? h("li", { className: checked.soundcloud.ok && checked.soundcloud.ffmpeg ? "" : "petasos-error" },
+                    checked.soundcloud.ok
+                      ? (checked.soundcloud.ffmpeg ? "SoundCloud signs the app in." : "SoundCloud signs the app in, but its songs need ffmpeg installed.")
+                      : checked.soundcloud.problem)
                 : null,
               checked.folders.map((f) => h("li", { key: f.path, className: f.ok ? "" : "petasos-error" },
                 f.path + ": " + (f.ok ? f.songs + (f.songs === 1 ? " song" : " songs") : f.problem))))

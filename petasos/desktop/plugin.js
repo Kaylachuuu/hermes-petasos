@@ -13,6 +13,7 @@ const LABEL_MAX = 32
 // The screen's own names for these (petasos core._ACTION_LABELS).
 const ACTION_LABELS = { mic_toggle: 'Mic on / off', music_next: 'Next song', music_previous: 'Previous song', music_toggle: 'Play / pause' }
 const AGENT_NAME_MAX = 24
+const TABS = [['agent', 'Agent'], ['keys', 'Soft keys'], ['music', 'Music']]
 const ACTIONS = [
   ['prompt', 'Ask a question'],
   ['conversation', 'Start a conversation'],
@@ -160,6 +161,20 @@ function Preset({ index, preset, onChange }) {
   })
 }
 
+// Keeps the browser and password managers from filling these with a saved sign-in, such as Hermes's.
+const NO_AUTOFILL = { autoComplete: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true', spellCheck: false }
+
+function group(title, hint, children) {
+  return jsxs('fieldset', {
+    className: 'flex flex-col gap-3 rounded border border-(--ui-border) p-3',
+    children: [
+      jsx('legend', { className: 'px-1 font-medium', children: title }),
+      hint ? jsx('span', { className: HINT, children: hint }) : null,
+      ...children
+    ]
+  })
+}
+
 // Music the agent can play (the plugin's music.json on Hermes): Navidrome and folders.
 function Music({ ctx }) {
   const [loaded, setLoaded] = useState(null)
@@ -167,6 +182,8 @@ function Music({ ctx }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [folders, setFolders] = useState('')
+  const [scId, setScId] = useState('')
+  const [scSecret, setScSecret] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [checked, setChecked] = useState(null)
@@ -177,6 +194,8 @@ function Music({ ctx }) {
     setUsername(data.navidrome.username || '')
     setPassword('')
     setFolders((data.folders || []).join('\n'))
+    setScId(data.soundcloud?.client_id || '')
+    setScSecret('')
   }
 
   useEffect(() => {
@@ -192,7 +211,8 @@ function Music({ ctx }) {
       take(await ctx.rest('/music/settings', {
         body: {
           folders: folders.split('\n').map(f => f.trim()).filter(Boolean),
-          navidrome: { password, url: url.trim(), username: username.trim() }
+          navidrome: { password, url: url.trim(), username: username.trim() },
+          soundcloud: { client_id: scId.trim(), client_secret: scSecret }
         },
         method: 'PUT'
       }))
@@ -218,27 +238,29 @@ function Music({ ctx }) {
     className: 'flex flex-col gap-3 rounded border border-(--ui-border) p-3',
     children: [
       jsx('legend', { className: 'px-1 font-medium', children: 'Music' }),
-      jsx('span', { className: HINT, children: 'What the agent can play on a Petasos device when asked (“play Rumours”): a Navidrome server, folders on the Hermes machine, or both.' }),
-      labelled('Navidrome address',
-        jsx('input', { className: FIELD, onChange: e => edited(setUrl)(e.target.value), placeholder: 'http://localhost:4533', value: url }),
-        'As the Hermes machine reaches it. Leave empty to not use Navidrome.'),
-      url.trim()
-        ? labelled('Username', jsx('input', { autoComplete: 'off', className: FIELD, onChange: e => edited(setUsername)(e.target.value), value: username }))
-        : null,
-      url.trim()
-        ? labelled('Password',
-            jsx('input', {
-              autoComplete: 'new-password',
-              className: FIELD,
-              onChange: e => edited(setPassword)(e.target.value),
-              placeholder: loaded.navidrome.has_password ? '••••••••' : '',
-              type: 'password',
-              value: password
-            }),
-            loaded.navidrome.has_password ? 'Saved. Type a new one to change it.' : null)
-        : null,
-      labelled('Folders',
+      jsx('span', { className: HINT, children: 'What the agent can play on a Petasos device when asked (“play Rumours”). Saved on the Hermes this app is connected to.' }),
+      group('Navidrome', 'Your Navidrome server, signed in to with your Navidrome account (not your Hermes sign-in). Leave the address empty to not use it.', [
+        labelled('Address',
+          jsx('input', { ...NO_AUTOFILL, className: FIELD, name: 'navidrome-url', onChange: e => edited(setUrl)(e.target.value), placeholder: 'http://localhost:4533', value: url }),
+          'As the Hermes machine reaches it.'),
+        labelled('Navidrome username',
+          jsx('input', { ...NO_AUTOFILL, className: FIELD, name: 'navidrome-user', onChange: e => edited(setUsername)(e.target.value), value: username })),
+        labelled('Navidrome password',
+          jsx('input', {
+            ...NO_AUTOFILL,
+            autoComplete: 'new-password',
+            className: FIELD,
+            name: 'navidrome-password',
+            onChange: e => edited(setPassword)(e.target.value),
+            placeholder: loaded.navidrome.has_password ? '••••••••' : '',
+            type: 'password',
+            value: password
+          }),
+          loaded.navidrome.has_password ? 'Saved. Type a new one to change it.' : null)
+      ]),
+      group('Folders', null, [
         jsx('textarea', {
+          'aria-label': 'Music folders',
           className: `${FIELD} font-mono`,
           onChange: e => edited(setFolders)(e.target.value),
           placeholder: '/srv/music\n/mnt/nas/music',
@@ -246,8 +268,34 @@ function Music({ ctx }) {
           spellCheck: false,
           value: folders
         }),
-        'One per line, as full paths on the Hermes machine. A network share works once it is mounted there.' +
-          (loaded.ffmpeg ? '' : ' Only MP3 files play until ffmpeg is installed on it.')),
+        jsx('span', {
+          className: HINT,
+          children: 'One per line, as full paths on the Hermes machine. A network share works once it is mounted there.' +
+            (loaded.ffmpeg ? '' : ' Only MP3 files play until ffmpeg is installed on it.')
+        })
+      ]),
+      group('SoundCloud', 'Public SoundCloud tracks, through an app you register at soundcloud.com/you/apps. Played after your own music. Needs ffmpeg on the Hermes machine. Leave the client ID empty to not use it.', [
+        labelled('Client ID',
+          jsx('input', { ...NO_AUTOFILL, className: FIELD, name: 'soundcloud-id', onChange: e => edited(setScId)(e.target.value), value: scId })),
+        labelled('Client secret',
+          jsx('input', {
+            ...NO_AUTOFILL,
+            autoComplete: 'new-password',
+            className: FIELD,
+            name: 'soundcloud-secret',
+            onChange: e => edited(setScSecret)(e.target.value),
+            placeholder: loaded.soundcloud?.has_secret ? '••••••••' : '',
+            type: 'password',
+            value: scSecret
+          }),
+          loaded.soundcloud?.has_secret ? 'Saved. Type a new one to change it.' : null),
+        jsx('span', {
+          className: HINT,
+          children: loaded.soundcloud?.account
+            ? `Signed in as ${loaded.soundcloud.account}: the agent can play your likes and playlists.`
+            : 'For your likes and playlists, sign in from the Petasos app on a Mac or Windows computer (Settings → Music).'
+        })
+      ]),
       jsxs('div', {
         className: 'flex items-center gap-3',
         children: [
@@ -261,6 +309,14 @@ function Music({ ctx }) {
             children: [
               checked.navidrome
                 ? jsx('li', { className: checked.navidrome.ok ? '' : ERROR, children: checked.navidrome.ok ? 'Navidrome answers.' : checked.navidrome.problem })
+                : null,
+              checked.soundcloud
+                ? jsx('li', {
+                    className: checked.soundcloud.ok && checked.soundcloud.ffmpeg ? '' : ERROR,
+                    children: checked.soundcloud.ok
+                      ? (checked.soundcloud.ffmpeg ? 'SoundCloud signs the app in.' : 'SoundCloud signs the app in, but its songs need ffmpeg installed on Hermes.')
+                      : checked.soundcloud.problem
+                  })
                 : null,
               ...checked.folders.map(f =>
                 jsx('li', { className: f.ok ? '' : ERROR, children: `${f.path}: ${f.ok ? `${f.songs} ${f.songs === 1 ? 'song' : 'songs'}` : f.problem}` }, f.path))
@@ -279,6 +335,7 @@ function Settings({ ctx }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [tab, setTab] = useState('agent')
 
   const take = data => {
     setLoaded(data)
@@ -319,44 +376,70 @@ function Settings({ ctx }) {
 
   const agentOk = agent.trim().length > 0 && agent.trim().length <= AGENT_NAME_MAX
 
+  const saveRow = jsxs('div', {
+    className: 'flex items-center gap-3',
+    children: [
+      jsx('button', { className: BUTTON, disabled: saving || !agentOk, onClick: save, type: 'button', children: saving ? 'Saving…' : 'Save' }),
+      saved ? jsx('span', { className: HINT, children: 'Saved.' }) : null,
+      error ? jsx('span', { className: ERROR, children: error }) : null
+    ]
+  })
+
+  // Tabs, as on the Car Thing's settings. The agent and soft keys share one Save; Music has its own.
+  const tabs = jsx('div', {
+    className: 'flex gap-1 border-b border-(--ui-border)',
+    role: 'tablist',
+    children: TABS.map(([id, name]) =>
+      jsx('button', {
+        'aria-selected': tab === id,
+        className: `-mb-px border-b-2 px-3 py-1.5 ${tab === id ? 'border-current font-medium' : `border-transparent ${HINT}`}`,
+        onClick: () => setTab(id),
+        role: 'tab',
+        type: 'button',
+        children: name
+      }, id))
+  })
+
+  const agentTab = [
+    jsx('span', {
+      className: HINT,
+      children: `Who Petasos talks to and its chats. Saved on Hermes to ${loaded.path}.`
+    }),
+    loaded.problems?.length
+      ? jsx('span', { className: ERROR, children: `mapping.json has problems, so Petasos is using the last good mapping: ${loaded.problems.join(' ')}` })
+      : null,
+    labelled('Agent name',
+      jsx('input', { className: FIELD, maxLength: AGENT_NAME_MAX, onChange: e => edited(setAgent)(e.target.value), value: agent }),
+      `Shown on the screen (“Messenger of ${agent.trim() || '…'}”) and in its messages, such as “${agent.trim() || '…'} is listening”.`),
+    labelled('Chats',
+      select(chats, edited(setChats), [
+        ['separate', 'A chat for each device'],
+        ['shared', 'One chat for all devices']
+      ]),
+      chats === 'shared'
+        ? 'The Car Thing and every Petasos app carry on one chat, “Petasos”.'
+        : 'Each device has its own chat: “Petasos · Car Thing”, “Petasos · Office Mac” and so on.'),
+    saveRow
+  ]
+
+  const keysTab = [
+    jsx('span', {
+      className: HINT,
+      children: `The shared preset buttons, which every device without its own uses. A Car Thing gets its own in its Device settings, a Petasos app in its Settings${ownedBy(loaded.mapping)}. Devices pick up changes the next time a button is pressed.`
+    }),
+    jsx('div', {
+      'aria-label': 'How the top of the screen will look',
+      className: 'grid grid-cols-4 gap-2 rounded bg-[#1f1b17] p-3 text-center text-[#c9b48a]',
+      children: presets.map((p, i) => jsx('span', { className: shownLabel(p) ? '' : 'opacity-40', children: shownLabel(p) || '—' }, i))
+    }),
+    ...presets.map((p, i) =>
+      jsx(Preset, { index: i, onChange: edited(next => setPresets(presets.map((old, j) => (j === i ? next : old)))), preset: p }, i)),
+    saveRow
+  ]
+
   return jsxs('div', {
     className: 'flex max-w-xl flex-col gap-4 p-4 text-sm',
-    children: [
-      jsx('span', {
-        className: HINT,
-        children: `Who Petasos talks to, its chats, and the shared preset buttons, which every device without its own uses. A Car Thing gets its own in its Device settings, a Petasos app in its Settings${ownedBy(loaded.mapping)}. Devices pick up changes the next time a button is pressed. Saved on Hermes to ${loaded.path}.`
-      }),
-      loaded.problems?.length
-        ? jsx('span', { className: ERROR, children: `mapping.json has problems, so Petasos is using the last good mapping: ${loaded.problems.join(' ')}` })
-        : null,
-      labelled('Agent name',
-        jsx('input', { className: FIELD, maxLength: AGENT_NAME_MAX, onChange: e => edited(setAgent)(e.target.value), value: agent }),
-        `Shown on the screen (“Messenger of ${agent.trim() || '…'}”) and in its messages, such as “${agent.trim() || '…'} is listening”.`),
-      labelled('Chats',
-        select(chats, edited(setChats), [
-          ['separate', 'A chat for each device'],
-          ['shared', 'One chat for all devices']
-        ]),
-        chats === 'shared'
-          ? 'The Car Thing and every Petasos app carry on one chat, “Petasos”.'
-          : 'Each device has its own chat: “Petasos · Car Thing”, “Petasos · Office Mac” and so on.'),
-      jsx('div', {
-        'aria-label': 'How the top of the screen will look',
-        className: 'grid grid-cols-4 gap-2 rounded bg-[#1f1b17] p-3 text-center text-[#c9b48a]',
-        children: presets.map((p, i) => jsx('span', { className: shownLabel(p) ? '' : 'opacity-40', children: shownLabel(p) || '—' }, i))
-      }),
-      ...presets.map((p, i) =>
-        jsx(Preset, { index: i, onChange: edited(next => setPresets(presets.map((old, j) => (j === i ? next : old)))), preset: p }, i)),
-      jsxs('div', {
-        className: 'flex items-center gap-3',
-        children: [
-          jsx('button', { className: BUTTON, disabled: saving || !agentOk, onClick: save, type: 'button', children: saving ? 'Saving…' : 'Save' }),
-          saved ? jsx('span', { className: HINT, children: 'Saved.' }) : null,
-          error ? jsx('span', { className: ERROR, children: error }) : null
-        ]
-      }),
-      jsx(Music, { ctx })
-    ]
+    children: [tabs, ...(tab === 'music' ? [jsx(Music, { ctx }, 'music')] : tab === 'keys' ? keysTab : agentTab)]
   })
 }
 

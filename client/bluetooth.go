@@ -44,6 +44,7 @@ type btScreen struct {
 	Text     string `json:"text,omitempty"`
 	Max      int    `json:"max,omitempty"`
 	Keyboard int    `json:"keyboard,omitempty"`
+	Plain    bool   `json:"plain,omitempty"` // no capital to start: addresses, paths, sign-ins
 }
 
 type btItem struct {
@@ -81,6 +82,7 @@ type bluetooth struct {
 
 	draft     *softKeyDraft // the soft key being edited
 	kbID      int           // the latest on-screen keyboard
+	music     *musicDraft   // the Music tab's unsaved edits (musictab.go)
 	typed     func(string)  // gets the keyboard's text
 	typedBack func()        // runs when the keyboard is cancelled
 }
@@ -271,6 +273,9 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 	case name == "preset-3" && action == "press" && view.View != "pair":
 		b.stopScan()
 		go b.mineView() // asks Hermes for the soft keys
+	case name == "preset-4" && action == "press" && view.View != "pair":
+		b.stopScan()
+		go b.musicView() // asks Hermes for the music settings
 	case name == "knob" && action == "turn":
 		b.move(intOf(ev["delta"], 0))
 	case name == "knob" && action == "press":
@@ -328,6 +333,8 @@ func (b *bluetooth) openScreens() {
 		b.screenView()
 	case "device":
 		b.mineView()
+	case "music":
+		go b.musicView()
 	default:
 		b.listView()
 	}
@@ -381,7 +388,7 @@ func (b *bluetooth) back() {
 		return
 	}
 	switch v.View {
-	case "list", "screen", "mine":
+	case "list", "screen", "mine", "music":
 		b.close()
 	case "softkey":
 		go b.mineView()
@@ -391,6 +398,10 @@ func (b *bluetooth) back() {
 	default:
 		if v.Tab == "device" {
 			go b.mineView()
+			return
+		}
+		if v.Tab == "music" {
+			go b.musicView()
 			return
 		}
 		b.listView()
@@ -569,7 +580,7 @@ func (b *bluetooth) message(title, note string) {
 	b.mu.Lock()
 	tab := b.tab
 	b.mu.Unlock()
-	if tab != "device" {
+	if tab != "device" && tab != "music" {
 		tab = "bluetooth"
 	}
 	b.show(&btScreen{View: "message", Tab: tab, Title: title, Note: note})

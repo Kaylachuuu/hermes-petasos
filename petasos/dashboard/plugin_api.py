@@ -169,6 +169,43 @@ def music_check() -> dict:
     return _music().check()
 
 
+@router.post("/music/soundcloud/authorize")
+def soundcloud_authorize(body: dict) -> dict:
+    """Starts signing in to your SoundCloud account: the page to send the browser to. The
+    redirect is the Petasos app's own, as registered with the SoundCloud app."""
+    music = _music()
+    redirect = body.get("redirect_uri") if isinstance(body, dict) else None
+    if not isinstance(redirect, str) or not redirect.startswith(("http://127.0.0.1:", "http://localhost:", "https://")):
+        raise HTTPException(status_code=400, detail="redirect_uri required")
+    try:
+        return {"url": music.soundcloud().authorize_url(redirect)}
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/music/soundcloud/connect")
+def soundcloud_connect(body: dict) -> dict:
+    """Finishes signing in, with the code SoundCloud sent back."""
+    music = _music()
+    code, state = (body.get("code"), body.get("state")) if isinstance(body, dict) else (None, None)
+    if not (isinstance(code, str) and isinstance(state, str)):
+        raise HTTPException(status_code=400, detail="code and state required")
+    try:
+        return {"account": music.soundcloud().connect(code, state)}
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/music/soundcloud/disconnect")
+def soundcloud_disconnect() -> dict:
+    music = _music()
+    try:
+        music.soundcloud().disconnect()
+    except music.MusicError:
+        pass
+    return {"account": ""}
+
+
 @router.get("/music/stream")
 def music_stream(source: str, id: str) -> StreamingResponse:
     """One track of the home library as MP3, from Navidrome or a music folder on this machine."""

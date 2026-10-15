@@ -161,10 +161,168 @@ def test_settings_keep_the_password_and_check_each_source(home, navidrome):
     shown = music.save_settings({"navidrome": {"url": navidrome, "username": "kayla", "password": ""},
                                  "folders": [str(root), str(home / "not-mounted")]})
     assert shown["navidrome"] == {"url": navidrome, "username": "kayla", "has_password": True}
-    assert "secret" not in json.dumps(shown)
+    assert ': "secret"' not in json.dumps(shown)
     result = music.check()
     assert result["navidrome"] == {"ok": True}
     assert result["folders"][0] == {"path": str(root), "ok": True, "songs": 4}
     assert not result["folders"][1]["ok"] and "mounted" in result["folders"][1]["problem"]
     with pytest.raises(music.MusicError):
         music.save_settings({"folders": ["relative/path"]})
+
+
+class FakeSoundCloud(BaseHTTPRequestHandler):
+    grants = []
+    hls_dir = None
+    challenge = ""
+
+    def log_message(self, *_):
+        pass
+
+    def _json(self, body, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def do_POST(self):
+        form = parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode())
+        import base64
+        if self.headers.get("Authorization") != "Basic " + base64.b64encode(b"cid:secret").decode():
+            return self._json({"error": "invalid_client"}, 401)
+        FakeSoundCloud.grants.append(form["grant_type"][0])
+        if form["grant_type"][0] == "authorization_code":
+            import base64
+            import hashlib as h
+            challenge = base64.urlsafe_b64encode(h.sha256(form["code_verifier"][0].encode()).digest()).decode().rstrip("=")
+            if form["code"][0] != "c0de" or challenge != FakeSoundCloud.challenge:
+                return self._json({"error": "invalid_grant"}, 400)
+            return self._json({"access_token": "tokuser", "refresh_token": "ru1", "expires_in": 3600})
+        if form.get("refresh_token") == ["ru1"]:
+            return self._json({"access_token": "tokuser2", "refresh_token": "ru2", "expires_in": 3600})
+        self._json({"access_token": f"tok{len(FakeSoundCloud.grants)}", "refresh_token": "r", "expires_in": 3600})
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if url.path.startswith("/hls/"):
+            data = (FakeSoundCloud.hls_dir / url.path[5:]).read_bytes()
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if not (self.headers.get("Authorization") or "").startswith("OAuth tok"):
+            return self._json({}, 401)
+        user = {"username": "Lane 8"}
+        mine = (self.headers.get("Authorization") or "").startswith("OAuth tokuser")
+        if url.path.startswith("/me"):
+            if not mine:
+                return self._json({}, 401)
+            if url.path == "/me":
+                return self._json({"username": "kaylachuuu"})
+            if url.path == "/me/likes/tracks":
+                return self._json({"collection": [{"urn": "soundcloud:tracks:7", "title": "Loved One", "user": user}]})
+            if url.path == "/me/playlists":
+                return self._json({"collection": [{"urn": "soundcloud:playlists:9", "title": "Late Night Drive"}]})
+            if url.path == "/me/likes/playlists":
+                return self._json({"collection": []})
+        if url.path == "/tracks":
+            assert q["access"] == "playable"
+            return self._json({"collection": [
+                {"urn": "soundcloud:tracks:1", "title": "Brightest Lights", "user": user, "duration": 240000, "access": "playable"},
+                {"urn": "soundcloud:tracks:2", "title": "Blocked", "user": user, "access": "blocked"}]})
+        if url.path == "/playlists":
+            return self._json({"collection": [{"urn": "soundcloud:playlists:9", "title": "Late Night Drive"}]})
+        if url.path == "/playlists/soundcloud:playlists:9/tracks":
+            return self._json({"collection": [{"urn": "soundcloud:tracks:3", "title": "Fingerprint", "user": user}]})
+        if url.path == "/tracks/soundcloud:tracks:1/streams":
+            port = self.server.server_port
+            return self._json({"hls_aac_160_url": f"http://127.0.0.1:{port}/hls/out.m3u8"} if FakeSoundCloud.hls_dir
+                              else {"http_mp3_128_url": f"http://127.0.0.1:{port}/mp3"})
+        if url.path == "/mp3":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ID3 mp3")
+            return
+        self._json({}, 404)
+
+
+@pytest.fixture
+def soundcloud(home, monkeypatch):
+    server = HTTPServer(("127.0.0.1", 0), FakeSoundCloud)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setattr(music.SoundCloud, "API", base)
+    monkeypatch.setattr(music.SoundCloud, "TOKEN_URL", base + "/oauth/token")
+    FakeSoundCloud.grants, FakeSoundCloud.hls_dir = [], None
+    configure(home, {"soundcloud": {"client_id": "cid", "client_secret": "secret"}})
+    yield base
+    server.shutdown()
+
+
+def test_soundcloud_finds_tracks_and_playlists_with_one_token(home, soundcloud):
+    said, tracks = music.find("brightest lights", "song")
+    assert said == "Brightest Lights by Lane 8 on SoundCloud"
+    assert tracks == [{"source": "soundcloud", "id": "soundcloud:tracks:1", "title": "Brightest Lights",
+                       "artist": "Lane 8", "album": "", "seconds": 240}]
+    said, tracks = music.find("late night drive", "playlist")
+    assert said == "the SoundCloud playlist Late Night Drive" and tracks[0]["title"] == "Fingerprint"
+    assert FakeSoundCloud.grants == ["client_credentials"]  # kept and reused, not asked for again
+    assert b"".join(music.stream("soundcloud", "soundcloud:tracks:1")) == b"ID3 mp3"
+    assert FakeSoundCloud.grants == ["client_credentials"]
+
+
+def test_soundcloud_comes_after_your_own_music(home, soundcloud):
+    configure(home, {"folders": [str(library(home))], "soundcloud": {"client_id": "cid", "client_secret": "secret"}})
+    assert music.find("rumours")[0] == "Rumours by Fleetwood Mac"
+    assert "SoundCloud" in json.loads(music.play_music({"query": "brightest lights", "source": "soundcloud"}))["playing"]
+
+
+def test_soundcloud_hls_becomes_mp3(home, soundcloud, tmp_path):
+    import shutil
+    import subprocess
+    if not shutil.which("ffmpeg"):
+        pytest.skip("no ffmpeg")
+    FakeSoundCloud.hls_dir = tmp_path / "hls"
+    FakeSoundCloud.hls_dir.mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac",
+                    "-f", "hls", "-hls_time", "1", str(FakeSoundCloud.hls_dir / "out.m3u8")], check=True)
+    mp3 = b"".join(music.stream("soundcloud", "soundcloud:tracks:1"))
+    assert len(mp3) > 10000 and (mp3[:3] == b"ID3" or mp3[0] == 0xFF)
+
+
+def test_soundcloud_settings_keep_the_secret(home, soundcloud):
+    shown = music.save_settings({"folders": [], "soundcloud": {"client_id": "cid", "client_secret": ""}})
+    assert shown["soundcloud"] == {"client_id": "cid", "has_secret": True, "account": ""}
+    assert music.check()["soundcloud"]["ok"]
+    music.save_settings({"folders": []})  # an older settings page leaves SoundCloud alone
+    assert music.config()["soundcloud"]["client_secret"] == "secret"
+    configure(home, {"soundcloud": {"client_id": "cid", "client_secret": "wrong"}})
+    assert "client ID and secret" in music.check()["soundcloud"]["problem"]
+
+
+def test_signing_in_to_soundcloud_brings_your_likes_and_playlists(home, soundcloud):
+    import base64
+    import hashlib as h
+    with pytest.raises(music.MusicError):
+        music.find("", "likes")  # not signed in yet
+    url = music.soundcloud().authorize_url("http://127.0.0.1:8187/app/soundcloud")
+    q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+    assert q["redirect_uri"] == "http://127.0.0.1:8187/app/soundcloud" and q["code_challenge_method"] == "S256"
+    FakeSoundCloud.challenge = q["code_challenge"]
+    with pytest.raises(music.MusicError):
+        music.soundcloud().connect("c0de", "some-other-state")
+    assert music.soundcloud().connect("c0de", q["state"]) == "kaylachuuu"
+    assert music.settings()["soundcloud"]["account"] == "kaylachuuu"
+    said, tracks = music.find("", "likes")
+    assert said == "your SoundCloud likes" and tracks[0]["title"] == "Loved One"
+    said, _ = music.find("late night drive", "playlist")
+    assert said == "your SoundCloud playlist Late Night Drive"
+    assert "likes" in json.loads(music.play_music({"kind": "likes"}))["playing"]
+    # An hour on, the single-use refresh token is swapped for the next one.
+    account = json.loads((home / "petasos" / "soundcloud-account.json").read_text())
+    account["expires_at"] = 0
+    (home / "petasos" / "soundcloud-account.json").write_text(json.dumps(account))
+    music.find("", "likes")
+    assert json.loads((home / "petasos" / "soundcloud-account.json").read_text())["refresh_token"] == "ru2"
+    music.soundcloud().disconnect()
+    assert music.settings()["soundcloud"]["account"] == ""

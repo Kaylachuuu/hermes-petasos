@@ -170,6 +170,7 @@ func (s *screen) serve() {
 	mux.HandleFunc("/app/settings", appSettings)
 	mux.HandleFunc("/app/softkeys", appSoftKeys)
 	mux.HandleFunc("/app/music", appMusic)
+	mux.HandleFunc("/app/soundcloud", appSoundCloud)
 	mux.HandleFunc("/app/signin", appSignIn)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {

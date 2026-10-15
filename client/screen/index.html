@@ -150,6 +150,7 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-mic-off" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M4 4l16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17.5" cy="16" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="5" y="5.5" width="14" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 18.5h19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
@@ -262,7 +263,7 @@ function warning(s) {
 }
 
 // In the settings the preset buttons are its tabs.
-const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["device", "Device"], ["", ""]];
+const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["device", "Device"], ["music", "Music"]];
 
 function drawTop(s) {
   s.presets.forEach((label, i) => {
@@ -368,6 +369,7 @@ function drawBT(b) {
                  pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
                  screen: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  mine: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 music: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  softkey: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "back"]],
                  keyboard: [["Touch or knob", "type"], ["Done", "save"], ["Front button", "cancel"]],
                  message: [] }[b.view] || [];
@@ -406,7 +408,8 @@ function drawBT(b) {
 // pressing it (petasos passes the knob along as {"kb": ...}). Done sends the text to petasos.
 const LAYOUTS = {
   abc: ["q w e r t y u i o p", "a s d f g h j k l '", "⇧ z x c v b n m ⌫", "123 , space . Done"],
-  123: ["1 2 3 4 5 6 7 8 9 0", "- / : ; ( ) $ & @ \"", "# % + = ? ! * ⌫", "ABC , space . Done"],
+  123: ["1 2 3 4 5 6 7 8 9 0", "- / : ; ( ) $ & @ \"", "#+= % + = ? ! * ⌫", "ABC , space . Done"],
+  sym: ["[ ] { } # ^ _ ~ < >", "\\ | ` € £ ¥ • ' \" =", "123 % + ? ! * ⌫", "ABC , space . Done"],
 };
 let kb = null; // { id, text, max, layout, shift, sel }
 
@@ -416,7 +419,7 @@ function kbKeys() {
 
 function drawKeyboard(b) {
   if (!kb || kb.id !== b.keyboard) {
-    kb = { id: b.keyboard, text: b.text || "", max: b.max || 48, layout: "abc", shift: !b.text, sel: 0, sent: false };
+    kb = { id: b.keyboard, text: b.text || "", max: b.max || 48, layout: "abc", shift: !b.text && !b.plain, sel: 0, sent: false };
     $("bt-body").innerHTML = `<div class="kb" id="kb"></div>`;
     $("kb").addEventListener("pointerdown", (e) => {
       const el = e.target.closest(".k");
@@ -442,7 +445,7 @@ function renderKeyboard() {
     if (k.length === 1 && kb.shift) face = k.toUpperCase();
     if (k === "space") { face = ""; cls += " space"; }
     if (k === "⇧") cls += kb.shift ? " wide on" : " wide";
-    if (k === "⌫" || k === "123" || k === "ABC") cls += " wide";
+    if (k === "⌫" || k === "123" || k === "ABC" || k === "#+=") cls += " wide";
     if (k === "Done") cls += " wide done";
     if (n === kb.sel) cls += " sel";
     return `<div class="${cls}" data-k="${esc(k)}" data-i="${n}">${esc(face)}</div>`;
@@ -456,7 +459,7 @@ function kbType(k) {
   const chars = [...kb.text];
   if (k === "⌫") chars.pop();
   else if (k === "⇧") { kb.shift = !kb.shift; renderKeyboard(); return; }
-  else if (k === "123" || k === "ABC") { kb.layout = k === "123" ? "123" : "abc"; kb.sel = Math.min(kb.sel, kbKeys().flat().length - 1); renderKeyboard(); return; }
+  else if (k === "123" || k === "ABC" || k === "#+=") { kb.layout = { "123": "123", "ABC": "abc", "#+=": "sym" }[k]; kb.sel = Math.min(kb.sel, kbKeys().flat().length - 1); renderKeyboard(); return; }
   else if (k === "Done") {
     kb.sent = true;
     fetch("/settings/text", { method: "POST", headers: { "Content-Type": "application/json" },

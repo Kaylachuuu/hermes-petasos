@@ -43,7 +43,13 @@ button:disabled { opacity: .5; cursor: default; }
 .key .fields { display: grid; gap: 8px; }
 .key input:disabled, .key select:disabled { opacity: .6; }
 textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; resize: vertical; }
+h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
+.hint.sub { margin: 0 0 6px; }
 .checks { grid-column: 2; margin: 0; padding-left: 18px; font-size: 14px; }
+.tabs { display: flex; gap: 4px; margin: 14px 0 6px; border-bottom: 1px solid var(--rule); }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; color: var(--dust); }
+.tabs button:hover { color: var(--bronze); }
+.tabs button.on { color: var(--ember); border-bottom-color: var(--ember); }
 [hidden] { display: none !important; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .hint { grid-column: 1; } }
 </style>
@@ -53,11 +59,24 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14p
   <header><h1>SETTINGS</h1><button id="back" type="button">Done</button></header>
   <p id="loading" class="hint" style="margin-top:16px">Loading…</p>
   <form id="form" hidden>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="device">Device</button>
+      <button type="button" role="tab" data-tab="connection">Connection</button>
+      <button type="button" role="tab" data-tab="music">Music</button>
+    </nav>
+    <section data-tab="device">
     <h2>This computer</h2>
     <div class="row">
       <label for="name">Name</label>
       <input type="text" id="name" maxlength="40" autocomplete="off" spellcheck="false">
       <p class="hint" id="name-hint"></p>
+    </div>
+
+    <h2>Audio</h2>
+    <div class="row">
+      <label for="mic">Microphone</label>
+      <select id="mic"></select>
+      <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
     </div>
 
     <h2>Soft keys</h2>
@@ -67,6 +86,19 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14p
       <p class="hint" id="keys-hint">The four buttons along the top of the screen.</p>
     </div>
     <div id="keys"></div>
+
+    </section>
+    <section data-tab="connection" hidden>
+    <h2>Hermes</h2>
+    <div class="row">
+      <label>Signed in to</label>
+      <span id="server"></span>
+      <div class="hint"><button type="button" id="signin">Sign in again…</button></div>
+    </div>
+    <div class="row">
+      <label>Versions</label>
+      <span id="versions"></span>
+    </div>
 
     <h2>VPN</h2>
     <div class="row">
@@ -95,36 +127,49 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14p
       </div>
     </div>
 
-    <h2>Audio</h2>
-    <div class="row">
-      <label for="mic">Microphone</label>
-      <select id="mic"></select>
-      <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
-    </div>
-
-    <h2>Music</h2>
+    </section>
+    <section data-tab="music" hidden>
     <p class="hint" id="music-hint" style="margin-top:0">What your agent can play when you ask (“play Rumours”), on any of your devices. Kept on Hermes.</p>
     <div id="music">
+      <h3>Navidrome</h3>
+      <p class="hint sub">Your Navidrome server and your Navidrome account (not your Hermes sign-in). Leave the address empty to not use it.</p>
       <div class="row">
-        <label for="nd-url">Navidrome</label>
-        <input type="text" id="nd-url" placeholder="http://localhost:4533" autocomplete="off" spellcheck="false">
-        <p class="hint">Its address as the Hermes machine reaches it. Leave empty to not use Navidrome.</p>
+        <label for="nd-url">Address</label>
+        <input type="text" id="nd-url" name="navidrome-url" placeholder="http://localhost:4533" autocomplete="off" data-1p-ignore data-lpignore="true" spellcheck="false">
+        <p class="hint">As the Hermes machine reaches it.</p>
       </div>
-      <div id="nd-login">
-        <div class="row">
-          <label for="nd-user">Username</label>
-          <input type="text" id="nd-user" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="row">
-          <label for="nd-password">Password</label>
-          <input type="password" id="nd-password" autocomplete="new-password">
-          <p class="hint" id="nd-password-hint" hidden>Saved. Type a new one to change it.</p>
-        </div>
+      <div class="row">
+        <label for="nd-user">Username</label>
+        <input type="text" id="nd-user" name="navidrome-user" autocomplete="off" data-1p-ignore data-lpignore="true" spellcheck="false">
       </div>
+      <div class="row">
+        <label for="nd-password">Password</label>
+        <input type="password" id="nd-password" name="navidrome-password" autocomplete="new-password" data-1p-ignore data-lpignore="true">
+        <p class="hint" id="nd-password-hint" hidden>Saved. Type a new one to change it.</p>
+      </div>
+      <h3>Folders</h3>
       <div class="row">
         <label for="folders">Folders</label>
         <textarea id="folders" rows="3" spellcheck="false" placeholder="/srv/music&#10;/mnt/nas/music"></textarea>
         <p class="hint" id="folders-hint">One per line, as full paths on the Hermes machine. A network share works once it's mounted there.</p>
+      </div>
+      <h3>SoundCloud</h3>
+      <p class="hint sub">Public SoundCloud tracks, through an app you register at soundcloud.com/you/apps. Played after your own music; needs ffmpeg on the Hermes machine. Leave the client ID empty to not use it.</p>
+      <div class="row">
+        <label for="sc-id">Client ID</label>
+        <input type="text" id="sc-id" name="soundcloud-id" autocomplete="off" data-1p-ignore data-lpignore="true" spellcheck="false">
+      </div>
+      <div class="row">
+        <label for="sc-secret">Client secret</label>
+        <input type="password" id="sc-secret" name="soundcloud-secret" autocomplete="new-password" data-1p-ignore data-lpignore="true">
+        <p class="hint" id="sc-secret-hint" hidden>Saved. Type a new one to change it.</p>
+      </div>
+      <div class="row" id="sc-account-row" hidden>
+        <label>Your account</label>
+        <div class="status"><span class="dot" id="sc-dot"></span><span id="sc-account"></span>
+          <button type="button" id="sc-signin">Sign in to SoundCloud…</button>
+          <button type="button" id="sc-signout" hidden>Sign out</button></div>
+        <p class="hint" id="sc-account-hint">For your likes and playlists. Register the SoundCloud app with the redirect URI http://127.0.0.1:8187/app/soundcloud, and save its ID and secret here first.</p>
       </div>
       <div class="row">
         <span></span>
@@ -133,18 +178,9 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14p
       </div>
     </div>
 
-    <h2>Hermes</h2>
-    <div class="row">
-      <label>Signed in to</label>
-      <span id="server"></span>
-      <div class="hint"><button type="button" id="signin">Sign in again…</button></div>
-    </div>
-    <div class="row">
-      <label>Versions</label>
-      <span id="versions"></span>
-    </div>
+    </section>
 
-    <div class="actions">
+    <div class="actions" id="actions">
       <button type="submit" class="primary" id="save">Save</button>
       <p class="error" id="error" hidden></p>
     </div>
@@ -276,10 +312,24 @@ function showMusic(s) {
   $("nd-password").placeholder = s.navidrome.has_password ? "••••••••" : "";
   $("nd-password-hint").hidden = !s.navidrome.has_password;
   $("folders").value = (s.folders || []).join("\n");
+  const sc = s.soundcloud || {};
+  $("sc-id").value = sc.client_id || "";
+  $("sc-secret").value = "";
+  $("sc-secret").placeholder = sc.has_secret ? "••••••••" : "";
+  $("sc-secret-hint").hidden = !sc.has_secret;
+  $("sc-account-row").hidden = !(sc.client_id && sc.has_secret);
+  $("sc-dot").className = sc.account ? "dot on" : "dot";
+  $("sc-account").textContent = sc.account ? `Signed in as ${sc.account}` : "Not signed in";
+  $("sc-signin").hidden = !!sc.account;
+  $("sc-signout").hidden = !sc.account;
+  $("sc-account-hint").textContent = sc.account
+    ? "Your agent can play your SoundCloud likes and playlists. Every Petasos device uses this sign-in."
+    : "For your likes and playlists. Register the SoundCloud app with the redirect URI http://127.0.0.1:8187/app/soundcloud, and save its ID and secret here first.";
+  $("sc-account-hint").className = "hint";
+  const problem = new URLSearchParams(location.search).get("soundcloud");
+  if (problem) { $("sc-account-hint").textContent = problem; $("sc-account-hint").className = "hint error"; }
   if (!s.ffmpeg) $("folders-hint").textContent += " Only MP3 files play until ffmpeg is installed on it.";
-  showNavidrome();
 }
-function showNavidrome() { $("nd-login").hidden = !$("nd-url").value.trim(); }
 
 async function loadMusic() {
   try {
@@ -301,6 +351,7 @@ async function saveMusic() {
     const res = await fetch("/app/music", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       navidrome: { url: $("nd-url").value.trim(), username: $("nd-user").value.trim(), password: $("nd-password").value },
       folders: $("folders").value.split("\n").map((f) => f.trim()).filter(Boolean),
+      soundcloud: { client_id: $("sc-id").value.trim(), client_secret: $("sc-secret").value },
     }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);
@@ -309,6 +360,8 @@ async function saveMusic() {
     list.textContent = "";
     const add = (text, ok) => { const li = document.createElement("li"); li.textContent = text; if (!ok) li.className = "error"; list.append(li); };
     if (body.check.navidrome) add(body.check.navidrome.ok ? "Navidrome answers." : body.check.navidrome.problem, body.check.navidrome.ok);
+    const sc = body.check.soundcloud;
+    if (sc) add(sc.ok ? (sc.ffmpeg ? "SoundCloud signs the app in." : "SoundCloud signs the app in, but its songs need ffmpeg installed on Hermes.") : sc.problem, sc.ok && sc.ffmpeg);
     for (const f of body.check.folders) add(`${f.path}: ${f.ok ? `${f.songs} ${f.songs === 1 ? "song" : "songs"}` : f.problem}`, f.ok);
     list.hidden = !list.children.length;
     $("music-status").textContent = "Saved.";
@@ -339,6 +392,7 @@ async function load() {
   showMics();
   settingsSaved = JSON.stringify(settingsChange());
   await Promise.all([loadKeys(), loadMusic()]);
+  showTab((location.hash || "").slice(1));
 }
 
 function settingsChange() {
@@ -358,9 +412,26 @@ function fail(message) {
 $("name").addEventListener("input", showName);
 $("vpn").addEventListener("change", showVPN);
 $("keys-own").addEventListener("change", showKeys);
-$("nd-url").addEventListener("input", showNavidrome);
 $("music-save").addEventListener("click", saveMusic);
-for (const id of ["nd-url", "nd-user", "nd-password"]) // Enter saves the music, not the whole page
+
+// The tabs, as on the Car Thing. Music saves on its own button; the others share Save.
+function showTab(name) {
+  if (!["device", "connection", "music"].includes(name)) name = "device";
+  for (const el of document.querySelectorAll("section[data-tab]")) el.hidden = el.dataset.tab !== name;
+  for (const el of document.querySelectorAll(".tabs button")) {
+    el.classList.toggle("on", el.dataset.tab === name);
+    el.setAttribute("aria-selected", el.dataset.tab === name);
+  }
+  $("actions").hidden = name === "music";
+  history.replaceState(null, "", "#" + name);
+}
+for (const el of document.querySelectorAll(".tabs button")) el.addEventListener("click", () => showTab(el.dataset.tab));
+$("sc-signin").addEventListener("click", () => { location.href = "/app/soundcloud"; });
+$("sc-signout").addEventListener("click", async () => {
+  await fetch("/app/soundcloud?disconnect", { method: "POST" });
+  await loadMusic();
+});
+for (const id of ["nd-url", "nd-user", "nd-password", "sc-id", "sc-secret"]) // Enter saves the music, not the whole page
   $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveMusic(); } });
 $("import").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", async () => {

@@ -18,3 +18,4 @@
   border-radius: .375rem; border: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 25%, transparent);
   background: transparent; color: inherit; resize: vertical; }
 .petasos-checks { margin: 0; padding-left: 1.1rem; font-size: .85rem; display: flex; flex-direction: column; gap: .2rem; }
+.petasos-sub { font-size: .9rem; font-weight: 600; margin: .5rem 0 0; }

@@ -519,13 +519,19 @@ func (b *bluetooth) labelKeyboard() {
 // keyboard shows the on-screen keyboard (drawn by the page) with text to edit. done gets the
 // text when the page sends it; back runs if the front button cancels.
 func (b *bluetooth) keyboard(title, note, text string, max int, done func(string), back func()) {
+	b.keyboardFor(title, note, text, max, false, done, back)
+}
+
+// keyboardFor is keyboard with a choice of starting in capitals (plain is for addresses, paths
+// and sign-ins, which mostly don't).
+func (b *bluetooth) keyboardFor(title, note, text string, max int, plain bool, done func(string), back func()) {
 	b.mu.Lock()
 	b.kbID++
 	id := b.kbID
 	b.typed, b.typedBack = done, back
 	tab := b.tab
 	b.mu.Unlock()
-	b.show(&btScreen{View: "keyboard", Tab: tab, Title: title, Note: note, Text: text, Max: max, Keyboard: id})
+	b.show(&btScreen{View: "keyboard", Tab: tab, Title: title, Note: note, Text: text, Max: max, Keyboard: id, Plain: plain})
 }
 
 // keyboardInput takes a knob event while the keyboard is up: the page moves its highlight and

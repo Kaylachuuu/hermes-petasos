@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,9 +179,9 @@ func (l *libraryPlayer) show() {
 	var np *nowPlaying
 	if l.want != "" && l.pos < len(l.queue) {
 		t := l.queue[l.pos]
-		source := "Music"
-		if t.Source == "navidrome" {
-			source = "Navidrome"
+		source := map[string]string{"navidrome": "Navidrome", "soundcloud": "SoundCloud"}[t.Source]
+		if source == "" {
+			source = "Music"
 		}
 		np = &nowPlaying{Title: t.Title, Artist: t.Artist, Playing: l.want == "playing", Source: source}
 	}
@@ -518,4 +519,78 @@ func appMusic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, out)
+}
+
+// soundCloudRedirect is where SoundCloud sends the app's window back to after you sign in. It is
+// the same for the Mac and Windows apps, and is what the SoundCloud app must list as its
+// redirect URI.
+const soundCloudRedirect = "http://" + screenAddr + "/app/soundcloud"
+
+// appSoundCloud signs in to your SoundCloud account from the app's Settings: opened plainly it
+// sends the window to SoundCloud's sign-in; SoundCloud sends it back here with a code, which
+// the plugin on Hermes turns into your tokens (the app's secret never leaves Hermes). A POST
+// with ?disconnect signs out.
+func appSoundCloud(w http.ResponseWriter, r *http.Request) {
+	h := hereNow()
+	if h == nil || !virtual {
+		http.NotFound(w, r)
+		return
+	}
+	back := func(problem string) {
+		to := "/settings.html#music"
+		if problem != "" {
+			to = "/settings.html?soundcloud=" + url.QueryEscape(problem) + "#music"
+		}
+		http.Redirect(w, r, to, http.StatusFound)
+	}
+	q := r.URL.Query()
+	switch {
+	case r.Method == http.MethodPost && q.Has("disconnect"):
+		if _, err := h.exchange("POST", "/api/plugins/petasos/music/soundcloud/disconnect", "application/json", []byte("{}"), h.http, 1<<16); err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, map[string]string{"account": ""})
+	case q.Get("error") != "":
+		back("SoundCloud said: " + firstNonEmpty(q.Get("error_description"), q.Get("error")))
+	case q.Get("code") != "":
+		body, _ := json.Marshal(map[string]string{"code": q.Get("code"), "state": q.Get("state")})
+		if _, err := h.exchange("POST", "/api/plugins/petasos/music/soundcloud/connect", "application/json", body, h.http, 1<<16); err != nil {
+			back(friendlyHermes(err))
+			return
+		}
+		back("")
+	default:
+		body, _ := json.Marshal(map[string]string{"redirect_uri": soundCloudRedirect})
+		data, err := h.exchange("POST", "/api/plugins/petasos/music/soundcloud/authorize", "application/json", body, h.http, 1<<16)
+		var out struct {
+			URL string `json:"url"`
+		}
+		if err == nil {
+			err = json.Unmarshal(data, &out)
+		}
+		if err != nil || !strings.HasPrefix(out.URL, "https://") {
+			back(friendlyHermes(firstErr(err, fmt.Errorf("no sign-in page"))))
+			return
+		}
+		http.Redirect(w, r, out.URL, http.StatusFound)
+	}
+}
+
+func firstNonEmpty(a ...string) string {
+	for _, s := range a {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func firstErr(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
