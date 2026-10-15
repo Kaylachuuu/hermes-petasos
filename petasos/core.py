@@ -14,8 +14,11 @@ Inputs (named in tools/list_inputs.sh and the README):
                          "conversation_ended" when conversation mode ended on its own, or
                          "wake" when it heard its wake word ("Hey Athena")
 
-Gestures in the mapping: "press" fires on press; "hold" and "tap" are told apart on release by
-how long the control was held (``hold_ms``); "turn" is for the knob.
+Gestures in the mapping: "press" fires on press; "tap", "hold" and "long_hold" are told apart
+on release by how long the control was held: under ``hold_ms`` is a tap, and a hold or long
+hold step can give its own ``ms`` to wait for (released between the two, nothing happens).
+"double_tap" and "triple_tap" are taps in quick succession, which the device counts and
+reports with the release (``taps``); "turn" is for the knob.
 """
 from __future__ import annotations
 
@@ -30,9 +33,10 @@ from typing import Callable
 # (AVRCP) while it plays to the car.
 INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob",
           "car-play", "car-next", "car-previous")
-GESTURES = ("press", "hold", "tap", "turn")
+GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "turn")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
-           "music_toggle", "music_next", "music_previous", "music_stop", "none")
+           "music_toggle", "music_next", "music_previous", "music_stop", "music_page", "none")
+LONG_HOLD_MS = 3000  # a long hold with no ms of its own
 
 DEFAULT_MAPPING: dict = {
     "agent_name": "Hermes",
@@ -42,8 +46,11 @@ DEFAULT_MAPPING: dict = {
     "conversation": {"end_of_speech_ms": 1000, "idle_end_s": 30},
     "controls": {
         "front": {"hold": {"action": "push_to_talk"}, "tap": {"action": "conversation"}},
-        # Tap: stop the agent speaking, or pause and resume the music when she isn't. Hold: stop it.
-        "knob": {"tap": {"action": "stop_speaking"}, "hold": {"action": "music_stop"}, "turn": {"action": "volume"}},
+        # Tap: stop the agent speaking, or pause and resume the music when she isn't. Two taps
+        # skip ahead, three go back. Hold two seconds: stop the music; three: the music page.
+        "knob": {"tap": {"action": "stop_speaking"}, "double_tap": {"action": "music_next"},
+                 "triple_tap": {"action": "music_previous"}, "hold": {"action": "music_stop", "ms": 2000},
+                 "long_hold": {"action": "music_page", "ms": 3000}, "turn": {"action": "volume"}},
         "mute": {"press": {"action": "mic_toggle"}},
         "preset-1": {"press": {"action": "prompt", "text": "What's next on my calendar?", "label": "Calendar"}},
         "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
@@ -61,12 +68,13 @@ DEFAULT_MAPPING: dict = {
 _OLD_CAR_DEFAULTS = {"car-next": {"press": {"action": "stop_speaking"}},
                      "car-previous": {"press": {"action": "none"}}}
 
-# The knob before a hold stopped the music; a mapping still holding it unchanged gets today's.
-_OLD_KNOB = {"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}}
+# The knob as earlier versions set it up; a mapping still holding one unchanged gets today's.
+_OLD_KNOBS = ({"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}},
+              {"tap": {"action": "stop_speaking"}, "hold": {"action": "music_stop"}, "turn": {"action": "volume"}})
 
 # The screen's name for an action with no label of its own, where its words alone read badly.
 _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "music_previous": "Previous song",
-                  "music_stop": "Stop the music",
+                  "music_stop": "Stop the music", "music_page": "Music page",
                   "mic_toggle": "Mic on / off"}
 
 LABEL_MAX = 32  # two lines on the screen
@@ -114,6 +122,53 @@ def preset_labels(mapping: dict, device: str | None = None) -> list[str]:
                 label = _ACTION_LABELS.get(step["action"]) or step["action"].replace("_", " ").capitalize()
         labels.append(label)
     return labels
+
+
+def _hold_ms(controls: dict, gesture: str, mapping: dict) -> int:
+    step = controls.get(gesture) or {}
+    ms = step.get("ms")
+    if isinstance(ms, int) and not isinstance(ms, bool):
+        return ms
+    return LONG_HOLD_MS if gesture == "long_hold" else mapping["hold_ms"]
+
+
+def _gesture(controls: dict, mapping: dict, held_ms: float, taps: int) -> str:
+    """Which gesture a release was: how long it was held, and how many quick taps it ended."""
+    if "long_hold" in controls and held_ms >= _hold_ms(controls, "long_hold", mapping):
+        return "long_hold"
+    if held_ms >= mapping["hold_ms"]:
+        # Let go before a hold's own time is up: nothing ("" has no step).
+        return "hold" if held_ms >= _hold_ms(controls, "hold", mapping) else ""
+    if taps >= 3 and "triple_tap" in controls:
+        return "triple_tap"
+    if taps >= 2 and "double_tap" in controls:
+        return "double_tap"
+    return "tap"
+
+
+def _step_label(step: dict) -> str:
+    action = step.get("action", "none")
+    return (step.get("label") or "").strip() or _ACTION_LABELS.get(action) or action.replace("_", " ").capitalize()
+
+
+def gesture_hints(mapping: dict, device: str | None = None) -> dict:
+    """What the device needs to know to report the gestures a control has: how many quick taps
+    to count, and the holds to show on the screen while the control is held (what letting go
+    would do, and from when)."""
+    out = {}
+    controls = controls_for(mapping, device)
+    if controls.get("knob") in _OLD_KNOBS:
+        controls["knob"] = DEFAULT_MAPPING["controls"]["knob"]
+    for name, gestures in controls.items():
+        if not isinstance(gestures, dict):
+            continue
+        taps = 3 if "triple_tap" in gestures else 2 if "double_tap" in gestures else 1
+        holds = [{"ms": _hold_ms(gestures, g, mapping), "label": _step_label(gestures[g])}
+                 for g in ("hold", "long_hold") if g in gestures and (gestures[g].get("ms") or g == "long_hold")
+                 and gestures[g].get("action") not in ("none", "push_to_talk")]
+        if taps > 1 or holds:
+            out[name] = {"taps": taps, "tap_ms": mapping["hold_ms"], "holds": holds}
+    return out
 
 
 class MappingError(ValueError):
@@ -198,6 +253,9 @@ def _control_problems(controls: dict, inputs: tuple, prefix: str) -> list[str]:
                 problems.append(f"{where}: a label is a short name for the screen, 1 to {LABEL_MAX} characters.")
             if action == "push_to_talk" and gesture != "hold":
                 problems.append(f"{where}: push_to_talk only works on hold.")
+            if "ms" in step and not (gesture in ("hold", "long_hold") and isinstance(step["ms"], int)
+                                     and not isinstance(step["ms"], bool) and 100 <= step["ms"] <= 10000):
+                problems.append(f"{where}: ms is how long to hold, 100 to 10000, on a hold or long_hold.")
             if action == "volume" and gesture != "turn":
                 problems.append(f"{where}: volume only works on turn.")
             if gesture == "turn" and action not in ("volume", "none"):
@@ -307,13 +365,15 @@ class Petasos:
                 # A mapping written before the car buttons existed, or before they played
                 # music, gets their defaults.
                 controls = DEFAULT_MAPPING["controls"][name]
-            if name == "knob" and controls == _OLD_KNOB:
+            if name == "knob" and controls in _OLD_KNOBS:
                 controls = DEFAULT_MAPPING["controls"]["knob"]
             controls = controls or {}
             if action == "press":
                 out = self._press(state, mapping, name, controls, now_ms)
             elif action == "release":
-                out = self._release(state, mapping, name, controls, now_ms)
+                taps = event.get("taps")
+                taps = taps if isinstance(taps, int) and not isinstance(taps, bool) and taps > 0 else 1
+                out = self._release(state, mapping, name, controls, now_ms, taps)
             elif action == "turn":
                 delta = event.get("delta")
                 if not isinstance(delta, int) or isinstance(delta, bool):
@@ -328,7 +388,8 @@ class Petasos:
     def _screen(state, mapping, device_id) -> list[dict]:
         """The preset labels and agent name for the device's screen: on hello, then whenever they
         change."""
-        screen = {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping)}
+        screen = {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping),
+                  "gestures": gesture_hints(mapping, device_id)}
         if screen == state.labels_sent:
             return []
         state.labels_sent = screen
@@ -376,7 +437,8 @@ class Petasos:
         with self._lock:
             state = self._devices.get(device_id)
             screen = self._screen(state, mapping, device_id) if state else [
-                {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping)}]
+                {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping),
+                 "gestures": gesture_hints(mapping, device_id)}]
         return self.presets(device_id), screen
 
     def status(self) -> dict:
@@ -404,12 +466,11 @@ class Petasos:
             return [{"do": "listen", "mode": "hold"}]
         return []
 
-    def _release(self, state, mapping, name, controls, now_ms) -> list[dict]:
+    def _release(self, state, mapping, name, controls, now_ms, taps: int = 1) -> list[dict]:
         pressed = state.down.pop(name, None)
         if pressed is None:
             return []
-        gesture = "hold" if now_ms - pressed >= mapping["hold_ms"] else "tap"
-        step = controls.get(gesture)
+        step = controls.get(_gesture(controls, mapping, now_ms - pressed, taps))
         if state.listening == "hold":
             state.listening = None
             if step and step.get("action") == "push_to_talk":
@@ -428,6 +489,8 @@ class Petasos:
             return []
         if action == "stop_speaking":
             return [{"do": "stop_speaking"}]
+        if action == "music_page":
+            return [{"do": "page", "page": "music"}]
         if action.startswith("music_"):  # the phone's music, through the Car Thing (client music.go)
             return [{"do": "music", "op": action.removeprefix("music_")}]
         if action == "volume":

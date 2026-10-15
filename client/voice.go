@@ -107,6 +107,9 @@ func (v *voice) carryOut(c map[string]any) {
 		}
 	case "screen":
 		showScreenCommand(c)
+	case "page":
+		page, _ := c["page"].(string)
+		togglePage(page)
 	case "music":
 		op, _ := c["op"].(string)
 		if raw, ok := c["tracks"]; ok && op == "play" { // a queue Athena chose from the library
@@ -117,13 +120,20 @@ func (v *voice) carryOut(c map[string]any) {
 			repeat, _ := c["repeat"].(string)
 			shuffle, _ := c["shuffle"].(bool)
 			go library.start(title, tracks, repeat, shuffle)
-		} else if strings.HasPrefix(op, "repeat") || strings.HasPrefix(op, "shuffle") {
-			go library.control(op) // only the library's own queue repeats and shuffles
-		} else if library.active() {
-			go library.control(op)
 		} else {
-			go music.control(op)
+			musicControl(op)
 		}
+	}
+}
+
+// musicControl is a control for whichever music is playing: the library's, else the phone's.
+func musicControl(op string) {
+	if strings.HasPrefix(op, "repeat") || strings.HasPrefix(op, "shuffle") {
+		go library.control(op) // only the library's own queue repeats and shuffles
+	} else if library.active() {
+		go library.control(op)
+	} else {
+		go music.control(op)
 	}
 }
 
@@ -141,6 +151,13 @@ func showScreenCommand(c map[string]any) {
 	}
 	if name, _ := c["agent"].(string); name != "" {
 		display.update(func(st *screenState) { st.Agent = name })
+	}
+	if raw, ok := c["gestures"]; ok { // an older plugin sends none: every tap goes at once
+		var g map[string]gestureHint
+		data, _ := json.Marshal(raw)
+		if json.Unmarshal(data, &g) == nil {
+			setGestureHints(g)
+		}
 	}
 }
 

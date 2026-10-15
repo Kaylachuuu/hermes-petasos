@@ -24,6 +24,7 @@
     ["music_next", "Next song"],
     ["music_previous", "Previous song"],
     ["music_stop", "Stop the music"],
+    ["music_page", "Music page"],
     ["none", "Nothing"],
   ];
 
@@ -42,7 +43,7 @@
   }
 
   // The screen's own names for these (petasos core._ACTION_LABELS).
-  const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause", music_stop: "Stop the music" };
+  const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause", music_stop: "Stop the music", music_page: "Music page" };
 
   // Which devices have preset buttons of their own, for the note at the top.
   function ownedBy(mapping) {

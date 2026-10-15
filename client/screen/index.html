@@ -97,6 +97,76 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
 
+/* The music page: what's playing on the left, your music to pick from on the right, by touch. */
+.mp { position: absolute; left: 0; right: 0; top: 11cqw; bottom: 0; display: grid; grid-template-columns: 34cqw 1fr;
+      grid-template-rows: minmax(0, 1fr); border-top: .3cqw solid var(--bronze); }
+.np { display: flex; flex-direction: column; align-items: center; padding: 1.8cqw 2.5cqw 1.4cqw; gap: .6cqw;
+      border-right: .15cqw solid var(--rule); min-width: 0; }
+.np .art { width: 14cqw; height: 14cqw; border-radius: 1cqw; background: var(--row) center / cover no-repeat;
+           display: flex; align-items: center; justify-content: center; flex: none; }
+.np .art svg { width: 6cqw; height: 6cqw; color: var(--dust); }
+.np .title { font-family: var(--display); font-size: 2.6cqw; line-height: 1.2; text-align: center; max-width: 100%;
+             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .6cqw; }
+.np .artist { font-size: 2.1cqw; color: var(--dust); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np .bar { width: 100%; height: .6cqw; border-radius: .3cqw; background: var(--rule); margin-top: auto; overflow: hidden; }
+.np .fill { height: 100%; width: 0; background: var(--ember); }
+.np .times { width: 100%; display: flex; justify-content: space-between; font-size: 1.7cqw; color: var(--dust);
+             font-variant-numeric: tabular-nums; }
+.np .ctl { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.mp button { font: inherit; color: var(--bronze); background: transparent; border: 0; padding: 0; display: flex;
+             align-items: center; justify-content: center; touch-action: manipulation; }
+.np .ctl button { width: 5.6cqw; height: 5.6cqw; border-radius: 50%; }
+.np .ctl button svg { width: 3.4cqw; height: 3.4cqw; }
+.np .ctl button.big { width: 7.6cqw; height: 7.6cqw; border: .2cqw solid var(--ember); color: var(--ember); }
+.np .ctl button.big svg { width: 4cqw; height: 4cqw; }
+.np .ctl button.on { color: var(--ember); }
+.np .ctl button.off { color: #5a4f42; }
+.np .ctl button:active, .lib .tr:active, .lib .pl:active { background: var(--row); }
+.lib { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lib .tabs { display: flex; gap: 1cqw; padding: 1.4cqw 2cqw .8cqw; align-items: center; flex: none; }
+.lib .tabs button { font-size: 2.2cqw; letter-spacing: .08em; padding: .6cqw 1.8cqw; border-radius: 3cqw; border: .15cqw solid var(--rule); }
+.lib .tabs button.on { border-color: var(--ember); color: var(--ember); background: var(--row); }
+.lib .tabs .athena { margin-left: auto; color: var(--dust); gap: .6cqw; border-color: transparent; }
+.lib .tabs .athena svg { width: 2.4cqw; height: 2.4cqw; }
+.lib .list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 1.6cqw 1.6cqw; touch-action: pan-y;
+             scrollbar-width: none; overscroll-behavior: contain; }
+.lib .list::-webkit-scrollbar { display: none; }
+.lib .tr, .lib .pl, .lib .head, .lib .find { display: grid; grid-template-columns: 5.4cqw 1fr auto; align-items: center; gap: 1.4cqw;
+             padding: .7cqw .8cqw; border-radius: .8cqw; }
+.lib .thumb { width: 5.4cqw; height: 5.4cqw; border-radius: .6cqw; background: var(--row) center / cover no-repeat;
+              display: flex; align-items: center; justify-content: center; }
+.lib .thumb svg { width: 2.6cqw; height: 2.6cqw; color: var(--dust); }
+.lib .tr div, .lib .pl div { min-width: 0; }
+.lib b { display: block; font-weight: 400; font-size: 2.3cqw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib span { display: block; font-size: 1.8cqw; color: var(--dust); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib em { font-style: normal; font-size: 1.8cqw; color: var(--dust); font-variant-numeric: tabular-nums; }
+.lib .tr.now b { color: var(--ember); }
+.lib .head { grid-template-columns: 3cqw 1fr auto; color: var(--dust); font-size: 2.1cqw; }
+.lib .head svg { width: 2.8cqw; height: 2.8cqw; }
+.lib .head em { font-size: 1.8cqw; }
+.lib .find { grid-template-columns: 3cqw 1fr; border: .15cqw solid var(--rule); margin-bottom: .8cqw; font-size: 2.3cqw; color: var(--dust); }
+.lib .find svg { width: 2.8cqw; height: 2.8cqw; }
+.lib .note { color: var(--dust); font-size: 2.2cqw; line-height: 1.4; padding: 2cqw 1cqw; text-align: center; }
+.mp-kb { position: absolute; left: 0; right: 0; top: 11cqw; bottom: 0; display: flex; flex-direction: column; padding: 2cqw 5cqw 2.4cqw;
+         background: var(--night); }
+.kb .kx { flex: none; font-size: 3cqw; color: var(--dust); padding: 0 .6cqw; }
+
+/* Held: what letting go of the knob (or another control with holds) would do now. */
+.holdpop { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: 46cqw; box-sizing: border-box;
+           background: #261d15; border: .2cqw solid var(--ember); border-radius: 1.4cqw; padding: 2cqw 2.6cqw 2.2cqw;
+           box-shadow: 0 1cqw 4cqw rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 1cqw; z-index: 5; }
+.holdpop h4 { margin: 0 0 .4cqw; font-family: var(--display); font-weight: 400; font-size: 2.1cqw; letter-spacing: .28em;
+              text-transform: uppercase; color: var(--dust); }
+.holdpop .step { display: grid; grid-template-columns: 2cqw 1fr auto; align-items: center; gap: 1.4cqw; font-size: 2.8cqw; color: #6b5f50; }
+.holdpop .step i { width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .2cqw solid currentColor; }
+.holdpop .step em { font-style: normal; font-size: 1.9cqw; }
+.holdpop .step.on { color: var(--ember); font-family: var(--display); }
+.holdpop .step.on i { background: var(--ember); }
+.holdpop .step.past { color: var(--dust); }
+.holdpop .track { position: relative; height: .7cqw; border-radius: .35cqw; background: var(--rule); margin-top: .8cqw; }
+.holdpop .track .fill { height: 100%; width: 0; border-radius: .35cqw; background: var(--ember); }
+.holdpop .track .tick { position: absolute; top: -.5cqw; width: .25cqw; height: 1.7cqw; background: var(--bronze); }
+
 /* The virtual Petasos (the Mac and Windows apps): the screen above, its controls below, sized
    together from --w so they scale as one 800:544 picture, the screen keeping the Car Thing's 5:3.
    A window of another shape gets bands of night at its sides or top and bottom. */
@@ -163,6 +233,15 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M6 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-device" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7.5 5.5h3v13h-3zM13.5 5.5h3v13h-3z" fill="currentColor"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5.5 6v12l9-6z" fill="currentColor"/><path d="M17.5 6v12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18.5 6v12l-9-6z" fill="currentColor"/><path d="M6.5 6v12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.5l3 3-3 3"/><path d="M4 11.5v-1a5 5 0 0 1 5-5h11"/><path d="M7 21.5l-3-3 3-3"/><path d="M20 12.5v1a5 5 0 0 1-5 5H4"/></g></symbol>
+    <symbol id="i-repeat-one" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.5l3 3-3 3"/><path d="M4 11.5v-1a5 5 0 0 1 5-5h11"/><path d="M7 21.5l-3-3 3-3"/><path d="M20 12.5v1a5 5 0 0 1-5 5H4"/><path d="M11 10.5l1.2-.8v4.8"/></g></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5h4v4"/><path d="M3.5 20.5l17-17"/><path d="M20.5 16.5v4h-4"/><path d="M14.5 14.5l6 6"/><path d="M3.5 3.5l5 5"/></g></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 15l5.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="emblem" viewBox="0 0 200 190">
       <g mask="url(#fade)" filter="url(#soft)">
         <g id="side"><rect x="58" y="153" width="84" height="16" fill="url(#key-small)"/></g>
@@ -228,6 +307,35 @@ body.virtual .topbar > span:hover { background: var(--row); }
     </svg>
     <div class="keys" id="bt-keys"></div>
   </div>
+
+  <div id="mpage" hidden>
+    <div class="mp">
+      <div class="np">
+        <div class="art" id="mp-art"></div>
+        <div class="title" id="mp-title"></div>
+        <div class="artist" id="mp-artist"></div>
+        <div class="bar"><div class="fill" id="mp-fill"></div></div>
+        <div class="times"><span id="mp-pos"></span><span id="mp-len"></span></div>
+        <div class="ctl">
+          <button id="mp-repeat" title="Repeat"><svg><use href="#i-repeat"/></svg></button>
+          <button data-op="previous" title="Previous"><svg><use href="#i-prev"/></svg></button>
+          <button class="big" id="mp-play" data-op="toggle" title="Play or pause"><svg><use href="#i-play"/></svg></button>
+          <button data-op="next" title="Next"><svg><use href="#i-next"/></svg></button>
+          <button id="mp-shuffle" title="Shuffle"><svg><use href="#i-shuffle"/></svg></button>
+        </div>
+      </div>
+      <div class="lib">
+        <div class="tabs">
+          <button data-tab="likes">Likes</button><button data-tab="playlists">Playlists</button><button data-tab="search">Search</button>
+          <button class="athena" id="mp-close"><svg><use href="#i-back"/></svg><span id="mp-agent">Athena</span></button>
+        </div>
+        <div class="list" id="mp-list"></div>
+      </div>
+    </div>
+    <div class="mp-kb" id="mp-kb" hidden></div>
+  </div>
+
+  <div class="holdpop" id="holdpop" hidden></div>
 </div>
 
 <div class="controls" id="controls" hidden>
@@ -451,7 +559,7 @@ function renderKeyboard() {
     return `<div class="${cls}" data-k="${esc(k)}" data-i="${n}">${esc(face)}</div>`;
   }).join("")}</div>`).join("");
   el.innerHTML = `<div class="field"><span>${esc(kb.title)}</span><div class="text"><bdi>${esc(kb.text)}</bdi></div>
-    <span class="count">${[...kb.text].length}/${kb.max}</span></div>${rows}`;
+    <span class="count">${[...kb.text].length}/${kb.max}</span>${kb.onCancel ? `<span class="kx" data-x="1">×</span>` : ""}</div>${rows}`;
 }
 
 function kbType(k) {
@@ -461,6 +569,7 @@ function kbType(k) {
   else if (k === "⇧") { kb.shift = !kb.shift; renderKeyboard(); return; }
   else if (k === "123" || k === "ABC" || k === "#+=") { kb.layout = { "123": "123", "ABC": "abc", "#+=": "sym" }[k]; kb.sel = Math.min(kb.sel, kbKeys().flat().length - 1); renderKeyboard(); return; }
   else if (k === "Done") {
+    if (kb.onDone) { kb.onDone(kb.text); return; }
     kb.sent = true;
     fetch("/settings/text", { method: "POST", headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ keyboard: kb.id, text: kb.text }) })
@@ -487,13 +596,209 @@ function draw(s) {
   $("motto").textContent = `MESSENGER OF ${s.agent.toUpperCase()}`;
   $("speaker-name").textContent = s.agent.toUpperCase();
   drawTop(s);
+  // The music page steps aside for the home screen while the agent is busy.
+  const onMusic = s.page === "music" && !s.bt && s.phase === "idle";
   $("bt").hidden = !s.bt;
-  $("home").hidden = !!s.bt;
+  $("mpage").hidden = !onMusic;
+  $("home").hidden = !!s.bt || onMusic;
   if (s.bt) drawBT(s.bt);
+  else if (onMusic) drawMusicPage(s);
   else drawHome(s);
+  if (!onMusic) closeMusicKeyboard();
+  drawHold(s);
   drawVolume(s);
   drawMic(s);
   drawCapture(s);
+}
+
+// --- the music page ------------------------------------------------------------------------------
+
+// What's playing comes with the state; the lists come from /music/browse when a tab opens and
+// stay until it's opened again, so they keep their place while the music plays.
+const mp = { ready: false, tab: "likes", lists: {}, open: null, query: "", found: null, shown: "" };
+
+const clock = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+const artStyle = (url) => url ? `background-image:url('${String(url).replace(/['\\()]/g, encodeURIComponent)}')` : "";
+const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).catch(() => {});
+
+function setUpMusicPage() {
+  if (mp.ready) return;
+  mp.ready = true;
+  document.querySelectorAll(".np [data-op]").forEach((b) => b.addEventListener("click", () => post("/music/control", { op: b.dataset.op })));
+  $("mp-repeat").addEventListener("click", () => {
+    const r = state && state.music && state.music.repeat;
+    post("/music/control", { op: !r ? "repeat_all" : r === "all" ? "repeat_one" : "repeat_off" });
+  });
+  $("mp-shuffle").addEventListener("click", () => post("/music/control", { op: state && state.music && state.music.shuffle ? "shuffle_off" : "shuffle_on" }));
+  $("mp-close").addEventListener("click", () => post("/music/page"));
+  document.querySelectorAll(".lib [data-tab]").forEach((b) => b.addEventListener("click", () => {
+    const again = mp.tab === b.dataset.tab;
+    mp.tab = b.dataset.tab;
+    if (mp.tab === "playlists" && again) mp.open = null; // the tab again: back to the playlists
+    if (mp.tab !== "search" || !mp.found) loadTab(again);
+    renderList();
+    if (mp.tab === "search" && !mp.found) openMusicKeyboard();
+  }));
+  $("mp-list").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-i], [data-p], [data-back], [data-find]");
+    if (!row) return;
+    if (row.dataset.find) { openMusicKeyboard(); return; }
+    if (row.dataset.back) { mp.open = null; renderList(); return; }
+    if (row.dataset.p) {
+      const p = (mp.lists.playlists || {}).playlists[+row.dataset.p];
+      mp.open = { title: p.title, loading: true };
+      renderList();
+      browse({ what: "playlist", source: p.source, id: p.id }).then((got) => { if (mp.open && mp.open.title === p.title) { mp.open = { ...got, title: p.title }; renderList(); } });
+      return;
+    }
+    const list = shownList();
+    if (list && list.tracks) post("/music/play", { title: list.title || "", tracks: list.tracks, at: +row.dataset.i });
+  });
+  loadTab(false);
+}
+
+function browse(params) {
+  const q = new URLSearchParams(params).toString();
+  return fetch("/music/browse?" + q).then((r) => r.json()).catch(() => ({ tracks: [], playlists: [], note: "Can't reach Petasos." }));
+}
+
+function loadTab(force) {
+  const tab = mp.tab;
+  if (tab === "search" || (mp.lists[tab] && !force)) return;
+  if (!mp.lists[tab]) mp.lists[tab] = { loading: true };
+  browse({ what: tab }).then((got) => { mp.lists[tab] = got; renderList(); });
+}
+
+function shownList() {
+  if (mp.tab === "playlists" && mp.open) return mp.open;
+  if (mp.tab === "search") return mp.found;
+  return mp.lists[mp.tab];
+}
+
+function trackRows(tracks, now) {
+  return tracks.map((t, i) => {
+    const playing = now && t.title === now.title && (t.artist || "") === (now.artist || "");
+    return `<div class="tr${playing ? " now" : ""}" data-i="${i}"><div class="thumb" style="${artStyle(t.art)}">${t.art ? "" : icon("music")}</div>
+      <div><b>${esc(t.title)}</b><span>${esc(t.artist)}</span></div><em>${t.seconds ? clock(t.seconds) : ""}</em></div>`;
+  }).join("");
+}
+
+function renderList() {
+  document.querySelectorAll(".lib [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === mp.tab));
+  const now = state && state.music;
+  const note = (text) => `<div class="note">${esc(text)}</div>`;
+  let html = "";
+  if (mp.tab === "search") {
+    html = `<div class="find" data-find="1">${icon("search")}<div>${esc(mp.query || "Search your music")}</div></div>`;
+    if (mp.found && mp.found.loading) html += note("Searching…");
+    else if (mp.found) html += mp.found.tracks && mp.found.tracks.length ? trackRows(mp.found.tracks, now) : note(mp.found.note || "Nothing found.");
+  } else if (mp.tab === "playlists" && mp.open) {
+    const o = mp.open;
+    html = `<div class="head" data-back="1">${icon("back")}<div>${esc(o.title)}</div><em>${o.tracks ? o.tracks.length + " songs" : ""}</em></div>`;
+    html += o.loading ? note("Loading…") : o.tracks && o.tracks.length ? trackRows(o.tracks, now) : note(o.note || "This playlist is empty.");
+  } else {
+    const l = mp.lists[mp.tab];
+    if (!l || l.loading) html = note("Loading…");
+    else if (mp.tab === "playlists")
+      html = (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art)}">${p.art ? "" : icon("list")}</div>
+        <div><b>${esc(p.title)}</b><span>${p.source === "soundcloud" ? "SoundCloud" : p.source === "navidrome" ? "Navidrome" : ""}</span></div><em>${p.count || ""}</em></div>`).join("")
+        : note(l.note || "No playlists yet.");
+    else html = (l.tracks || []).length ? trackRows(l.tracks, now) : note(l.note || "Nothing here yet.");
+  }
+  if (html !== mp.shown) { $("mp-list").innerHTML = html; mp.shown = html; }
+}
+
+function drawMusicPage(s) {
+  setUpMusicPage();
+  $("mp-agent").textContent = s.agent;
+  const m = s.music;
+  $("mp-art").style.cssText = m && m.art ? artStyle(m.art) : "";
+  $("mp-art").innerHTML = m && m.art ? "" : icon("music");
+  $("mp-title").textContent = m ? m.title || "Playing" : "Nothing playing";
+  $("mp-artist").textContent = m ? [m.artist, m.source].filter(Boolean).join(" · ") : `Pick something, or ask ${s.agent}`;
+  $("mp-play").firstElementChild.firstElementChild.setAttribute("href", m && m.playing ? "#i-pause" : "#i-play");
+  const lib = !!(m && m.library);
+  $("mp-repeat").firstElementChild.firstElementChild.setAttribute("href", m && m.repeat === "one" ? "#i-repeat-one" : "#i-repeat");
+  $("mp-repeat").className = !lib ? "off" : m.repeat ? "on" : "";
+  $("mp-shuffle").className = !lib ? "off" : m.shuffle ? "on" : "";
+  renderList();
+  stepProgress();
+}
+
+let progressTimer = 0;
+function stepProgress() {
+  clearTimeout(progressTimer);
+  const m = state && state.music;
+  if ($("mpage").hidden) return;
+  const len = m && m.seconds || 0;
+  const pos = m ? (m.position || 0) + (m.moving && m.playing ? (Date.now() - m.at) / 1000 : 0) : 0;
+  $("mp-fill").style.width = len ? `${Math.min(100, 100 * pos / len)}%` : "0";
+  $("mp-pos").textContent = m && m.library ? clock(Math.min(pos, len || pos)) : "";
+  $("mp-len").textContent = len ? clock(len) : "";
+  if (m && m.moving && m.playing) progressTimer = setTimeout(stepProgress, 500);
+}
+
+function openMusicKeyboard() {
+  $("mp-kb").hidden = false;
+  $("mp-kb").innerHTML = `<div class="kb" id="kb"></div>`;
+  kb = { id: "music-search", text: mp.query, max: 60, layout: "abc", shift: !mp.query, sel: -1, sent: false, title: "Search",
+         onDone: (text) => {
+           closeMusicKeyboard();
+           mp.query = text.trim();
+           if (!mp.query) { mp.found = null; renderList(); return; }
+           mp.found = { loading: true };
+           renderList();
+           const asked = mp.query;
+           browse({ what: "search", q: asked }).then((got) => { if (mp.query === asked) { mp.found = got; renderList(); } });
+         },
+         onCancel: () => closeMusicKeyboard() };
+  $("kb").addEventListener("pointerdown", (e) => {
+    if (e.target.closest("[data-x]")) { e.preventDefault(); kb.onCancel(); return; }
+    const el = e.target.closest(".k");
+    if (!el) return;
+    e.preventDefault();
+    el.classList.add("down");
+    setTimeout(() => el.classList.remove("down"), 120);
+    kb.sel = +el.dataset.i;
+    kbType(el.dataset.k);
+  });
+  renderKeyboard();
+}
+
+function closeMusicKeyboard() {
+  if ($("mp-kb").hidden) return;
+  $("mp-kb").hidden = true;
+  $("mp-kb").innerHTML = "";
+  if (kb && kb.onDone) kb = null;
+}
+
+// --- held: what letting go would do ---------------------------------------------------------------
+
+let holdRun = null;
+
+function drawHold(s) {
+  const h = s.hold;
+  if (!h || !h.holds || !h.holds.length) { holdRun = null; $("holdpop").hidden = true; return; }
+  if (holdRun && holdRun.id === h.id) return;
+  const last = h.holds[h.holds.length - 1].ms;
+  holdRun = { id: h.id, start: performance.now() - h.since_ms, holds: h.holds, last };
+  $("holdpop").innerHTML = `<h4 id="hold-head"></h4>` +
+    h.holds.map((step, i) => `<div class="step" id="hold-${i}"><i></i><div>${esc(step.label)}</div><em>${(step.ms / 1000).toFixed(step.ms % 1000 ? 1 : 0)} s</em></div>`).join("") +
+    `<div class="track"><div class="fill" id="hold-fill"></div>${h.holds.slice(0, -1).map((step) => `<div class="tick" style="left:${100 * step.ms / last}%"></div>`).join("")}</div>`;
+  $("holdpop").hidden = false;
+  requestAnimationFrame(stepHold);
+}
+
+function stepHold() {
+  const run = holdRun;
+  if (!run || $("holdpop").hidden) return;
+  const held = performance.now() - run.start;
+  let on = -1;
+  run.holds.forEach((step, i) => { if (held >= step.ms) on = i; });
+  $("hold-head").textContent = on < 0 ? "Keep holding to" : "Let go to";
+  run.holds.forEach((_, i) => { $("hold-" + i).className = "step" + (i === on ? " on" : i < on ? " past" : ""); });
+  $("hold-fill").style.width = `${Math.min(100, 100 * held / run.last)}%`;
+  if (held < run.last) requestAnimationFrame(stepHold);
 }
 
 // --- the Mac app's microphone ------------------------------------------------------------------
@@ -671,6 +976,7 @@ function setUpControls(s) {
   addEventListener("blur", () => { for (const [, [input, id]] of Object.entries(keys)) up(input, $(id)); });
   let wheel = 0;
   addEventListener("wheel", (e) => {
+    if (e.target.closest(".lib .list")) return; // scrolling the music page's list, not the volume
     wheel += e.deltaY;
     while (Math.abs(wheel) >= 60) { press("knob", "turn", wheel < 0 ? 1 : -1); wheel -= Math.sign(wheel) * 60; }
   }, { passive: true });
@@ -678,7 +984,7 @@ function setUpControls(s) {
 
 // In the apps, which have no title bar, the window moves by dragging the page's background.
 if (window.petasosWindow) addEventListener("mousedown", (e) => {
-  if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row"))
+  if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row, .mp, .mp-kb"))
     petasosWindow("drag");
 });
 

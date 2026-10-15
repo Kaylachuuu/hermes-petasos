@@ -36,6 +36,7 @@ type libTrack struct {
 	Artist  string `json:"artist"`
 	Album   string `json:"album"`
 	Seconds int    `json:"seconds"`
+	Art     string `json:"art,omitempty"` // a picture for the music page, when the source has one
 }
 
 const libraryRate = speakerRate // 48 kHz stereo, what BlueALSA needs (see toSpeakerFormat)
@@ -52,6 +53,10 @@ type libraryPlayer struct {
 	held   bool   // Athena has the speaker
 	run    *libRun
 	failed int // tracks in a row that wouldn't play
+
+	// When the track playing reached the speaker, and from which frame, for where it is now.
+	began      time.Time
+	beganFrame int
 
 	repeat  string     // "one" (this track again), "all" (the queue again) or "" (stop at the end)
 	shuffle bool       // the queue is in a random order
@@ -124,13 +129,20 @@ func (l *libraryPlayer) active() bool {
 // start plays the queue the plugin sent: {"op":"play","title":...,"tracks":[...],"repeat":...,
 // "shuffle":...}. The plugin has already shuffled a queue asked for shuffled.
 func (l *libraryPlayer) start(title string, tracks []libTrack, repeat string, shuffle bool) {
+	l.startAt(title, tracks, 0, repeat, shuffle)
+}
+
+// startAt plays a queue from one of its tracks: a song picked on the music page, with the rest
+// of its list after it.
+func (l *libraryPlayer) startAt(title string, tracks []libTrack, at int, repeat string, shuffle bool) {
 	if len(tracks) == 0 {
 		return
 	}
+	at = max(0, min(at, len(tracks)-1))
 	music.yieldToLibrary()
 	l.halt()
 	l.mu.Lock()
-	l.queue, l.pos, l.frame, l.title, l.want, l.failed = tracks, 0, 0, title, "playing", 0
+	l.queue, l.pos, l.frame, l.title, l.want, l.failed = tracks, at, 0, title, "playing", 0
 	l.order, l.shuffle, l.repeat = tracks, shuffle, repeatMode(repeat)
 	l.held = display.snapshot().Phase != "idle" // it waits for Athena to finish her reply
 	l.mu.Unlock()
@@ -160,7 +172,7 @@ func (l *libraryPlayer) control(op string) {
 	case "next":
 		l.pos, l.frame, restart = l.pos+1, 0, true
 	case "previous":
-		if l.frame < 3*libraryRate { // a few seconds in, back to the start of this one instead
+		if l.positionLocked() < 10*libraryRate { // further in, back to the start of this one instead
 			l.pos = max(0, l.pos-1)
 		}
 		l.frame, restart = 0, true
@@ -200,6 +212,24 @@ func (l *libraryPlayer) control(op string) {
 		l.halt()
 	}
 	l.kick()
+}
+
+// positionLocked is how far into the track playing it is, in frames.
+func (l *libraryPlayer) positionLocked() int {
+	if l.run != nil && !l.began.IsZero() {
+		return l.beganFrame + int(time.Since(l.began).Seconds()*libraryRate)
+	}
+	return l.frame
+}
+
+// reached marks the track as having reached the speaker, from a frame.
+func (l *libraryPlayer) reached(r *libRun, from int) {
+	l.mu.Lock()
+	if l.run == r {
+		l.began, l.beganFrame = time.Now(), from
+	}
+	l.mu.Unlock()
+	l.show()
 }
 
 // repeatMode is "one", "all" or "" from what the plugin or Athena said.
@@ -269,7 +299,10 @@ func (l *libraryPlayer) show() {
 		if source == "" {
 			source = "Music"
 		}
-		np = &nowPlaying{Title: t.Title, Artist: t.Artist, Playing: l.want == "playing", Source: source}
+		np = &nowPlaying{Title: t.Title, Artist: t.Artist, Playing: l.want == "playing", Source: source,
+			Art: t.Art, Seconds: t.Seconds, Position: float64(l.positionLocked()) / libraryRate,
+			At: time.Now().UnixMilli(), Moving: l.run != nil && !l.began.IsZero(),
+			Library: true, Repeat: l.repeat, Shuffle: l.shuffle}
 	}
 	l.mu.Unlock()
 	display.update(func(st *screenState) { st.Music = np })
@@ -291,6 +324,7 @@ func (l *libraryPlayer) play(r *libRun) {
 		reached, err := l.playTrack(r, t, from)
 
 		l.mu.Lock()
+		l.began = time.Time{}
 		if l.run != r { // stopped: carry on from here next time
 			if l.queue != nil && l.pos < len(l.queue) && l.queue[l.pos] == t && l.frame == from {
 				l.frame = reached
@@ -394,6 +428,7 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 	if err := cmd.Start(); err != nil {
 		return from, err
 	}
+	l.reached(r, from)
 	frame := from
 	buf := make([]byte, 4096*4)
 	for {
@@ -447,6 +482,7 @@ func (l *libraryPlayer) playWhole(r *libRun, pcm io.Reader, from int) (int, erro
 	if err := cmd.Start(); err != nil {
 		return from, err
 	}
+	l.reached(r, from)
 	began := time.Now()
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()

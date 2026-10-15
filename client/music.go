@@ -32,6 +32,16 @@ type nowPlaying struct {
 	Artist  string `json:"artist,omitempty"`
 	Playing bool   `json:"playing"`
 	Source  string `json:"source"` // the phone's name
+
+	// The home library's (library.go) extras, for the music page.
+	Art      string  `json:"art,omitempty"`
+	Seconds  int     `json:"seconds,omitempty"`  // how long the track is
+	Position float64 `json:"position,omitempty"` // how far in, in seconds, at At
+	At       int64   `json:"at,omitempty"`       // when Position was true, in Unix milliseconds
+	Moving   bool    `json:"moving,omitempty"`   // the position is moving on from At
+	Library  bool    `json:"library,omitempty"`  // repeat and shuffle apply
+	Repeat   string  `json:"repeat,omitempty"`
+	Shuffle  bool    `json:"shuffle,omitempty"`
 }
 
 type phoneMusic struct {

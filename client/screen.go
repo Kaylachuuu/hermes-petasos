@@ -45,6 +45,8 @@ type screenState struct {
 	MicName  string      `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
 	OnTop    bool        `json:"on_top,omitempty"`   // the app keeps its window above others (the pin)
 	Music    *nowPlaying `json:"music,omitempty"`    // what the phone plays through the Car Thing (music.go)
+	Page     string      `json:"page,omitempty"`     // "music" while the music page is open (musicpage.go)
+	Hold     *holdShown  `json:"hold,omitempty"`     // a control held down, and what letting go would do (gestures.go)
 }
 
 type links struct {
@@ -172,6 +174,10 @@ func (s *screen) serve() {
 	mux.HandleFunc("/app/music", appMusic)
 	mux.HandleFunc("/app/soundcloud", appSoundCloud)
 	mux.HandleFunc("/app/signin", appSignIn)
+	mux.HandleFunc("/music/browse", musicBrowse)
+	mux.HandleFunc("/music/play", musicPlay)
+	mux.HandleFunc("/music/control", musicControlPost)
+	mux.HandleFunc("/music/page", musicPagePost)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
 		log.Printf("can't serve the screen: %v", err)

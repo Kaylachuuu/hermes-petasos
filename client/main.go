@@ -463,7 +463,9 @@ func (h *hermes) run(eventsFile string) {
 	go display.serve()
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
-	go filterInputs(raw, presses)
+	filtered := make(chan map[string]any, 64)
+	go filterInputs(raw, filtered)
+	go countGestures(filtered, presses)
 	if virtual {
 		h.startVirtual(raw)
 	} else if eventsFile != "" {

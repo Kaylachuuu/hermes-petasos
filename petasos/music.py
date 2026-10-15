@@ -140,9 +140,17 @@ def take(device: str) -> list[dict]:
 
 # --- the sources --------------------------------------------------------------------------------
 
-def _track(source: str, ident: str, title: str, artist: str = "", album: str = "", seconds: int = 0) -> dict:
-    return {"source": source, "id": ident, "title": title or "Untitled", "artist": artist or "",
-            "album": album or "", "seconds": int(seconds or 0)}
+def _track(source: str, ident: str, title: str, artist: str = "", album: str = "", seconds: int = 0,
+           art: str = "") -> dict:
+    t = {"source": source, "id": ident, "title": title or "Untitled", "artist": artist or "",
+         "album": album or "", "seconds": int(seconds or 0)}
+    if art:
+        t["art"] = art  # a picture for the music page, where the source has one anyone can fetch
+    return t
+
+
+def _playlist_entry(source: str, ident: str, title: str, count: int = 0, art: str = "") -> dict:
+    return {"source": source, "id": ident, "title": title or "Untitled", "count": int(count or 0), "art": art or ""}
 
 
 class MusicError(RuntimeError):
@@ -218,6 +226,18 @@ class Navidrome:
 
     def stream_url(self, ident: str) -> str:
         return self.url_for("stream", id=ident, format="mp3", maxBitRate=BIT_RATE)
+
+    # The music page's lists.
+    def playlists(self) -> list[dict]:
+        lists = self.call("getPlaylists").get("playlists", {}).get("playlist", [])
+        return [_playlist_entry("navidrome", str(p.get("id")), p.get("name"), p.get("songCount")) for p in lists]
+
+    def playlist_tracks(self, ident: str) -> list[dict]:
+        return [self._song(s) for s in self.call("getPlaylist", id=ident).get("playlist", {}).get("entry", [])]
+
+    def search(self, query: str) -> list[dict]:
+        found = self.call("search3", query=query, songCount=30, albumCount=0, artistCount=0).get("searchResult3", {})
+        return [self._song(s) for s in found.get("song", [])]
 
 
 def _words(text: str) -> list[str]:
@@ -366,6 +386,11 @@ class Folders:
                 return f"{songs[0]['title']} by {songs[0]['artist']}", songs[:1]
             return f"songs matching {query}", songs[:50]
         return "", []
+
+    def search(self, query: str) -> list[dict]:
+        scored = sorted(((_score(query, f"{t['title']} {t['artist']} {t['album']}"), t) for t in self.tracks()),
+                        key=lambda p: -p[0])
+        return [t for sc, t in scored if sc >= 0.5][:30]
 
 
 class SoundCloud:
@@ -538,11 +563,18 @@ class SoundCloud:
         return answer.get("collection", []) if isinstance(answer, dict) else (answer or [])
 
     @staticmethod
+    def _art(item: dict) -> str:
+        """The item's artwork (else its uploader's picture), at a size for the screen."""
+        url = item.get("artwork_url") or (item.get("user") or {}).get("avatar_url") or ""
+        return url.replace("-large.", "-t300x300.") if isinstance(url, str) else ""
+
+    @staticmethod
     def _song(t: dict) -> dict | None:
         if t.get("access") == "blocked" or t.get("streamable") is False:
             return None
         return _track("soundcloud", str(t.get("urn") or t.get("id")), t.get("title"),
-                      (t.get("user") or {}).get("username", ""), "", int(t.get("duration") or 0) // 1000)
+                      (t.get("user") or {}).get("username", ""), "", int(t.get("duration") or 0) // 1000,
+                      SoundCloud._art(t))
 
     def _songs(self, items: list) -> list[dict]:
         return [s for s in (self._song(t) for t in items if isinstance(t, dict)) if s]
@@ -597,6 +629,34 @@ class SoundCloud:
         ident = str(playlist.get("urn") or playlist.get("id"))
         return self._songs(self._items(self.call(f"/playlists/{urllib.parse.quote(ident, safe=':')}/tracks",
                                                  limit=200, linked_partitioning="true", access="playable")))
+
+    # The music page's lists.
+    def likes(self) -> list[dict]:
+        if not self.account():
+            raise MusicError("Sign in to SoundCloud in Petasos's settings (Music) to see your likes")
+        return self._songs(self._items(self.call("/me/likes/tracks", limit=200, linked_partitioning="true", access="playable")))
+
+    def playlists(self) -> list[dict]:
+        if not self.account():
+            return []
+        mine = self._items(self.call("/me/playlists", limit=200, linked_partitioning="true", show_tracks="false"))
+        try:
+            mine += self._items(self.call("/me/likes/playlists", limit=200, linked_partitioning="true"))
+        except MusicError:
+            pass
+        seen, out = set(), []
+        for p in mine:
+            ident = str(p.get("urn") or p.get("id"))
+            if ident not in seen:
+                seen.add(ident)
+                out.append(_playlist_entry("soundcloud", ident, p.get("title"), p.get("track_count"), self._art(p)))
+        return out
+
+    def playlist_tracks(self, ident: str) -> list[dict]:
+        return self._playlist({"urn": ident})
+
+    def search(self, query: str) -> list[dict]:
+        return self._songs(self._items(self.call("/tracks", q=query, limit=30, linked_partitioning="true", access="playable")))
 
     def stream(self, ident: str) -> Iterator[bytes]:
         urls = self.call(f"/tracks/{urllib.parse.quote(ident, safe=':')}/streams")
@@ -653,6 +713,52 @@ def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dic
     if problems:
         raise MusicError(" ".join(problems))
     return "", []
+
+
+def browse(what: str, source: str = "", ident: str = "", query: str = "") -> dict:
+    """The device's music page: your likes, your playlists, one playlist's tracks, or a search
+    of every source. Each answer has a title and tracks or playlists, and a note when a source
+    couldn't help (not signed in, didn't answer)."""
+    srcs = sources()
+    if not srcs:
+        raise MusicError("No music source is set up yet: add SoundCloud, Navidrome or folders in Petasos's settings (Music).")
+    notes: list[str] = []
+    out: dict = {"title": "", "tracks": [], "playlists": []}
+
+    def each(method: str, *args) -> None:
+        for src in srcs:
+            if source and _name(src) != source or not hasattr(src, method):
+                continue
+            try:
+                got = getattr(src, method)(*args)
+            except MusicError as exc:
+                notes.append(str(exc))
+                continue
+            out["playlists" if method == "playlists" else "tracks"] += got
+
+    if what == "likes":
+        out["title"] = "Your likes"
+        source = "soundcloud"
+        each("likes")
+    elif what == "playlists":
+        out["title"] = "Playlists"
+        each("playlists")
+    elif what == "playlist":
+        if not (source and ident):
+            raise MusicError("Which playlist?")
+        out["title"] = "Playlist"
+        each("playlist_tracks", ident)
+    elif what == "search":
+        if not query.strip():
+            raise MusicError("Search for what?")
+        out["title"] = f"“{query.strip()}”"
+        each("search", query.strip())
+    else:
+        raise MusicError("what is likes, playlists, playlist or search")
+    out["tracks"] = out["tracks"][:MAX_QUEUE]
+    if notes and not (out["tracks"] or out["playlists"]):
+        out["note"] = " ".join(notes)
+    return out
 
 
 # --- settings, from the dashboard --------------------------------------------------------------

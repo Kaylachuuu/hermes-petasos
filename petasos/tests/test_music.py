@@ -361,3 +361,29 @@ def test_a_song_named_in_full_plays_alone_and_repeat_reaches_the_device(tmp_path
     assert json.loads(music.music_control({"action": "shuffle_on"}))["done"] == "shuffle_on"
     assert left[-1] == {"do": "music", "op": "shuffle_on"}
     assert "error" in json.loads(music.music_control({"action": "wiggle"}))
+
+
+def test_the_music_page_lists_likes_playlists_and_searches(home, soundcloud, navidrome):
+    configure(home, {"navidrome": {"url": navidrome, "username": "kayla", "password": "secret"},
+                     "soundcloud": {"client_id": "cid", "client_secret": "secret"}})
+    assert "Sign in" in music.browse("likes")["note"]
+    assert [p["title"] for p in music.browse("playlists")["playlists"]] == ["Road Trip"]
+    found = music.browse("search", query="brightest")
+    assert [t["title"] for t in found["tracks"]] == ["Jóga", "Brightest Lights"]
+    assert music.browse("playlist", "navidrome", "p1")["tracks"][0]["title"] == "Hyperballad"
+    with pytest.raises(music.MusicError):
+        music.browse("search", query=" ")
+    # Signed in: the likes, and SoundCloud's playlists beside Navidrome's.
+    url = music.soundcloud().authorize_url("http://127.0.0.1:8187/app/soundcloud")
+    q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+    FakeSoundCloud.challenge = q["code_challenge"]
+    music.soundcloud().connect("c0de", q["state"])
+    assert [t["title"] for t in music.browse("likes")["tracks"]] == ["Loved One"]
+    lists = music.browse("playlists")["playlists"]
+    assert [(p["source"], p["title"]) for p in lists] == [("navidrome", "Road Trip"), ("soundcloud", "Late Night Drive")]
+    assert music.browse("playlist", "soundcloud", lists[1]["id"])["tracks"][0]["title"] == "Fingerprint"
+
+
+def test_the_music_page_says_when_nothing_is_set_up(home):
+    with pytest.raises(music.MusicError):
+        music.browse("playlists")

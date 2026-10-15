@@ -88,6 +88,7 @@ var softKeyActions = []choiceOf{
 	{"music_next", "Next song"},
 	{"music_previous", "Previous song"},
 	{"music_stop", "Stop the music"},
+	{"music_page", "Music page"},
 	{"none", "Nothing"},
 }
 

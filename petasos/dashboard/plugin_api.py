@@ -206,6 +206,16 @@ def soundcloud_disconnect() -> dict:
     return {"account": ""}
 
 
+@router.get("/music/browse")
+def music_browse(what: str, source: str = "", id: str = "", q: str = "") -> dict:
+    """The device's music page: likes, playlists, a playlist's tracks, or a search."""
+    music = _music()
+    try:
+        return music.browse(what, source, id, q)
+    except music.MusicError as exc:
+        return {"title": "", "tracks": [], "playlists": [], "note": str(exc)}
+
+
 @router.get("/music/stream")
 def music_stream(source: str, id: str) -> StreamingResponse:
     """One track of the home library as MP3, from Navidrome or a music folder on this machine."""
