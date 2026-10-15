@@ -231,6 +231,7 @@ Hold the front button and talk; let go, and Athena's answer plays on the Bluetoo
 - **In the plugin** (`petasos/voice.py`): `POST /api/plugins/petasos/voice` takes the WAV, transcribes it with Hermes' own speech-to-text (`stt:` in `config.yaml`), sends the words to Athena over the dashboard's chat connection as a voice turn (`voice_turn`, `surface: voice-live`, which asks for a short spoken answer), and turns her reply into speech with Hermes' text-to-speech (`tts:`). `POST /ask` does the same for typed text (presets). The reply audio is fetched from `GET /voice/audio/<id>`.
 - **One conversation per device** ("Petasos · Car Thing", "Petasos · Office Mac"), or one shared by all of them ("Petasos") if the dashboard's Petasos tab says so. It is resumed every time and listed under its own source, `petasos`, so the WebUI and the desktop app can show Petasos chats apart from the rest. The ids are kept in `<hermes root>/petasos/chats.json`; delete an entry to start fresh.
 - **Approvals** can't be answered from the Car Thing; they're declined and Athena says what she couldn't do.
+- **"Hey Athena"** (`client/wakeword.go`, `client/wakelisten.go`): while nothing else is going on and the mic isn't muted, petasos listens for the wake word itself, on the device, with nothing sent anywhere. Hearing it plays a short chime and starts a conversation, as a tap on the front button does, except that it ends after 8 seconds without speech rather than the usual wait. On the Car Thing it always listens through its own microphones, so the car's hands-free link isn't held open. The Device tab's **Wake word** row turns it on or off (on by default on the Car Thing, off in the apps, where the settings page has it under Audio). The model is openWakeWord's (its shared audio front end, plus a small "Hey Athena" head trained on generated speech), run in plain Go; `tools/wakeword/` regenerates it.
 
 For hermes-whisper and hermes-kokoro, Hermes' config needs:
 
@@ -342,8 +343,8 @@ them. The volume keys (arrows, scroll, − and +) press Windows's own volume key
 shows its volume display. The file isn't signed, so Windows SmartScreen asks once before the
 first run: **More info**, then **Run anyway**.
 
-The Windows window has no title bar: drag it by the screen's background, and use the − and ×
-at the right of the controls to minimize or close it. Resizing keeps its shape, as on the Mac.
+Neither app's window has a title bar: drag it by the screen's background, and use the − and ×
+at the right of the controls to minimize or close it. Resizing keeps its shape.
 
 The screen keeps the Car Thing's shape in a window of any size, in both apps.
 

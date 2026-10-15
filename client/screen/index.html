@@ -653,7 +653,7 @@ function setUpControls(s) {
                            body: JSON.stringify({ on_top: !(state && state.on_top) }) }).catch(() => {});
   });
   $("c-down").addEventListener("click", () => press("knob", "turn", -1));
-  if (window.petasosWindow) { // the Windows app's window has no title bar of its own
+  if (window.petasosWindow) { // the apps' windows have no title bar of their own
     $("c-min").hidden = $("c-close").hidden = false;
     $("c-min").addEventListener("click", () => petasosWindow("minimize"));
     $("c-close").addEventListener("click", () => petasosWindow("close"));
@@ -676,7 +676,7 @@ function setUpControls(s) {
   }, { passive: true });
 }
 
-// In the Windows app, which has no title bar, the window moves by dragging the page's background.
+// In the apps, which have no title bar, the window moves by dragging the page's background.
 if (window.petasosWindow) addEventListener("mousedown", (e) => {
   if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row"))
     petasosWindow("drag");

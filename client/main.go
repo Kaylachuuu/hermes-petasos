@@ -459,6 +459,7 @@ func (h *hermes) run(eventsFile string) {
 	h.servesDevice()
 	bt.name = h.shownName()
 	carMic.Store(h.cfg.Mic == "car")
+	wakeOn.Store(wakeSetting(h.dir))
 	go display.serve()
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
@@ -483,6 +484,7 @@ func (h *hermes) run(eventsFile string) {
 	v := newVoice(h, presses)
 	library.attach(h, v)
 	go h.pollCommands(v)
+	wake.start(v)
 	if !virtual {
 		volumes.load(h.dir)
 		go v.keepVolumes()

@@ -46,6 +46,7 @@ type appSettingsView struct {
 	Mics      []micInfo `json:"mics"`     // the microphones connected now
 	MicsError string    `json:"mics_error,omitempty"`
 	Versions  versions  `json:"versions"`
+	Wake      bool      `json:"wake"` // listen for "Hey Athena"
 }
 
 type appSettingsChange struct {
@@ -55,6 +56,7 @@ type appSettingsChange struct {
 	WireGuard *string `json:"wireguard,omitempty"` // a new config's text; absent keeps the old one
 	Mic       *string `json:"mic,omitempty"`       // absent keeps the microphone as it is
 	MicName   string  `json:"mic_name,omitempty"`
+	Wake      *bool   `json:"wake,omitempty"`
 }
 
 func (h *hermes) servesAppSettings() {
@@ -119,7 +121,7 @@ func (h *hermes) appSettingsView() appSettingsView {
 	v.VPNError = app.vpnError
 	app.mu.Unlock()
 	a := loadAudioSettings(h.dir)
-	v.Mic, v.MicName = a.Mic, a.MicName
+	v.Mic, v.MicName, v.Wake = a.Mic, a.MicName, a.Wake
 	mics, err := listMics()
 	v.Mics = mics
 	v.Versions = h.versions()
@@ -167,10 +169,16 @@ func (h *hermes) saveAppSettings(c appSettingsChange) string {
 	if err := writeJSON(filepath.Join(h.dir, "vpn.json"), vpnSettings{On: c.VPN, When: when}, 0o644); err != nil {
 		return "Couldn't save the VPN setting: " + err.Error()
 	}
-	if c.Mic != nil {
-		a := audioSettings{Mic: *c.Mic, MicName: strings.TrimSpace(c.MicName)}
-		if a.Mic == "" {
-			a.MicName = ""
+	if c.Mic != nil || c.Wake != nil {
+		a := loadAudioSettings(h.dir)
+		if c.Mic != nil {
+			a.Mic, a.MicName = *c.Mic, strings.TrimSpace(c.MicName)
+			if a.Mic == "" {
+				a.MicName = ""
+			}
+		}
+		if c.Wake != nil {
+			a.Wake = *c.Wake
 		}
 		if err := writeJSON(filepath.Join(h.dir, "audio.json"), a, 0o644); err != nil {
 			return "Couldn't save the microphone: " + err.Error()

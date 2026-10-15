@@ -287,6 +287,27 @@ type ownSettings struct {
 	Name   string `json:"name,omitempty"`
 	Device string `json:"device,omitempty"`
 	Mic    string `json:"mic,omitempty"`
+	Wake   *bool  `json:"wake,omitempty"` // listen for the wake word; on unless turned off
+}
+
+// wakeSetting is whether to listen for the wake word: the Car Thing does unless it was turned
+// off in its Device tab, the apps only once it is turned on in their Settings.
+func wakeSetting(dir string) bool {
+	if virtual {
+		return loadAudioSettings(dir).Wake
+	}
+	o := loadOwnSettings(dir)
+	return o.Wake == nil || *o.Wake
+}
+
+func (h *hermes) setWake(on bool) error {
+	own := loadOwnSettings(h.dir)
+	own.Wake = &on
+	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	wakeOn.Store(on)
+	return nil
 }
 
 func loadOwnSettings(dir string) ownSettings {
@@ -330,6 +351,14 @@ func (b *bluetooth) mineViewAt(sel int) {
 			}
 			b.mineViewAt(1)
 		}},
+		{Kind: "row", Icon: "mic", Label: "Wake word", Value: map[bool]string{true: "“Hey Athena”", false: "Off"}[wakeOn.Load()],
+			do: func() {
+				if err := h.setWake(!wakeOn.Load()); err != nil {
+					b.message("Couldn't save that", err.Error())
+					return
+				}
+				b.mineViewAt(2)
+			}},
 		{Kind: "header", Label: "Soft keys"},
 	}
 	p, err := h.presets()

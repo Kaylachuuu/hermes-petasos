@@ -104,12 +104,12 @@ func TestDeviceTabGivesTheCarThingItsOwnSoftKeysAndName(t *testing.T) {
 	bt.show(&btScreen{View: "screen"})
 	ev("preset-3", "press", 0)
 	v := waitFor("the Device tab", func(v btScreen) bool { return v.View == "mine" })
-	if v.Tab != "device" || v.Items[0].Value != "Car Thing" || v.Items[3].Label != "Calendar" {
+	if v.Tab != "device" || v.Items[0].Value != "Car Thing" || v.Items[4].Label != "Calendar" {
 		t.Fatalf("Device tab: %+v", v)
 	}
 	// Soft key 3: turn it into a question. Its words are asked for before it is saved.
 	ev("knob", "turn", 1)
-	for view().Sel != 5 {
+	for view().Sel != 6 {
 		ev("knob", "turn", 1)
 	}
 	ev("knob", "press", 0)

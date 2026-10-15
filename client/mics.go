@@ -23,6 +23,7 @@ type micInfo struct {
 type audioSettings struct {
 	Mic     string `json:"mic,omitempty"`      // the helper's id for it; empty for the computer's own choice
 	MicName string `json:"mic_name,omitempty"` // for the settings page while it isn't connected
+	Wake    bool   `json:"wake,omitempty"`     // listen for the wake word (off unless turned on)
 }
 
 var micChoice string // the microphone the recorder uses, from audio.json; empty for the default

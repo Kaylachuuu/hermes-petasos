@@ -209,6 +209,7 @@ func (v *voice) listen(mode string, endMs, idleS int) {
 
 func (v *voice) startRecording() {
 	display.setPhase("ready")
+	wake.release() // the wake word's listening lets go of the microphone first
 	src, out, err := v.openMic()
 	if err != nil {
 		log.Printf("can't record from %s: %v", v.mic, err)

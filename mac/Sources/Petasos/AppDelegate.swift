@@ -4,11 +4,12 @@ import WebKit
 // The app: one window showing the Petasos screen, served by the petasos program it starts in
 // the background. Sign-in and settings are that program's own pages, the same ones the Windows
 // app shows.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var engine: Process?
     private var quitting = false
+    private var dragMonitor: Any?
 
     private let pageURL = URL(string: "http://127.0.0.1:8187/")!
     private let support: URL = {
@@ -38,13 +39,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = true
         config.mediaTypesRequiringUserActionForPlayback = [] // the page records and plays without a click first
+        // The window has no title bar, as on Windows: the page draws minimize and close, and
+        // moves the window when its background is dragged, through petasosWindow(what).
+        let controller = WKUserContentController()
+        controller.add(self, name: "petasosWindow")
+        controller.addUserScript(WKUserScript(
+            source: "window.petasosWindow = (what) => window.webkit.messageHandlers.petasosWindow.postMessage(what);",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.userContentController = controller
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 544), configuration: config)
         webView.setValue(false, forKey: "drawsBackground") // the page paints its own night colour
         webView.uiDelegate = self
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 544),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = "Petasos"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(button)?.isHidden = true
+        }
+        // The title bar's own view would still take clicks along the top, where the soft keys are.
+        window.standardWindowButton(.closeButton)?.superview?.superview?.isHidden = true
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(red: 0x1f / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0, alpha: 1)
         window.contentAspectRatio = NSSize(width: 800, height: 544) // the Car Thing's screen, plus the buttons under it
@@ -59,6 +75,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         window.makeFirstResponder(webView)
         applyWindowSettings()
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.applyWindowSettings() }
+    }
+
+    // The page's petasosWindow(what): "drag" (the mouse went down on its background), "minimize"
+    // or "close".
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "petasosWindow", let what = message.body as? String else { return }
+        switch what {
+        case "drag": startDrag()
+        case "minimize": window.miniaturize(nil)
+        case "close": window.performClose(nil)
+        default: break
+        }
+    }
+
+    // startDrag moves the window with the mouse until the button comes up, as a title bar would.
+    private func startDrag() {
+        guard dragMonitor == nil, NSEvent.pressedMouseButtons & 1 == 1 else { return }
+        var last = NSEvent.mouseLocation
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self = self else { return event }
+            if event.type == .leftMouseUp {
+                if let monitor = self.dragMonitor {
+                    NSEvent.removeMonitor(monitor)
+                }
+                self.dragMonitor = nil
+                return event
+            }
+            let now = NSEvent.mouseLocation
+            var origin = self.window.frame.origin
+            origin.x += now.x - last.x
+            origin.y += now.y - last.y
+            last = now
+            self.window.setFrameOrigin(origin)
+            return event
+        }
     }
 
     // The pin under the screen (window.json, beside the rest of the app's settings).

@@ -11,7 +11,8 @@ Inputs (named in tools/list_inputs.sh and the README):
   front                  the front button
   knob                   the knob: "press" when pushed, "turn" with a delta of +1 or -1 per click
   device                 the client itself: "hello" when it starts (resets its state), or
-                         "conversation_ended" when conversation mode ended on its own
+                         "conversation_ended" when conversation mode ended on its own, or
+                         "wake" when it heard its wake word ("Hey Athena")
 
 Gestures in the mapping: "press" fires on press; "hold" and "tap" are told apart on release by
 how long the control was held (``hold_ms``); "turn" is for the knob.
@@ -69,6 +70,7 @@ _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "mu
                   "mic_toggle": "Mic on / off"}
 
 LABEL_MAX = 32  # two lines on the screen
+WAKE_IDLE_S = 8  # how long a conversation the wake word started waits for someone to speak
 AGENT_NAME_MAX = 24
 
 
@@ -291,6 +293,14 @@ class Petasos:
                     return self._screen(self._devices[device_id], mapping, device_id)
                 if action == "conversation_ended" and state.listening == "conversation":
                     state.listening = None
+                if action == "wake" and state.listening is None:
+                    # Like the conversation button, but a wake that hears nothing more (a false
+                    # one, say) gives up after a few seconds rather than half a minute.
+                    out = self._start_conversation(state, mapping)
+                    for c in out:
+                        if c.get("do") == "listen":
+                            c["idle_end_s"] = min(c["idle_end_s"], WAKE_IDLE_S)
+                    return out
                 return []
             controls = controls_for(mapping, device_id).get(name)
             if name.startswith("car-") and (controls is None or controls == _OLD_CAR_DEFAULTS.get(name)):

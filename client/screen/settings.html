@@ -78,6 +78,11 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
       <select id="mic"></select>
       <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
     </div>
+    <div class="row">
+      <label for="wake">Wake word</label>
+      <select id="wake"><option value="off">Off</option><option value="on">Listen for “Hey Athena”</option></select>
+      <p class="hint">Saying it starts a conversation, as the conversation button does. The microphone stays on while Petasos is open and waiting, and nothing it hears leaves this computer until you say it.</p>
+    </div>
 
     <h2>Soft keys</h2>
     <div class="row">
@@ -387,6 +392,7 @@ async function load() {
     ` · plugin on Hermes ${v.plugin || "unknown"}`;
   $("vpn").value = current.vpn ? "wireguard" : "off";
   $("when").value = current.when;
+  $("wake").value = current.wake ? "on" : "off";
   $("loading").hidden = true;
   $("form").hidden = false;
   showName();
@@ -401,6 +407,7 @@ function settingsChange() {
   const change = { name: $("name").value.trim(), vpn: $("vpn").value === "wireguard", when: $("when").value };
   if (newConfig) change.wireguard = newConfig.text;
   change.mic = $("mic").value;
+  change.wake = $("wake").value === "on";
   change.mic_name = $("mic").selectedOptions[0] ? $("mic").selectedOptions[0].textContent.replace(/ \((built in|not connected)\)$/, "") : "";
   return change;
 }

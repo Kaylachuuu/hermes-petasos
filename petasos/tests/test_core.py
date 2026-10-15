@@ -277,3 +277,13 @@ def test_music_buttons_control_the_phone(setup):
     petasos.mapping.replace(mapping)
     assert petasos.handle(ev("preset-3", "press")) == [{"do": "music", "op": "toggle"}]
     assert core.preset_labels(mapping)[2] == "Play / pause"
+
+
+def test_the_wake_word_starts_a_conversation_that_gives_up_sooner(setup):
+    petasos, _ = setup
+    assert petasos.handle(ev("device", "wake")) == [
+        {"do": "listen", "mode": "conversation", "end_of_speech_ms": 1000, "idle_end_s": core.WAKE_IDLE_S}]
+    assert petasos.handle(ev("device", "wake")) == []  # already listening
+    petasos.handle(ev("device", "conversation_ended"))
+    petasos.handle(ev("mute", "press"))
+    assert petasos.handle(ev("device", "wake")) == [{"do": "notice", "text": "The mic is off."}]
