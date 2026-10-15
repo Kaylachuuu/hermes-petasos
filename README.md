@@ -98,7 +98,7 @@ The first version won't support interrupting by voice, because the mic would hea
 
 ### Install it
 
-On Athenaeum, with the sync script (until this is merged, pass the branch):
+On Athenaeum, as the account Hermes runs under, with the sync script:
 
 ```sh
 sync-plugin petasos --restart
