@@ -161,6 +161,16 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
          background: var(--night); z-index: 2; }
 .kb .kx { flex: none; font-size: 3cqw; color: var(--dust); padding: 0 .6cqw; }
 
+/* A new petasos downloading: over whatever page shows, between the meanders, with the bottom
+   one filling as it comes in. */
+.update { position: absolute; left: 0; right: 0; top: 13.25cqw; height: 40.75cqw; background: var(--night); z-index: 4;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6cqw; text-align: center; }
+.update h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 2.2cqw; letter-spacing: .45em; margin-right: -.45em; color: var(--dust); }
+.update .ver { font-family: var(--display); font-size: 5.5cqw; letter-spacing: .12em; color: var(--ember); }
+.update .bar { width: 50cqw; height: .9cqw; border-radius: .45cqw; background: var(--rule); overflow: hidden; margin-top: 1cqw; }
+.update .bar i { display: block; height: 100%; width: 0; background: var(--ember); transition: width .25s linear; }
+.update .note { font-size: 2.4cqw; color: var(--dust); font-variant-numeric: tabular-nums; }
+
 /* A passing note in the middle of the screen: the mic turned off or on. */
 .toast { position: absolute; left: 50%; top: 33.75cqw; transform: translate(-50%, -50%); background: #261d15;
          border: .2cqw solid var(--a); border-radius: 1.4cqw; padding: 2cqw 3.5cqw; display: flex; align-items: center; gap: 1.75cqw;
@@ -351,6 +361,10 @@ body.virtual .topbar > span:hover { background: var(--row); }
 
   <div class="holdpop" id="holdpop" hidden></div>
   <div class="toast" id="toast" hidden></div>
+  <div class="update" id="update" hidden>
+    <h2>UPDATING PETASOS</h2><div class="ver" id="update-ver"></div>
+    <div class="bar"><i id="update-fill"></i></div><div class="note" id="update-note"></div>
+  </div>
 </div>
 
 <div class="controls" id="controls" hidden>
@@ -409,7 +423,7 @@ const THEMES = {
 // The page showing: a music page's name, or "petasos" for home (also while Athena is busy, when
 // the music page steps aside) and the settings.
 function shownPage(s) {
-  return s.page && !s.bt && s.phase === "idle" && THEMES[s.page] ? s.page : "petasos";
+  return s.page && !s.bt && !s.update && s.phase === "idle" && THEMES[s.page] ? s.page : "petasos";
 }
 
 function drawTop(s) {
@@ -488,6 +502,7 @@ function drawBands() {
   setBand("top-band", top);
   const m = s.music, service = m && THEMES[m.service] ? m.service : onMusic ? page : "";
   $("bottom-band").style.display = s.bt ? "none" : "";
+  if (s.update) { setBand("bottom-band", { theme: "petasos", dim: true, lit: s.update.size ? s.update.got / s.update.size : 0 }); return; }
   setBand("bottom-band", m && service ? { theme: service, dim: true, lit: musicProgress(m) }
                                       : { theme: onMusic ? page : "petasos", dim: onMusic, lit: m ? musicProgress(m) : 0 });
 }
@@ -740,6 +755,7 @@ function draw(s) {
   drawHold(s);
   drawVolume(s);
   drawMicNote(s);
+  drawUpdate(s);
   if (s.phase !== "listening") micTarget = 0;
   drawCapture(s);
   stepProgress();
@@ -986,6 +1002,19 @@ function closeMusicKeyboard() {
   $("mp-kb").hidden = true;
   $("mp-kb").innerHTML = "";
   if (kb && kb.onDone) kb = null;
+}
+
+// --- an update downloading -----------------------------------------------------------------------
+
+function drawUpdate(s) {
+  const u = s.update;
+  $("update").hidden = !u;
+  if (!u) return;
+  const part = u.size ? Math.min(1, u.got / u.size) : 0, mb = (n) => (n / 1048576).toFixed(1);
+  $("update-ver").textContent = u.version;
+  $("update-fill").style.width = `${(100 * part).toFixed(1)}%`;
+  $("update-note").textContent = u.installing ? "Installing… Petasos restarts in a moment."
+    : u.size ? `${mb(u.got)} of ${mb(u.size)} MB · ${Math.round(100 * part)}%` : "Downloading…";
 }
 
 // --- passing notes ---------------------------------------------------------------------------------

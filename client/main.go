@@ -424,7 +424,10 @@ func (h *hermes) update() error {
 		return err
 	}
 	sum := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, sum), io.LimitReader(resp.Body, 64<<20))
+	shown := &updateProgress{version: latest.Version, size: latest.Size}
+	shown.show(0)
+	defer shown.done()
+	n, err := io.Copy(io.MultiWriter(f, sum, shown), io.LimitReader(resp.Body, 64<<20))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -432,6 +435,7 @@ func (h *hermes) update() error {
 		err = errors.New("the download doesn't match the server's checksum")
 	}
 	if err == nil {
+		shown.installing()
 		err = os.Rename(staged, target)
 	}
 	if err == nil && virtual {
@@ -443,6 +447,47 @@ func (h *hermes) update() error {
 	}
 	log.Printf("updated to %s; restarting", latest.Version)
 	return restartAs(target)
+}
+
+// updateProgress shows a download on the screen as it comes in.
+type updateProgress struct {
+	version string
+	size    int64
+	got     int64
+	shownAt time.Time
+}
+
+type updateShown struct {
+	Version    string `json:"version"`
+	Got        int64  `json:"got"`
+	Size       int64  `json:"size"`
+	Installing bool   `json:"installing,omitempty"`
+}
+
+func (u *updateProgress) Write(p []byte) (int, error) {
+	u.got += int64(len(p))
+	if time.Since(u.shownAt) > 250*time.Millisecond || u.got >= u.size {
+		u.show(u.got)
+	}
+	return len(p), nil
+}
+
+func (u *updateProgress) show(got int64) {
+	u.shownAt = time.Now()
+	display.update(func(st *screenState) { st.Update = &updateShown{Version: u.version, Got: got, Size: u.size} })
+	backlight.wake()
+}
+
+func (u *updateProgress) installing() {
+	display.update(func(st *screenState) {
+		st.Update = &updateShown{Version: u.version, Got: u.size, Size: u.size, Installing: true}
+	})
+}
+
+// done takes the progress off the screen; a successful update restarts first, and the new
+// program's page starts without it.
+func (u *updateProgress) done() {
+	display.update(func(st *screenState) { st.Update = nil })
 }
 
 // restartAs runs the updated program in this one's place.

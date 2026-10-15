@@ -133,3 +133,24 @@ func TestTheSoundsLevel(t *testing.T) {
 		t.Fatalf("loud: %v", l)
 	}
 }
+
+// An update's download shows on the screen as it comes in, and goes once it's done.
+func TestAnUpdateShowsItsProgress(t *testing.T) {
+	before := display.snapshot()
+	t.Cleanup(func() { display.update(func(st *screenState) { *st = before }) })
+	u := &updateProgress{version: "9.9.9", size: 10}
+	u.show(0)
+	_, _ = u.Write(make([]byte, 4))
+	_, _ = u.Write(make([]byte, 6)) // all of it: shown at once
+	if got := display.snapshot().Update; got == nil || got.Got != 10 || got.Version != "9.9.9" {
+		t.Fatalf("got %+v", got)
+	}
+	u.installing()
+	if got := display.snapshot().Update; !got.Installing {
+		t.Fatalf("got %+v", got)
+	}
+	u.done()
+	if got := display.snapshot().Update; got != nil {
+		t.Fatalf("still showing %+v", got)
+	}
+}

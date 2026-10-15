@@ -24,35 +24,36 @@ var screenFiles embed.FS
 
 // screenState is everything the page draws. Field names are the page's.
 type screenState struct {
-	Version  string      `json:"version"`            // petasos's version: a page from an older one reloads
-	Phase    string      `json:"phase"`              // idle, ready, listening, thinking, speaking
-	Heard    string      `json:"heard,omitempty"`    // what Hermes heard, or the preset's prompt
-	Reply    string      `json:"reply,omitempty"`    // Athena's reply, while it plays
-	ReplyMs  int         `json:"reply_ms,omitempty"` // how long the reply plays, for scrolling long ones
-	Notice   string      `json:"notice,omitempty"`   // a passing message, such as "The mic is off."
-	NoticeID int         `json:"notice_id,omitempty"`
-	Volume   int         `json:"volume"`    // the speaker's level, 0 to 100, or -1 when unknown
-	VolumeID int         `json:"volume_id"` // bumped on every change, so the page lights the meander
-	Muted    bool        `json:"muted"`
-	Presets  []string    `json:"presets"`
-	Agent    string      `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
-	Links    links       `json:"links"`
-	BT       *btScreen   `json:"bt,omitempty"`        // the Bluetooth screens, when open
-	Virtual  bool        `json:"virtual,omitempty"`   // the virtual Petasos on a Mac: the page draws its own controls
-	PageMic  bool        `json:"page_mic,omitempty"`  // the page itself records (pagemic.go)
-	MicOpen  bool        `json:"mic_open,omitempty"`  // ...and should be recording now
-	MicID    int         `json:"mic_id,omitempty"`    // which recording, for its posts to /mic
-	MicName  string      `json:"mic_name,omitempty"`  // the microphone chosen in settings, by name
-	OnTop    bool        `json:"on_top,omitempty"`    // the app keeps its window above others (the pin)
-	NoPin    bool        `json:"no_pin,omitempty"`    // ...which the Linux desktop app's window can't
-	Music    *nowPlaying `json:"music,omitempty"`     // what the phone plays through the Car Thing (music.go)
-	Page     string      `json:"page,omitempty"`      // the music page open (soundcloud, navidrome, spotify, apple), or "" for home (musicpage.go)
-	View     string      `json:"view,omitempty"`      // which of the music page's views shows: "now", or a list (the page says)
-	Keys     int         `json:"keys,omitempty"`      // which set of soft keys shows, 1 or 2
-	KeySets  int         `json:"key_sets,omitempty"`  // how many sets there are
-	KeyPages []string    `json:"key_pages,omitempty"` // the page each soft key shown opens, or ""
-	MicNote  int         `json:"mic_note,omitempty"`  // bumped when the mic is turned off or on, for a note on the screen
-	Hold     *holdShown  `json:"hold,omitempty"`      // a control held down, and what letting go would do (gestures.go)
+	Version  string       `json:"version"`            // petasos's version: a page from an older one reloads
+	Phase    string       `json:"phase"`              // idle, ready, listening, thinking, speaking
+	Heard    string       `json:"heard,omitempty"`    // what Hermes heard, or the preset's prompt
+	Reply    string       `json:"reply,omitempty"`    // Athena's reply, while it plays
+	ReplyMs  int          `json:"reply_ms,omitempty"` // how long the reply plays, for scrolling long ones
+	Notice   string       `json:"notice,omitempty"`   // a passing message, such as "The mic is off."
+	NoticeID int          `json:"notice_id,omitempty"`
+	Volume   int          `json:"volume"`    // the speaker's level, 0 to 100, or -1 when unknown
+	VolumeID int          `json:"volume_id"` // bumped on every change, so the page lights the meander
+	Muted    bool         `json:"muted"`
+	Presets  []string     `json:"presets"`
+	Agent    string       `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
+	Links    links        `json:"links"`
+	BT       *btScreen    `json:"bt,omitempty"`        // the Bluetooth screens, when open
+	Virtual  bool         `json:"virtual,omitempty"`   // the virtual Petasos on a Mac: the page draws its own controls
+	PageMic  bool         `json:"page_mic,omitempty"`  // the page itself records (pagemic.go)
+	MicOpen  bool         `json:"mic_open,omitempty"`  // ...and should be recording now
+	MicID    int          `json:"mic_id,omitempty"`    // which recording, for its posts to /mic
+	MicName  string       `json:"mic_name,omitempty"`  // the microphone chosen in settings, by name
+	OnTop    bool         `json:"on_top,omitempty"`    // the app keeps its window above others (the pin)
+	NoPin    bool         `json:"no_pin,omitempty"`    // ...which the Linux desktop app's window can't
+	Music    *nowPlaying  `json:"music,omitempty"`     // what the phone plays through the Car Thing (music.go)
+	Page     string       `json:"page,omitempty"`      // the music page open (soundcloud, navidrome, spotify, apple), or "" for home (musicpage.go)
+	View     string       `json:"view,omitempty"`      // which of the music page's views shows: "now", or a list (the page says)
+	Keys     int          `json:"keys,omitempty"`      // which set of soft keys shows, 1 or 2
+	KeySets  int          `json:"key_sets,omitempty"`  // how many sets there are
+	KeyPages []string     `json:"key_pages,omitempty"` // the page each soft key shown opens, or ""
+	MicNote  int          `json:"mic_note,omitempty"`
+	Update   *updateShown `json:"update,omitempty"` // a new petasos downloading (main.go's update)  // bumped when the mic is turned off or on, for a note on the screen
+	Hold     *holdShown   `json:"hold,omitempty"`   // a control held down, and what letting go would do (gestures.go)
 }
 
 type links struct {
