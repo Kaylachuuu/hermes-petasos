@@ -5,11 +5,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -526,10 +528,11 @@ func appMusic(w http.ResponseWriter, r *http.Request) {
 // redirect URI.
 const soundCloudRedirect = "http://" + screenAddr + "/app/soundcloud"
 
-// appSoundCloud signs in to your SoundCloud account from the app's Settings: opened plainly it
-// sends the window to SoundCloud's sign-in; SoundCloud sends it back here with a code, which
-// the plugin on Hermes turns into your tokens (the app's secret never leaves Hermes). A POST
-// with ?disconnect signs out.
+// appSoundCloud signs in to your SoundCloud account from the app's Settings. A POST with ?start
+// opens SoundCloud's sign-in in your own browser (the app's window can't open the pop-ups that
+// signing in with Google or Apple needs); SoundCloud sends the browser back here with a code,
+// which the plugin on Hermes turns into your tokens (the app's secret never leaves Hermes), and
+// the browser tab says how it went. A POST with ?disconnect signs out.
 func appSoundCloud(w http.ResponseWriter, r *http.Request) {
 	h := hereNow()
 	if h == nil || !virtual {
@@ -537,11 +540,13 @@ func appSoundCloud(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := func(problem string) {
-		to := "/settings.html#music"
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		title, text := "Signed in to SoundCloud", "You can close this tab and go back to Petasos."
 		if problem != "" {
-			to = "/settings.html?soundcloud=" + url.QueryEscape(problem) + "#music"
+			title, text = "Couldn't sign in to SoundCloud", problem
 		}
-		http.Redirect(w, r, to, http.StatusFound)
+		fmt.Fprintf(w, soundCloudDonePage, html.EscapeString(title), html.EscapeString(title), html.EscapeString(text))
 	}
 	q := r.URL.Query()
 	switch {
@@ -560,22 +565,59 @@ func appSoundCloud(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		back("")
-	default:
-		body, _ := json.Marshal(map[string]string{"redirect_uri": soundCloudRedirect})
-		data, err := h.exchange("POST", "/api/plugins/petasos/music/soundcloud/authorize", "application/json", body, h.http, 1<<16)
-		var out struct {
-			URL string `json:"url"`
-		}
+	case r.Method == http.MethodPost && q.Has("start"):
+		to, err := soundCloudSignInPage(h)
 		if err == nil {
-			err = json.Unmarshal(data, &out)
+			err = openInBrowser(to)
 		}
-		if err != nil || !strings.HasPrefix(out.URL, "https://") {
-			back(friendlyHermes(firstErr(err, fmt.Errorf("no sign-in page"))))
+		if err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
 			return
 		}
-		http.Redirect(w, r, out.URL, http.StatusFound)
+		writeJSONResponse(w, http.StatusOK, map[string]bool{"opened": true})
+	default:
+		to, err := soundCloudSignInPage(h)
+		if err != nil {
+			back(friendlyHermes(err))
+			return
+		}
+		http.Redirect(w, r, to, http.StatusFound)
 	}
 }
+
+// soundCloudSignInPage asks the plugin for SoundCloud's sign-in page, with a new PKCE verifier
+// kept on Hermes.
+func soundCloudSignInPage(h *hermes) (string, error) {
+	body, _ := json.Marshal(map[string]string{"redirect_uri": soundCloudRedirect})
+	data, err := h.exchange("POST", "/api/plugins/petasos/music/soundcloud/authorize", "application/json", body, h.http, 1<<16)
+	var out struct {
+		URL string `json:"url"`
+	}
+	if err == nil {
+		err = json.Unmarshal(data, &out)
+	}
+	if err != nil || !strings.HasPrefix(out.URL, "https://") {
+		return "", firstErr(err, fmt.Errorf("no sign-in page"))
+	}
+	return out.URL, nil
+}
+
+// openInBrowser opens a page in your default browser; a variable so tests can watch it.
+var openInBrowser = func(page string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", page).Run()
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", page).Run()
+	default:
+		return exec.Command("xdg-open", page).Run()
+	}
+}
+
+const soundCloudDonePage = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>%s</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-content:center;text-align:center;background:#1a1410;color:#c9b48a;font:17px/1.5 -apple-system,"Segoe UI",sans-serif;padding:24px}h1{color:#d97a3a;font-weight:500;font-size:24px}</style>
+<h1>%s</h1><p>%s</p>`
 
 func firstNonEmpty(a ...string) string {
 	for _, s := range a {

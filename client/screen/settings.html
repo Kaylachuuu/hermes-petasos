@@ -428,7 +428,33 @@ function showTab(name) {
   history.replaceState(null, "", "#" + name);
 }
 for (const el of document.querySelectorAll(".tabs button")) el.addEventListener("click", () => showTab(el.dataset.tab));
-$("sc-signin").addEventListener("click", () => { location.href = "/app/soundcloud"; });
+// SoundCloud's sign-in opens in your own browser, which can show Google's and Apple's pop-ups;
+// this page watches Hermes for the sign-in to land.
+let scWatch = null;
+$("sc-signin").addEventListener("click", async () => {
+  const hint = $("sc-account-hint");
+  try {
+    const res = await fetch("/app/soundcloud?start", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  } catch (err) {
+    hint.textContent = `Couldn't open SoundCloud's sign-in: ${err.message || err}`;
+    hint.className = "hint error";
+    return;
+  }
+  hint.textContent = "Finish signing in in your browser. This page updates once you have.";
+  hint.className = "hint";
+  clearInterval(scWatch);
+  const until = Date.now() + 10 * 60 * 1000;
+  scWatch = setInterval(async () => {
+    try {
+      const res = await fetch("/app/music", { cache: "no-store" });
+      const body = await res.json();
+      if (res.ok && body.soundcloud && body.soundcloud.account) { clearInterval(scWatch); showMusic(body); }
+    } catch (err) {}
+    if (Date.now() > until) clearInterval(scWatch);
+  }, 2000);
+});
 $("sc-signout").addEventListener("click", async () => {
   await fetch("/app/soundcloud?disconnect", { method: "POST" });
   await loadMusic();

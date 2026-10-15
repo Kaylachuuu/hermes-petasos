@@ -187,3 +187,54 @@ func TestAppSettingsSaveTheMusicOnHermes(t *testing.T) {
 		t.Fatalf("bad body: %d", rec.Code)
 	}
 }
+
+// Signing in to SoundCloud opens its page in your own browser, and the browser comes back with
+// a code that Hermes turns into the sign-in.
+func TestAppSoundCloudSignsInThroughTheBrowser(t *testing.T) {
+	var connected string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/petasos/music/soundcloud/authorize":
+			data, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(data), soundCloudRedirect) {
+				t.Errorf("authorize body %s", data)
+			}
+			w.Write([]byte(`{"url":"https://secure.soundcloud.com/authorize?state=s1"}`))
+		case "/api/plugins/petasos/music/soundcloud/connect":
+			data, _ := io.ReadAll(r.Body)
+			connected = string(data)
+			w.Write([]byte(`{"account":"kayla"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldV := virtual
+	virtual = true
+	defer func() { virtual = oldV }()
+	here.mu.Lock()
+	oldH := here.h
+	here.h = &hermes{cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
+	here.mu.Unlock()
+	defer func() { here.mu.Lock(); here.h = oldH; here.mu.Unlock() }()
+	var opened string
+	oldOpen := openInBrowser
+	openInBrowser = func(page string) error { opened = page; return nil }
+	defer func() { openInBrowser = oldOpen }()
+
+	rec := httptest.NewRecorder()
+	appSoundCloud(rec, httptest.NewRequest("POST", "/app/soundcloud?start", nil))
+	if rec.Code != 200 || opened != "https://secure.soundcloud.com/authorize?state=s1" {
+		t.Fatalf("%d %s, opened %q", rec.Code, rec.Body, opened)
+	}
+	rec = httptest.NewRecorder()
+	appSoundCloud(rec, httptest.NewRequest("GET", "/app/soundcloud?code=c1&state=s1", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Signed in to SoundCloud") || connected != `{"code":"c1","state":"s1"}` {
+		t.Fatalf("%d %s (sent %q)", rec.Code, rec.Body, connected)
+	}
+	rec = httptest.NewRecorder()
+	appSoundCloud(rec, httptest.NewRequest("GET", "/app/soundcloud?error=access_denied", nil))
+	if !strings.Contains(rec.Body.String(), "Couldn&#39;t sign in") || !strings.Contains(rec.Body.String(), "access_denied") {
+		t.Fatalf("error page: %s", rec.Body)
+	}
+}
