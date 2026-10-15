@@ -20,8 +20,9 @@ import (
 // at its own rate to /mic?id=N&rate=R, one request at a time; /mic answers 410 once that
 // recording is over. A failure to open it is posted as /mic?id=N&error=....
 
-// pageMicOn says whether recordings come from the page: the Mac app's own window.
-var pageMicOn = func() bool { return virtual && runtime.GOOS == "darwin" }
+// pageMicOn says whether recordings come from the page: the Mac app's own window, or the Linux
+// desktop app's browser window.
+var pageMicOn = func() bool { return virtual && (runtime.GOOS == "darwin" || runtime.GOOS == "linux") }
 
 var pageMic pageMics
 

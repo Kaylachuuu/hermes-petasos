@@ -930,6 +930,7 @@ function press(input, action, delta) {
 let controlsReady = false;
 function setUpControls(s) {
   $("c-mute").classList.toggle("on", !!s.muted);
+  $("c-pin").hidden = !!s.no_pin;
   $("c-pin").classList.toggle("on", !!s.on_top);
   $("c-pin").title = s.on_top ? "Stop keeping this window on top" : "Keep this window on top";
   if (controlsReady) return;

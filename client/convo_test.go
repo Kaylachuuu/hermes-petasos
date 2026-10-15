@@ -42,6 +42,7 @@ func TestConversationKeepsGoing(t *testing.T) {
 	oldV, oldA := virtual, audioHelper
 	virtual, audioHelper = true, helper
 	defer func() { virtual, audioHelper = oldV, oldA }()
+	defer recordWithHelper()()
 	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "test"}, http: srv.Client()}
 	v := newVoice(h, make(chan map[string]any, 8))
 	v.carryOut(map[string]any{"do": "listen", "mode": "conversation", "end_of_speech_ms": 300, "idle_end_s": 30})
@@ -64,6 +65,7 @@ func TestMicThatFailsIsReported(t *testing.T) {
 	oldV, oldA := virtual, audioHelper
 	virtual, audioHelper = true, helper
 	defer func() { virtual, audioHelper = oldV, oldA }()
+	defer recordWithHelper()()
 	h := &hermes{dir: dir, cfg: config{Device: "test"}, http: http.DefaultClient}
 	v := newVoice(h, make(chan map[string]any, 8))
 	display.mu.Lock()
@@ -91,6 +93,7 @@ func TestMicThatHangsIsReported(t *testing.T) {
 	oldV, oldA, oldT := virtual, audioHelper, micTimeout
 	virtual, audioHelper, micTimeout = true, helper, 300*time.Millisecond
 	defer func() { virtual, audioHelper, micTimeout = oldV, oldA, oldT }()
+	defer recordWithHelper()()
 	h := &hermes{dir: dir, cfg: config{Device: "test"}, http: http.DefaultClient}
 	v := newVoice(h, make(chan map[string]any, 8))
 	display.mu.Lock()
@@ -108,4 +111,12 @@ func TestMicThatHangsIsReported(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("still waiting on a microphone that never started")
+}
+
+// recordWithHelper has the app record with its helper program rather than its page, as the
+// Windows app does; it returns the undo.
+func recordWithHelper() func() {
+	old := pageMicOn
+	pageMicOn = func() bool { return false }
+	return func() { pageMicOn = old }
 }

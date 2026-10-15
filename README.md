@@ -354,6 +354,25 @@ at the right of the controls to minimize or close it. Resizing keeps its shape.
 
 The screen keeps the Car Thing's shape in a window of any size, in both apps.
 
+### Linux
+
+On a Linux desktop (a Raspberry Pi 5 with Ubuntu and KDE, say), the app is the same program the
+Car Thing runs, as `petasos desktop`. From a checkout of this repository:
+
+```sh
+linux/install.sh
+```
+
+It puts the program in `~/.local/share/petasos` and Petasos in the app menu, with the winged hat
+for its icon. The screen shows in the app window of a Chromium-family browser (Chromium, Chrome,
+Brave, Edge or Vivaldi: `sudo snap install chromium` if there's none), with its own profile, so
+it is a window of its own and closing it quits Petasos; without one it opens in a browser tab.
+The window records the microphone itself, as on the Mac; replies play through PulseAudio or
+PipeWire (`paplay`), and the arrows and wheel change the desktop's volume (`pactl`). Its files
+are in `~/.config/Petasos`, `petasos.log` among them, and it updates itself from the plugin like
+the other apps. The window keeps the desktop's own title bar, and there's no pin, since a
+browser's window can't keep itself on top.
+
 ### Petasos chats in the Hermes desktop app
 
 Petasos makes its chats with their own source, `petasos`. The Hermes desktop app gives a source

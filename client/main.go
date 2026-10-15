@@ -75,7 +75,7 @@ func main() {
 	events := flag.String("events", "", "read raw input events from this file instead of the Car Thing's buttons (testing)")
 	flag.StringVar(&audioHelper, "audio", "", "the virtual Petasos's recorder and player (the Mac app's executable)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version|virtual|signin SERVER [USERNAME]|vpncheck FILE]")
+		fmt.Fprintln(os.Stderr, "usage: petasos [-dir DIR] [run|check|version|desktop|virtual|signin SERVER [USERNAME]|vpncheck FILE]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -111,6 +111,10 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("ok")
+	case "desktop": // the Linux desktop app (desktop_linux.go)
+		if err := runDesktop(); err != nil {
+			log.Fatal(err)
+		}
 	case "virtual":
 		if audioHelper == "" {
 			log.Fatal("the virtual Petasos needs -audio, the app that records and plays")

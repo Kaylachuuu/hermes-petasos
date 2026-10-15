@@ -60,8 +60,8 @@ func (v *voice) playCommand() *exec.Cmd {
 
 // macVolume nudges the Mac's own output volume, for the knob on the virtual Petasos.
 func macVolume(delta int) {
-	if runtime.GOOS == "windows" {
-		computerVolume(delta)
+	if runtime.GOOS != "darwin" {
+		computerVolume(delta) // Windows's, or the Linux desktop's
 		return
 	}
 	out, err := exec.Command("osascript", "-e", "output volume of (get volume settings)").Output()
@@ -84,6 +84,7 @@ func (h *hermes) startVirtual(raw chan<- map[string]any) {
 		st.Virtual = true
 		st.PageMic = pageMicOn()
 		st.OnTop = loadWindowSettings(h.dir).OnTop
+		st.NoPin = runtime.GOOS == "linux" // a browser's app window can't keep itself on top
 		// No phone or speaker to watch: Phone stands for whether the Mac is online, and the
 		// Mac has its own speakers.
 		st.Links = links{Phone: true, Speaker: true, PhonePaired: true, SpeakerKnown: true, Checked: true}
@@ -226,8 +227,11 @@ func signIn(dir, server, username string, password io.Reader) error {
 
 // defaultComputerID names a newly signed-in computer until its settings give it a name.
 func defaultComputerID() string {
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		return "pc"
+	case "linux":
+		return "linux"
 	}
 	return "mac"
 }
