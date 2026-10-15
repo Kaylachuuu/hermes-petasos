@@ -28,6 +28,7 @@ from features import STEP, Features  # noqa: E402
 RATE = 16000
 LENGTH = 3 * RATE
 WINDOW = 16
+EVERY = 2  # keep every other window of the negatives
 
 _features = None
 _speech: list[str] = []
@@ -141,11 +142,14 @@ def windows(job: tuple[str | None, bool, int]) -> tuple[np.ndarray, np.ndarray]:
                 y = 0  # the background before it
             else:
                 continue
+        elif j % EVERY:
+            continue  # neighbouring steps are nearly the same; every other one is plenty
         else:
             y = 0
         xs.append(emb[j - WINDOW + 1:j + 1])
         ys.append(y)
-    return np.array(xs, dtype=np.float32).reshape(-1, WINDOW, 96), np.array(ys, dtype=np.float32)
+    # Half precision, to fit hundreds of thousands of windows in memory.
+    return np.array(xs, dtype=np.float16).reshape(-1, WINDOW, 96), np.array(ys, dtype=np.float32)
 
 
 def build(models: str, jobs: list, speech: list[str], whole: bool = True):
@@ -172,14 +176,14 @@ def train(x: np.ndarray, y: np.ndarray, steps: int = 12000) -> Head:
     torch.manual_seed(0)
     net = Head()
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
-    X, Y = torch.tensor(x), torch.tensor(y)
+    X, Y = torch.from_numpy(x), torch.from_numpy(y)
     pos, neg = torch.nonzero(Y == 1).squeeze(1), torch.nonzero(Y == 0).squeeze(1)
     for step in range(steps):
         # Balanced batches; misses on the negatives weigh more as training goes on, as
         # openWakeWord does, to bring false wakes down once the wake word is learned.
         idx = torch.cat([pos[torch.randint(len(pos), (256,))], neg[torch.randint(len(neg), (768,))]])
-        p = net(X[idx]).squeeze(1)
-        w = torch.where(Y[idx] == 1, 1.0, 1.0 + 9.0 * step / steps)
+        p = net(X[idx].float()).squeeze(1)
+        w = torch.where(Y[idx] == 1, 1.0, 1.0 + 19.0 * step / steps)
         loss = torch.nn.functional.binary_cross_entropy(p, Y[idx], weight=w)
         opt.zero_grad()
         loss.backward()
@@ -201,12 +205,13 @@ def main() -> None:
     used = {k: v[len(v) // 10:] for k, v in sets.items()}
     speech = used["speech"]
     jobs = [(p, True, i) for i, p in enumerate(used["positive"] * 2)]
-    jobs += [(p, False, 10 ** 6 + i) for i, p in enumerate(used["near"] + used["speech"])]
-    jobs += [(None, False, 2 * 10 ** 6 + i) for i in range(int(os.environ.get("WAKE_BG", "3000")))]
+    # The others twice over, in different mixes: false wakes cost more than the odd miss.
+    jobs += [(p, False, 10 ** 6 + i) for i, p in enumerate((used["near"] + used["speech"]) * 2)]
+    jobs += [(None, False, 2 * 10 ** 6 + i) for i in range(int(os.environ.get("WAKE_BG", "6000")))]
     print(f"{len(jobs)} clips to mix", flush=True)
     x, y = build(models, jobs, speech)
     print(f"{int(y.sum())} wake word windows, {int((1 - y).sum())} others", flush=True)
-    net = train(x, y, int(os.environ.get("WAKE_STEPS", "12000")))
+    net = train(x, y, int(os.environ.get("WAKE_STEPS", "20000")))
 
     # Held out: does it catch the wake word, and how often does it wake on everything else?
     held_pos = build(models, [(p, True, 3 * 10 ** 6 + i) for i, p in enumerate(held["positive"])], speech, whole=False)
@@ -214,9 +219,9 @@ def main() -> None:
                    + [(None, False, 5 * 10 ** 6 + i) for i in range(int(os.environ.get("WAKE_BG", "3000")) // 6)],
                    speech)
     with torch.no_grad():
-        best = [net(torch.tensor(x[y == 1])).max().item() if (y == 1).any() else 0.0 for x, y in held_pos]
-        npred = net(torch.tensor(nx)).squeeze(1).numpy()
-    hours = len(nx) * STEP / RATE / 3600  # each window is one 80 ms step of listening
+        best = [net(torch.tensor(x[y == 1]).float()).max().item() if (y == 1).any() else 0.0 for x, y in held_pos]
+        npred = net(torch.tensor(nx).float()).squeeze(1).numpy()
+    hours = 2 * len(nx) * STEP / RATE / 3600  # each window stands for two 80 ms steps of listening
     for t in (0.3, 0.5, 0.7, 0.8, 0.9, 0.95):
         print(f"threshold {t}: catches {np.mean(np.array(best) >= t):.1%} of held-out wake words; "
               f"{(npred >= t).sum() / hours:.1f} wakes an hour on held-out speech and noise "

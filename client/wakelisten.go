@@ -27,8 +27,12 @@ var heyAthenaModel []byte
 // wakeOn is the setting: listen for the wake word or not.
 var wakeOn atomic.Bool
 
-// wakeThreshold is the score that counts as hearing it.
-const wakeThreshold = 0.5
+// wakeThreshold is the score that counts as hearing it, wakeSteps how many 80 ms steps in a
+// row must reach it: a lone step over the line is far more often something else.
+const (
+	wakeThreshold = 0.5
+	wakeSteps     = 2
+)
 
 type wakeListener struct {
 	mu    sync.Mutex
@@ -107,6 +111,7 @@ func (w *wakeListener) listen() bool {
 	wide := make([]byte, frameBytes*2)
 	frame := make([]byte, frameBytes)
 	pcm := make([]int16, frameBytes/2)
+	run := 0
 	for {
 		if _, err := io.ReadFull(r, wide); err != nil {
 			return false
@@ -119,7 +124,11 @@ func (w *wakeListener) listen() bool {
 			pcm[i] = int16(binary.LittleEndian.Uint16(frame[2*i:]))
 		}
 		for _, score := range spotter.write(pcm) {
-			if score >= wakeThreshold {
+			if score < wakeThreshold {
+				run = 0
+				continue
+			}
+			if run++; run >= wakeSteps {
 				log.Printf("wake word heard (%.2f)", score)
 				return true
 			}

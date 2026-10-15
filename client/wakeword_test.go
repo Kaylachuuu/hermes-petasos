@@ -65,15 +65,21 @@ func TestWakeWordMatchesTheReference(t *testing.T) {
 	if worst > 0.01 {
 		t.Fatalf("embeddings differ by up to %g", worst)
 	}
-	top := float32(0)
+	top, run, woke := float32(0), 0, false
 	for i := range scores {
+		if scores[i] >= wakeThreshold {
+			run++
+		} else {
+			run = 0
+		}
+		woke = woke || run >= wakeSteps
 		if math.Abs(float64(scores[i]-want.Scores[i])) > 0.01 {
 			t.Fatalf("score %d is %g; want %g (embeddings within %g)", i, scores[i], want.Scores[i], worst)
 		}
 		top = max(top, scores[i])
 	}
 	t.Logf("embeddings within %g; top score %.2f", worst, top)
-	if os.Getenv("WAKE_TESTDATA") == "" && top < wakeThreshold {
+	if os.Getenv("WAKE_TESTDATA") == "" && !woke {
 		t.Errorf("it didn't wake: top score %.2f", top)
 	}
 }
