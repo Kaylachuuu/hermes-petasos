@@ -1,5 +1,7 @@
 # hermes-petasos
 
+![Petasos, messenger of Hermes](art/petasos-social.png)
+
 Turns a Spotify Car Thing into a pocket voice interface for Athena on Hermes: a Hermes plugin plus a thin on-device client for push-to-talk, knob and button controls, and replies played wherever you are.
 
 The server plugin lives in `petasos/`, and the program that runs on the Car Thing in `client/`.
