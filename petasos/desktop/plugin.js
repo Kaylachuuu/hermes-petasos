@@ -160,6 +160,117 @@ function Preset({ index, preset, onChange }) {
   })
 }
 
+// Music the agent can play (the plugin's music.json on Hermes): Navidrome and folders.
+function Music({ ctx }) {
+  const [loaded, setLoaded] = useState(null)
+  const [url, setUrl] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [folders, setFolders] = useState('')
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [checked, setChecked] = useState(null)
+
+  const take = data => {
+    setLoaded(data)
+    setUrl(data.navidrome.url || '')
+    setUsername(data.navidrome.username || '')
+    setPassword('')
+    setFolders((data.folders || []).join('\n'))
+  }
+
+  useEffect(() => {
+    ctx.rest('/music/settings').then(take).catch(e => setError(`Couldn't load the music settings (the plugin on Hermes may need updating): ${String(e?.message || e)}`))
+  }, [])
+
+  const save = async () => {
+    setBusy('Saving…')
+    setError('')
+    setChecked(null)
+
+    try {
+      take(await ctx.rest('/music/settings', {
+        body: {
+          folders: folders.split('\n').map(f => f.trim()).filter(Boolean),
+          navidrome: { password, url: url.trim(), username: username.trim() }
+        },
+        method: 'PUT'
+      }))
+      setBusy('Checking the music…')
+      setChecked(await ctx.rest('/music/check', { body: {}, method: 'POST' }))
+    } catch (e) {
+      setError(String(e?.message || e))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const edited = fn => value => {
+    setChecked(null)
+    fn(value)
+  }
+
+  if (!loaded) {
+    return error ? jsx('span', { className: ERROR, children: error }) : null
+  }
+
+  return jsxs('fieldset', {
+    className: 'flex flex-col gap-3 rounded border border-(--ui-border) p-3',
+    children: [
+      jsx('legend', { className: 'px-1 font-medium', children: 'Music' }),
+      jsx('span', { className: HINT, children: 'What the agent can play on a Petasos device when asked (“play Rumours”): a Navidrome server, folders on the Hermes machine, or both.' }),
+      labelled('Navidrome address',
+        jsx('input', { className: FIELD, onChange: e => edited(setUrl)(e.target.value), placeholder: 'http://localhost:4533', value: url }),
+        'As the Hermes machine reaches it. Leave empty to not use Navidrome.'),
+      url.trim()
+        ? labelled('Username', jsx('input', { autoComplete: 'off', className: FIELD, onChange: e => edited(setUsername)(e.target.value), value: username }))
+        : null,
+      url.trim()
+        ? labelled('Password',
+            jsx('input', {
+              autoComplete: 'new-password',
+              className: FIELD,
+              onChange: e => edited(setPassword)(e.target.value),
+              placeholder: loaded.navidrome.has_password ? '••••••••' : '',
+              type: 'password',
+              value: password
+            }),
+            loaded.navidrome.has_password ? 'Saved. Type a new one to change it.' : null)
+        : null,
+      labelled('Folders',
+        jsx('textarea', {
+          className: `${FIELD} font-mono`,
+          onChange: e => edited(setFolders)(e.target.value),
+          placeholder: '/srv/music\n/mnt/nas/music',
+          rows: 3,
+          spellCheck: false,
+          value: folders
+        }),
+        'One per line, as full paths on the Hermes machine. A network share works once it is mounted there.' +
+          (loaded.ffmpeg ? '' : ' Only MP3 files play until ffmpeg is installed on it.')),
+      jsxs('div', {
+        className: 'flex items-center gap-3',
+        children: [
+          jsx('button', { className: BUTTON, disabled: !!busy, onClick: save, type: 'button', children: busy || 'Save and check' }),
+          error ? jsx('span', { className: ERROR, children: error }) : null
+        ]
+      }),
+      checked
+        ? jsxs('ul', {
+            className: 'flex list-disc flex-col gap-1 pl-5',
+            children: [
+              checked.navidrome
+                ? jsx('li', { className: checked.navidrome.ok ? '' : ERROR, children: checked.navidrome.ok ? 'Navidrome answers.' : checked.navidrome.problem })
+                : null,
+              ...checked.folders.map(f =>
+                jsx('li', { className: f.ok ? '' : ERROR, children: `${f.path}: ${f.ok ? `${f.songs} ${f.songs === 1 ? 'song' : 'songs'}` : f.problem}` }, f.path))
+            ]
+          })
+        : null
+    ]
+  })
+}
+
 function Settings({ ctx }) {
   const [loaded, setLoaded] = useState(null) // { mapping, problems, path }
   const [agent, setAgent] = useState('')
@@ -243,7 +354,8 @@ function Settings({ ctx }) {
           saved ? jsx('span', { className: HINT, children: 'Saved.' }) : null,
           error ? jsx('span', { className: ERROR, children: error }) : null
         ]
-      })
+      }),
+      jsx(Music, { ctx })
     ]
   })
 }
