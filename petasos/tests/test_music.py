@@ -331,3 +331,11 @@ def test_signing_in_to_soundcloud_brings_your_likes_and_playlists(home, soundclo
     assert json.loads((home / "petasos" / "soundcloud-account.json").read_text())["refresh_token"] == "ru2"
     music.soundcloud().disconnect()
     assert music.settings()["soundcloud"]["account"] == ""
+
+
+def test_a_request_to_play_gets_a_reminder_that_it_means_music():
+    for asked in ("Play Sin Made Me Holy", "hey, can you play my likes?", "Please put on some Daft Punk",
+                  "shuffle Rumours"):
+        assert "play_music" in (music.music_hint(user_message=asked) or ""), asked
+    for said in ("Sin made me holy", "I'd love to play chess later", "What's on today?", None):
+        assert music.music_hint(user_message=said) is None, said

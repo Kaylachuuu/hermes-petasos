@@ -784,6 +784,8 @@ PLAY_MUSIC = {
     "description": ("Play music from the user's own library (their Navidrome server and music folders) or "
                     "SoundCloud on a "
                     "Petasos device: the Car Thing in their car, which plays it through the car's speakers. "
+                    "Use it whenever the user asks to play, put on or listen to something, even when the "
+                    "title reads like a statement or a question (\"play Sin Made Me Holy\"). "
                     "It plays after your reply. Say what you put on, in a few words."),
     "parameters": {"type": "object", "properties": {
         "query": {"type": "string", "description": "What to play: a song, album, artist or playlist name. Empty for a random mix."},
@@ -804,6 +806,22 @@ MUSIC_CONTROL = {
         "device": {"type": "string", "description": "Device id, only when the user names another device"},
     }, "required": ["action"]},
 }
+
+
+_ASKS_FOR_MUSIC = re.compile(r"^\W*(?:(?:hey|ok|okay|please|can you|could you|would you|will you)\W+)*"
+                             r"(?:play|put on|shuffle|queue up|listen to)\b", re.I)
+
+
+def music_hint(user_message=None, **_) -> str | None:
+    """The ``pre_llm_call`` hook: a request that starts with "play" gets a reminder that it means
+    music, so a song whose title reads like a remark ("play Sin Made Me Holy") isn't answered as one,
+    and that play_music may sit behind tool search."""
+    text = user_message if isinstance(user_message, str) else ""
+    if not _ASKS_FOR_MUSIC.search(text):
+        return None
+    return ("[Petasos] This reads as a request for music: if it is, call play_music with what to play, "
+            "taking the title literally even if it sounds like a remark (find play_music with tool_search "
+            "if it isn't listed). Don't answer the title as if it were said to you.")
 
 
 def play_music(args: dict | None = None, session_id: str | None = None, **_) -> str:

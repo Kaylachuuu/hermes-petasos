@@ -101,9 +101,14 @@ def _music_control(args=None, **kwargs) -> str:
     return _music().music_control(args, **kwargs)
 
 
+def _music_hint(**kwargs):
+    return _music().music_hint(**kwargs)
+
+
 def register(ctx) -> None:
     ctx.register_command("petasos", handler=_slash,
                          description="Show the Car Thing's button layout and where to change it.")
     music = _music()
     ctx.register_tool(name="play_music", toolset="petasos", schema=music.PLAY_MUSIC, handler=_play_music)
     ctx.register_tool(name="music_control", toolset="petasos", schema=music.MUSIC_CONTROL, handler=_music_control)
+    ctx.register_hook("pre_llm_call", _music_hint)

@@ -3,7 +3,7 @@
   "label": "Petasos",
   "description": "The Car Thing's preset buttons and agent name, plus the routes it uses: input events in, device commands out; the button mapping; voice turns with the agent; music from Navidrome and folders.",
   "icon": "Settings",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "tab": { "path": "/petasos", "position": "end" },
   "entry": "dist/index.js",
   "css": "dist/style.css",

@@ -160,3 +160,15 @@ def test_the_agent_gets_the_music_tools_and_the_device_gets_their_commands(herme
     r = client.get(f"/api/plugins/petasos/music/stream?source={track['source']}&id={track['id']}")
     assert r.status_code == 200 and r.content == b"ID3 tune"
     assert client.get("/api/plugins/petasos/devices/car-thing/commands").json() == {"commands": []}
+
+
+def test_the_agent_gets_the_music_tools_and_the_play_reminder(hermes):
+    from hermes_cli.lifecycle import invoke_hook
+    from tools.registry import registry
+    names = {d["function"]["name"] for d in registry.get_definitions({"play_music", "music_control"}, quiet=True)}
+    assert names == {"play_music", "music_control"}
+    said = invoke_hook("pre_llm_call", session_id="s", user_message="play Sin Made Me Holy",
+                       conversation_history=[], platform="tui")
+    assert any("play_music" in str(r) for r in said)
+    assert not any(invoke_hook("pre_llm_call", session_id="s", user_message="Sin made me holy",
+                               conversation_history=[], platform="tui"))
