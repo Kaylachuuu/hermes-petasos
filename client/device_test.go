@@ -184,7 +184,7 @@ func TestImageVersionComesFromOsRelease(t *testing.T) {
 	if got := imageVersion(path); got != "0.1.0" {
 		t.Fatal(got)
 	}
-	items := versionItems(versions{Image: "0.2.0", Program: "0.17.2", Latest: "0.17.3", Plugin: "0.11.1"})
+	items := versionItems(versions{Image: "0.2.0", Program: "0.17.2", Latest: "0.17.3", Plugin: "0.11.1"}, nil)
 	if len(items) != 4 || items[2].Detail != "Updating to 0.17.3" || items[3].Value != "0.11.1" {
 		t.Fatalf("%+v", items)
 	}

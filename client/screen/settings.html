@@ -95,7 +95,7 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
     <h2>Versions</h2>
     <div class="row">
       <label>Versions</label>
-      <span id="versions"></span>
+      <div class="status"><span id="versions"></span><button type="button" id="update-check">Check for updates</button><span id="update-status"></span></div>
     </div>
 
     </section>
@@ -421,6 +421,27 @@ async function saveMusic() {
     $("music-save").disabled = false;
   }
 }
+
+$("update-check").addEventListener("click", async () => {
+  const status = $("update-status");
+  $("update-check").disabled = true;
+  status.textContent = "Checking…";
+  try {
+    const res = await fetch("/app/update", { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    status.textContent = `Up to date (${body.version}).`;
+    $("update-check").disabled = false;
+  } catch (err) {
+    if (err instanceof TypeError) { // the connection dropped: petasos restarting with the update
+      status.textContent = "Updating… Petasos restarts in a moment.";
+      setTimeout(() => location.reload(), 8000);
+      return;
+    }
+    status.textContent = `Couldn't update: ${err.message || err}`;
+    $("update-check").disabled = false;
+  }
+});
 
 async function load() {
   const res = await fetch("/app/settings", { cache: "no-store" });

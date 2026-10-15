@@ -412,7 +412,7 @@ func (b *bluetooth) mineViewAt(sel int) {
 			items = append(items, btItem{Kind: "note", Label: "Shared with your other devices until you change one"})
 		}
 	}
-	items = append(items, versionItems(h.versions())...)
+	items = append(items, versionItems(h.versions(), func() { b.checkForUpdate(h) })...)
 	items = append(items, btItem{Kind: "row", Icon: "close", Label: "Close", do: b.close})
 	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})
 }
@@ -648,8 +648,24 @@ func typedText(w http.ResponseWriter, r *http.Request) {
 	go done(text)
 }
 
+// checkForUpdate is the Petasos row pressed: an update, if there is one, downloads now (its
+// progress shows on the screen) rather than at the next half-hourly check.
+func (b *bluetooth) checkForUpdate(h *hermes) {
+	b.message("Checking for an update", "Asking "+display.agent()+" for the latest Petasos…")
+	go func() {
+		current, err := h.checkNow()
+		switch {
+		case err != nil:
+			b.message("Couldn't update", friendlyHermes(err))
+		case current:
+			b.message("Petasos is up to date", "This is the latest version, "+version+".")
+		}
+	}()
+}
+
 // versionItems lists the image, this program and the plugin, at the foot of the Device tab.
-func versionItems(v versions) []btItem {
+// Pressing Petasos's row checks for an update.
+func versionItems(v versions, check func()) []btItem {
 	unknown := func(s string) string {
 		if s == "" {
 			return "Unknown"
@@ -660,7 +676,7 @@ func versionItems(v versions) []btItem {
 	if !virtual {
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "System image", Value: unknown(v.Image)})
 	}
-	program := btItem{Kind: "row", Icon: "device", Label: "Petasos", Value: v.Program}
+	program := btItem{Kind: "row", Icon: "device", Label: "Petasos", Value: v.Program, do: check}
 	if v.Latest != "" && v.Latest != v.Program {
 		program.Detail = "Updating to " + v.Latest
 	}

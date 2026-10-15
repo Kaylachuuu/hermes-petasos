@@ -67,6 +67,22 @@ func (h *hermes) servesAppSettings() {
 	app.mu.Unlock()
 }
 
+// appUpdate is the settings page's "Check for updates": {"current": true} when there was
+// nothing newer. An update restarts petasos, so the page loses its answer and waits.
+func appUpdate(w http.ResponseWriter, r *http.Request) {
+	h := hereNow()
+	if r.Method != http.MethodPost || h == nil {
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	current, err := h.checkNow()
+	if err != nil {
+		writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]any{"current": current, "version": version})
+}
+
 func appSettings(w http.ResponseWriter, r *http.Request) {
 	app.mu.Lock()
 	h := app.h

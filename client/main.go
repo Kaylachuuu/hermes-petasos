@@ -375,6 +375,10 @@ type clientInfo struct {
 // place. It returns only when there was nothing to do or the update failed. The app's copy
 // saves the update beside its settings instead (engine.go), and only ever moves forward.
 func (h *hermes) update() error {
+	if !updating.TryLock() {
+		return nil // already checking, from the settings or the half-hourly check
+	}
+	defer updating.Unlock()
 	build := "os=" + runtime.GOOS + "&arch=" + runtime.GOARCH
 	var latest clientInfo
 	if err := h.call("GET", "/api/plugins/petasos/client?"+build, nil, &latest); err != nil {
@@ -447,6 +451,17 @@ func (h *hermes) update() error {
 	}
 	log.Printf("updated to %s; restarting", latest.Version)
 	return restartAs(target)
+}
+
+var updating sync.Mutex
+
+// checkNow is the settings asking for an update now: true when there was nothing newer. An
+// update restarts petasos instead of returning.
+func (h *hermes) checkNow() (bool, error) {
+	if err := h.update(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // updateProgress shows a download on the screen as it comes in.

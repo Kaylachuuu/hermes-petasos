@@ -180,6 +180,7 @@ func (s *screen) serve() {
 	mux.HandleFunc("/settings/text", typedText)
 	mux.HandleFunc("/app/window", appWindow)
 	mux.HandleFunc("/app/settings", appSettings)
+	mux.HandleFunc("/app/update", appUpdate)
 	mux.HandleFunc("/app/softkeys", appSoftKeys)
 	mux.HandleFunc("/app/music", appMusic)
 	mux.HandleFunc("/app/soundcloud", appSoundCloud)
