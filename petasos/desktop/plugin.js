@@ -10,12 +10,17 @@ import { useEffect, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
 const LABEL_MAX = 32
+// The screen's own names for these (petasos core._ACTION_LABELS).
+const ACTION_LABELS = { mic_toggle: 'Mic on / off', music_next: 'Next song', music_previous: 'Previous song', music_toggle: 'Play / pause' }
 const AGENT_NAME_MAX = 24
 const ACTIONS = [
   ['prompt', 'Ask a question'],
   ['conversation', 'Start a conversation'],
   ['stop_speaking', 'Stop speaking'],
   ['mic_toggle', 'Turn the mic on or off'],
+  ['music_toggle', 'Play or pause music'],
+  ['music_next', 'Next song'],
+  ['music_previous', 'Previous song'],
   ['none', 'Nothing']
 ]
 
@@ -42,6 +47,10 @@ export function shownLabel(p) {
     }
 
     return label
+  }
+
+  if (ACTION_LABELS[p.action]) {
+    return ACTION_LABELS[p.action]
   }
 
   const words = p.action.replace(/_/g, ' ')

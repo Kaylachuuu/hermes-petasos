@@ -213,7 +213,12 @@ def test_car_buttons_work_with_a_mapping_written_before_them(setup):
     assert started[-1]["do"] == "listen" and started[-1]["mode"] == "conversation"
     assert petasos.handle(ev("car-play", "release")) == []
     assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "listen_stop"}
-    assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "stop_speaking"}
+    assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "music", "op": "next"}
+    # The skip buttons' defaults from before they played music are taken as today's.
+    old = copy.deepcopy(core.DEFAULT_MAPPING)
+    old["controls"]["car-next"] = {"press": {"action": "stop_speaking"}}
+    petasos.mapping.replace(old)
+    assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "music", "op": "next"}
 
 
 def test_a_device_can_have_its_own_presets(setup):
@@ -245,3 +250,14 @@ def test_a_device_can_only_own_good_presets(setup):
     mapping = copy.deepcopy(core.DEFAULT_MAPPING)
     mapping["devices"] = {"kitchen": {"controls": {"mute": {"press": {"action": "none"}}}}}
     assert any("devices.kitchen.controls." in p for p in core.validate(mapping))
+
+
+def test_music_buttons_control_the_phone(setup):
+    petasos, _ = setup
+    assert petasos.handle(ev("car-next", "press")) == [{"do": "music", "op": "next"}]
+    assert petasos.handle(ev("car-previous", "press")) == [{"do": "music", "op": "previous"}]
+    mapping = copy.deepcopy(core.DEFAULT_MAPPING)
+    mapping["controls"]["preset-3"] = {"press": {"action": "music_toggle"}}
+    petasos.mapping.replace(mapping)
+    assert petasos.handle(ev("preset-3", "press")) == [{"do": "music", "op": "toggle"}]
+    assert core.preset_labels(mapping)[2] == "Play / pause"

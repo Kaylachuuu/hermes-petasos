@@ -20,6 +20,9 @@
     ["conversation", "Start a conversation"],
     ["stop_speaking", "Stop speaking"],
     ["mic_toggle", "Turn the mic on or off"],
+    ["music_toggle", "Play or pause music"],
+    ["music_next", "Next song"],
+    ["music_previous", "Previous song"],
     ["none", "Nothing"],
   ];
 
@@ -32,9 +35,13 @@
       if (label.length > LABEL_MAX) label = label.slice(0, LABEL_MAX - 1).replace(/\s+\S*$/, "") + "…";
       return label;
     }
+    if (ACTION_LABELS[p.action]) return ACTION_LABELS[p.action];
     const words = p.action.replace(/_/g, " ");
     return words.charAt(0).toUpperCase() + words.slice(1);
   }
+
+  // The screen's own names for these (petasos core._ACTION_LABELS).
+  const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause" };
 
   // Which devices have preset buttons of their own, for the note at the top.
   function ownedBy(mapping) {

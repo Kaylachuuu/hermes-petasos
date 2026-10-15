@@ -42,6 +42,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .hint { font-size: 2.7cqw; letter-spacing: .02em; margin-top: 1cqw; max-width: 64cqw; }
 .hint.wait { color: var(--dust); }
 .hint.live { color: var(--ember); font-family: var(--display); font-size: 3.2cqw; letter-spacing: .12em; animation: breathe 1.8s ease-in-out infinite; }
+.hint.music { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70cqw; margin-left: auto; margin-right: auto; }
 @keyframes breathe { 50% { opacity: .55 } }
 .heard { font-size: 2.6cqw; color: var(--dust); font-style: italic; max-width: 76cqw;
          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -328,6 +329,8 @@ function drawHome(s) {
   else if (Date.now() < noticeUntil && s.notice) [text, cls] = [s.notice, "wait"];
   else if (warn) [text, cls] = [warn, "wait"];
   else if (s.muted) [text, cls] = [s.virtual ? "The mic is off. Press M to turn it on." : "The mic is off. Press the mic button to turn it on.", "wait"];
+  else if (s.music && (s.music.title || s.music.playing)) // the phone's music, playing through the Car Thing
+    [text, cls] = [(s.music.playing ? "♪ " : "Paused · ") + [s.music.title, s.music.artist].filter(Boolean).join(" · "), "music"];
   const hint = $("hint");
   hint.textContent = text;
   hint.className = "hint " + cls;

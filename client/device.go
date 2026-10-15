@@ -84,6 +84,9 @@ var softKeyActions = []choiceOf{
 	{"conversation", "Start a conversation"},
 	{"stop_speaking", "Stop speaking"},
 	{"mic_toggle", "Mic on or off"},
+	{"music_toggle", "Play or pause music"},
+	{"music_next", "Next song"},
+	{"music_previous", "Previous song"},
 	{"none", "Nothing"},
 }
 

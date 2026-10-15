@@ -103,6 +103,9 @@ func (v *voice) carryOut(c map[string]any) {
 		}
 	case "screen":
 		showScreenCommand(c)
+	case "music":
+		op, _ := c["op"].(string)
+		go music.control(op)
 	}
 }
 
@@ -484,6 +487,7 @@ func (v *voice) play(wav []byte) {
 	} else {
 		wav = converted
 	}
+	music.freeSpeaker() // the phone's music lets go of the car's speaker
 	cmd := v.playCommand()
 	cmd.Stdin = bytes.NewReader(wav)
 	var stderr bytes.Buffer

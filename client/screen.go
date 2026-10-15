@@ -24,26 +24,27 @@ var screenFiles embed.FS
 
 // screenState is everything the page draws. Field names are the page's.
 type screenState struct {
-	Version  string    `json:"version"`            // petasos's version: a page from an older one reloads
-	Phase    string    `json:"phase"`              // idle, ready, listening, thinking, speaking
-	Heard    string    `json:"heard,omitempty"`    // what Hermes heard, or the preset's prompt
-	Reply    string    `json:"reply,omitempty"`    // Athena's reply, while it plays
-	ReplyMs  int       `json:"reply_ms,omitempty"` // how long the reply plays, for scrolling long ones
-	Notice   string    `json:"notice,omitempty"`   // a passing message, such as "The mic is off."
-	NoticeID int       `json:"notice_id,omitempty"`
-	Volume   int       `json:"volume"`    // the speaker's level, 0 to 100, or -1 when unknown
-	VolumeID int       `json:"volume_id"` // bumped on every change, so the page lights the meander
-	Muted    bool      `json:"muted"`
-	Presets  []string  `json:"presets"`
-	Agent    string    `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
-	Links    links     `json:"links"`
-	BT       *btScreen `json:"bt,omitempty"`       // the Bluetooth screens, when open
-	Virtual  bool      `json:"virtual,omitempty"`  // the virtual Petasos on a Mac: the page draws its own controls
-	PageMic  bool      `json:"page_mic,omitempty"` // the page itself records (pagemic.go)
-	MicOpen  bool      `json:"mic_open,omitempty"` // ...and should be recording now
-	MicID    int       `json:"mic_id,omitempty"`   // which recording, for its posts to /mic
-	MicName  string    `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
-	OnTop    bool      `json:"on_top,omitempty"`   // the app keeps its window above others (the pin)
+	Version  string      `json:"version"`            // petasos's version: a page from an older one reloads
+	Phase    string      `json:"phase"`              // idle, ready, listening, thinking, speaking
+	Heard    string      `json:"heard,omitempty"`    // what Hermes heard, or the preset's prompt
+	Reply    string      `json:"reply,omitempty"`    // Athena's reply, while it plays
+	ReplyMs  int         `json:"reply_ms,omitempty"` // how long the reply plays, for scrolling long ones
+	Notice   string      `json:"notice,omitempty"`   // a passing message, such as "The mic is off."
+	NoticeID int         `json:"notice_id,omitempty"`
+	Volume   int         `json:"volume"`    // the speaker's level, 0 to 100, or -1 when unknown
+	VolumeID int         `json:"volume_id"` // bumped on every change, so the page lights the meander
+	Muted    bool        `json:"muted"`
+	Presets  []string    `json:"presets"`
+	Agent    string      `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
+	Links    links       `json:"links"`
+	BT       *btScreen   `json:"bt,omitempty"`       // the Bluetooth screens, when open
+	Virtual  bool        `json:"virtual,omitempty"`  // the virtual Petasos on a Mac: the page draws its own controls
+	PageMic  bool        `json:"page_mic,omitempty"` // the page itself records (pagemic.go)
+	MicOpen  bool        `json:"mic_open,omitempty"` // ...and should be recording now
+	MicID    int         `json:"mic_id,omitempty"`   // which recording, for its posts to /mic
+	MicName  string      `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
+	OnTop    bool        `json:"on_top,omitempty"`   // the app keeps its window above others (the pin)
+	Music    *nowPlaying `json:"music,omitempty"`    // what the phone plays through the Car Thing (music.go)
 }
 
 type links struct {
@@ -127,6 +128,7 @@ func (s *screen) snapshot() screenState {
 }
 
 func (s *screen) setPhase(phase string) {
+	music.phaseChanged(phase)
 	s.update(func(st *screenState) {
 		st.Phase = phase
 		if phase == "idle" || phase == "ready" || phase == "listening" {

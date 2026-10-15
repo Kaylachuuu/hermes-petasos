@@ -118,7 +118,8 @@ button:disabled { opacity: .5; cursor: default; }
 const $ = (id) => document.getElementById(id);
 let current = null, newConfig = null, keys = null, keysSaved = "";
 const ACTIONS = [["prompt", "Ask a question"], ["conversation", "Start a conversation"], ["stop_speaking", "Stop speaking"],
-                 ["mic_toggle", "Turn the mic on or off"], ["none", "Nothing"]];
+                 ["mic_toggle", "Turn the mic on or off"], ["music_toggle", "Play or pause music"],
+                 ["music_next", "Next song"], ["music_previous", "Previous song"], ["none", "Nothing"]];
 const PRESETS = ["preset-1", "preset-2", "preset-3", "preset-4"];
 
 function deviceID(name) { // as appsettings.go makes it

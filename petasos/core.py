@@ -30,7 +30,8 @@ from typing import Callable
 INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob",
           "car-play", "car-next", "car-previous")
 GESTURES = ("press", "hold", "tap", "turn")
-ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt", "none")
+ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
+           "music_toggle", "music_next", "music_previous", "none")
 
 DEFAULT_MAPPING: dict = {
     "agent_name": "Hermes",
@@ -47,11 +48,20 @@ DEFAULT_MAPPING: dict = {
         "preset-3": {"press": {"action": "none"}},
         "preset-4": {"press": {"action": "none"}},
         "car-play": {"press": {"action": "conversation"}},
-        "car-next": {"press": {"action": "stop_speaking"}},
-        "car-previous": {"press": {"action": "none"}},
+        "car-next": {"press": {"action": "music_next"}},
+        "car-previous": {"press": {"action": "music_previous"}},
     },
 }
 
+
+# What the car's skip buttons did before they skipped songs; a mapping still holding these
+# unchanged gets today's defaults.
+_OLD_CAR_DEFAULTS = {"car-next": {"press": {"action": "stop_speaking"}},
+                     "car-previous": {"press": {"action": "none"}}}
+
+# The screen's name for an action with no label of its own, where its words alone read badly.
+_ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "music_previous": "Previous song",
+                  "mic_toggle": "Mic on / off"}
 
 LABEL_MAX = 32  # two lines on the screen
 AGENT_NAME_MAX = 24
@@ -94,7 +104,7 @@ def preset_labels(mapping: dict, device: str | None = None) -> list[str]:
                 if len(label) > LABEL_MAX:
                     label = label[:LABEL_MAX - 1].rsplit(" ", 1)[0] + "…"
             elif not label:
-                label = step["action"].replace("_", " ").capitalize()
+                label = _ACTION_LABELS.get(step["action"]) or step["action"].replace("_", " ").capitalize()
         labels.append(label)
     return labels
 
@@ -278,8 +288,9 @@ class Petasos:
                     state.listening = None
                 return []
             controls = controls_for(mapping, device_id).get(name)
-            if controls is None and name.startswith("car-"):
-                # A mapping written before the car buttons existed gets their defaults.
+            if name.startswith("car-") and (controls is None or controls == _OLD_CAR_DEFAULTS.get(name)):
+                # A mapping written before the car buttons existed, or before they played
+                # music, gets their defaults.
                 controls = DEFAULT_MAPPING["controls"][name]
             controls = controls or {}
             if action == "press":
@@ -400,6 +411,8 @@ class Petasos:
             return []
         if action == "stop_speaking":
             return [{"do": "stop_speaking"}]
+        if action.startswith("music_"):  # the phone's music, through the Car Thing (client music.go)
+            return [{"do": "music", "op": action.removeprefix("music_")}]
         if action == "volume":
             return [{"do": "volume", "delta": delta * mapping["volume_step"]}] if delta else []
         if action == "prompt":

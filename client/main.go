@@ -475,6 +475,7 @@ func (h *hermes) run(eventsFile string) {
 		go keepSpeakerConnected()
 		go keepKioskOnScreen()
 		go bt.start()
+		go music.watch()
 		go h.watchHome()
 	}
 

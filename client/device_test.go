@@ -114,7 +114,7 @@ func TestDeviceTabGivesTheCarThingItsOwnSoftKeysAndName(t *testing.T) {
 	waitFor("soft key 3", func(v btScreen) bool { return v.View == "softkey" && v.Title == "Soft key 3" })
 	ev("knob", "press", 0) // change what it does
 	waitFor("editing", func(v btScreen) bool { return v.Editing })
-	for i := 0; i < 5; i++ {
+	for i := 0; i < len(softKeyActions); i++ {
 		ev("knob", "turn", -1)
 	}
 	if v := view(); !v.Editing || v.Items[0].Value != "Ask a question" {
