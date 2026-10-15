@@ -370,15 +370,28 @@ class SoundCloud:
 
     def _grant(self, form: dict) -> dict:
         import base64
-        basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+        # SoundCloud wants the app's ID and secret as Basic auth for the app's own token, but in the
+        # form for your sign-in and its refreshes (and refuses them the other way round).
+        headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
+        if form.get("grant_type") == "client_credentials":
+            basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+            headers["Authorization"] = "Basic " + basic
+        else:
+            form = {**form, "client_id": self.client_id, "client_secret": self.client_secret}
         req = urllib.request.Request(self.TOKEN_URL, data=urllib.parse.urlencode(form).encode(), method="POST",
-                                     headers={"Authorization": "Basic " + basic, "Accept": "application/json",
-                                              "Content-Type": "application/x-www-form-urlencoded"})
+                                     headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as exc:
-            raise MusicError(f"SoundCloud refused the app's sign-in (HTTP {exc.code}); check the client ID and secret") from None
+            said = ""
+            try:
+                body = json.loads(exc.read() or b"{}")
+                said = str(body.get("error_description") or body.get("error") or "")[:200]
+            except (OSError, ValueError, AttributeError):
+                pass
+            raise MusicError(f"SoundCloud refused the app's sign-in (HTTP {exc.code}"
+                             + (f": {said}" if said else "") + "); check the client ID and secret") from None
         except (OSError, ValueError) as exc:
             raise MusicError(f"SoundCloud didn't answer: {exc}") from None
 

@@ -187,8 +187,13 @@ class FakeSoundCloud(BaseHTTPRequestHandler):
     def do_POST(self):
         form = parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode())
         import base64
-        if self.headers.get("Authorization") != "Basic " + base64.b64encode(b"cid:secret").decode():
-            return self._json({"error": "invalid_client"}, 401)
+        # As SoundCloud's guide has it: the app's own token takes the ID and secret as Basic auth,
+        # the sign-in and its refreshes take them in the form.
+        if form["grant_type"][0] == "client_credentials":
+            if self.headers.get("Authorization") != "Basic " + base64.b64encode(b"cid:secret").decode():
+                return self._json({"error": "invalid_client"}, 401)
+        elif form.get("client_id") != ["cid"] or form.get("client_secret") != ["secret"] or self.headers.get("Authorization"):
+            return self._json({"error": "invalid_request", "error_description": "client credentials"}, 400)
         FakeSoundCloud.grants.append(form["grant_type"][0])
         if form["grant_type"][0] == "authorization_code":
             import base64
