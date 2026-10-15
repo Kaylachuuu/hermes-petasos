@@ -22,9 +22,9 @@ h2 { font: 600 13px var(--body); letter-spacing: .14em; text-transform: uppercas
 .row { display: grid; grid-template-columns: 160px 1fr; gap: 6px 16px; align-items: center; margin: 12px 0; }
 .row > label { color: var(--bronze); }
 .hint { grid-column: 2; color: var(--dust); font-size: 14px; margin: 0; }
-input[type=text], select { font: 16px var(--body); color: var(--bronze); background: var(--row);
+input[type=text], input[type=password], select, textarea { font: 16px var(--body); color: var(--bronze); background: var(--row);
   border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 10px; width: 100%; box-sizing: border-box; }
-input[type=text]:focus, select:focus { outline: none; border-color: var(--ember); }
+input[type=text]:focus, input[type=password]:focus, select:focus, textarea:focus { outline: none; border-color: var(--ember); }
 button { font: 600 15px var(--body); letter-spacing: .04em; color: var(--bronze); background: transparent;
          border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px 16px; cursor: pointer; }
 button:hover { border-color: var(--dust); }
@@ -42,6 +42,8 @@ button:disabled { opacity: .5; cursor: default; }
 .key > b { font-weight: 400; color: var(--bronze); align-self: start; padding-top: 9px; }
 .key .fields { display: grid; gap: 8px; }
 .key input:disabled, .key select:disabled { opacity: .6; }
+textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; resize: vertical; }
+.checks { grid-column: 2; margin: 0; padding-left: 18px; font-size: 14px; }
 [hidden] { display: none !important; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .hint { grid-column: 1; } }
 </style>
@@ -98,6 +100,37 @@ button:disabled { opacity: .5; cursor: default; }
       <label for="mic">Microphone</label>
       <select id="mic"></select>
       <p class="hint" id="mic-hint">AirPods and other headsets switch to call quality while their microphone is on. Choosing this computer's microphone keeps them sounding their best, and they still play the replies.</p>
+    </div>
+
+    <h2>Music</h2>
+    <p class="hint" id="music-hint" style="margin-top:0">What your agent can play when you ask (“play Rumours”), on any of your devices. Kept on Hermes.</p>
+    <div id="music">
+      <div class="row">
+        <label for="nd-url">Navidrome</label>
+        <input type="text" id="nd-url" placeholder="http://localhost:4533" autocomplete="off" spellcheck="false">
+        <p class="hint">Its address as the Hermes machine reaches it. Leave empty to not use Navidrome.</p>
+      </div>
+      <div id="nd-login">
+        <div class="row">
+          <label for="nd-user">Username</label>
+          <input type="text" id="nd-user" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="row">
+          <label for="nd-password">Password</label>
+          <input type="password" id="nd-password" autocomplete="new-password">
+          <p class="hint" id="nd-password-hint" hidden>Saved. Type a new one to change it.</p>
+        </div>
+      </div>
+      <div class="row">
+        <label for="folders">Folders</label>
+        <textarea id="folders" rows="3" spellcheck="false" placeholder="/srv/music&#10;/mnt/nas/music"></textarea>
+        <p class="hint" id="folders-hint">One per line, as full paths on the Hermes machine. A network share works once it's mounted there.</p>
+      </div>
+      <div class="row">
+        <span></span>
+        <div class="status"><button type="button" id="music-save">Save and check</button><span id="music-status"></span></div>
+        <ul class="checks" id="music-checks" hidden></ul>
+      </div>
     </div>
 
     <h2>Hermes</h2>
@@ -227,6 +260,63 @@ async function loadKeys() {
   }
 }
 
+// --- music: the sources on Hermes (the plugin's music.json, through /app/music) ---
+
+let musicLoaded = null;
+
+function showMusic(s) {
+  musicLoaded = s;
+  $("nd-url").value = s.navidrome.url || "";
+  $("nd-user").value = s.navidrome.username || "";
+  $("nd-password").value = "";
+  $("nd-password").placeholder = s.navidrome.has_password ? "••••••••" : "";
+  $("nd-password-hint").hidden = !s.navidrome.has_password;
+  $("folders").value = (s.folders || []).join("\n");
+  if (!s.ffmpeg) $("folders-hint").textContent += " Only MP3 files play until ffmpeg is installed on it.";
+  showNavidrome();
+}
+function showNavidrome() { $("nd-login").hidden = !$("nd-url").value.trim(); }
+
+async function loadMusic() {
+  try {
+    const res = await fetch("/app/music", { cache: "no-store" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    showMusic(body);
+  } catch (err) {
+    $("music").hidden = true;
+    $("music-hint").textContent = `Couldn't load the music settings from Hermes (its Petasos plugin may need updating): ${err.message || err}`;
+  }
+}
+
+async function saveMusic() {
+  $("music-save").disabled = true;
+  $("music-status").textContent = "Saving and checking…";
+  $("music-checks").hidden = true;
+  try {
+    const res = await fetch("/app/music", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      navidrome: { url: $("nd-url").value.trim(), username: $("nd-user").value.trim(), password: $("nd-password").value },
+      folders: $("folders").value.split("\n").map((f) => f.trim()).filter(Boolean),
+    }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);
+    showMusic(body.settings);
+    const list = $("music-checks");
+    list.textContent = "";
+    const add = (text, ok) => { const li = document.createElement("li"); li.textContent = text; if (!ok) li.className = "error"; list.append(li); };
+    if (body.check.navidrome) add(body.check.navidrome.ok ? "Navidrome answers." : body.check.navidrome.problem, body.check.navidrome.ok);
+    for (const f of body.check.folders) add(`${f.path}: ${f.ok ? `${f.songs} ${f.songs === 1 ? "song" : "songs"}` : f.problem}`, f.ok);
+    list.hidden = !list.children.length;
+    $("music-status").textContent = "Saved.";
+  } catch (err) {
+    $("music-status").innerHTML = "";
+    const e = document.createElement("span"); e.className = "error"; e.textContent = String(err.message || err);
+    $("music-status").append(e);
+  } finally {
+    $("music-save").disabled = false;
+  }
+}
+
 async function load() {
   const res = await fetch("/app/settings", { cache: "no-store" });
   if (!res.ok) throw new Error("This page is only for the Petasos app.");
@@ -241,7 +331,7 @@ async function load() {
   showVPN();
   showMics();
   settingsSaved = JSON.stringify(settingsChange());
-  await loadKeys();
+  await Promise.all([loadKeys(), loadMusic()]);
 }
 
 function settingsChange() {
@@ -261,6 +351,10 @@ function fail(message) {
 $("name").addEventListener("input", showName);
 $("vpn").addEventListener("change", showVPN);
 $("keys-own").addEventListener("change", showKeys);
+$("nd-url").addEventListener("input", showNavidrome);
+$("music-save").addEventListener("click", saveMusic);
+for (const id of ["nd-url", "nd-user", "nd-password"]) // Enter saves the music, not the whole page
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveMusic(); } });
 $("import").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", async () => {
   const f = $("file").files[0];

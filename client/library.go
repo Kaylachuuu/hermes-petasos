@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -467,4 +468,54 @@ func (h *hermes) pollCommands(v *voice) {
 			v.carryOut(c)
 		}
 	}
+}
+
+// appMusic is the app's Settings page reading and saving the music sources, which live on
+// Hermes (the plugin's music.json): a headless Hermes has no dashboard page to set them on.
+// Saving also checks them, which reads the folders' songs the first time, so it may take a while.
+func appMusic(w http.ResponseWriter, r *http.Request) {
+	h := hereNow()
+	if h == nil || !virtual {
+		http.NotFound(w, r)
+		return
+	}
+	slow := &http.Client{Transport: h.http.Transport, Timeout: 10 * time.Minute}
+	var out map[string]any
+	switch r.Method {
+	case http.MethodGet:
+		data, err := h.exchange("GET", "/api/plugins/petasos/music/settings", "", nil, slow, 1<<20)
+		if err == nil {
+			err = json.Unmarshal(data, &out)
+		}
+		if err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+			return
+		}
+	case http.MethodPut:
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+		if err != nil || !json.Valid(body) {
+			writeJSONResponse(w, http.StatusBadRequest, map[string]string{"error": "That wasn't a music settings change."})
+			return
+		}
+		var settings, check any
+		data, err := h.exchange("PUT", "/api/plugins/petasos/music/settings", "application/json", body, slow, 1<<20)
+		if err == nil {
+			err = json.Unmarshal(data, &settings)
+		}
+		if err == nil {
+			data, err = h.exchange("POST", "/api/plugins/petasos/music/check", "application/json", []byte("{}"), slow, 1<<20)
+		}
+		if err == nil {
+			err = json.Unmarshal(data, &check)
+		}
+		if err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+			return
+		}
+		out = map[string]any{"settings": settings, "check": check}
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, out)
 }

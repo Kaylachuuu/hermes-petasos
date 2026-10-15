@@ -148,3 +148,42 @@ func TestMusicCommandsGoToTheLibraryOnceItPlays(t *testing.T) {
 		t.Fatal("still active after stop")
 	}
 }
+
+// The app's Settings page saves the music sources on Hermes and shows what the check found.
+func TestAppSettingsSaveTheMusicOnHermes(t *testing.T) {
+	var saved string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/petasos/music/settings":
+			if r.Method == "PUT" {
+				data, _ := io.ReadAll(r.Body)
+				saved = string(data)
+			}
+			w.Write([]byte(`{"navidrome":{"url":"","username":"","has_password":false},"folders":["/srv/music"],"ffmpeg":true}`))
+		case "/api/plugins/petasos/music/check":
+			w.Write([]byte(`{"navidrome":null,"folders":[{"path":"/srv/music","ok":true,"songs":12}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldV := virtual
+	virtual = true
+	defer func() { virtual = oldV }()
+	here.mu.Lock()
+	oldH := here.h
+	here.h = &hermes{cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
+	here.mu.Unlock()
+	defer func() { here.mu.Lock(); here.h = oldH; here.mu.Unlock() }()
+
+	rec := httptest.NewRecorder()
+	appMusic(rec, httptest.NewRequest("PUT", "/app/music", strings.NewReader(`{"folders":["/srv/music"]}`)))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"songs":12`) || saved != `{"folders":["/srv/music"]}` {
+		t.Fatalf("%d %s (sent %q)", rec.Code, rec.Body, saved)
+	}
+	rec = httptest.NewRecorder()
+	appMusic(rec, httptest.NewRequest("PUT", "/app/music", strings.NewReader(`not json`)))
+	if rec.Code != 400 {
+		t.Fatalf("bad body: %d", rec.Code)
+	}
+}
