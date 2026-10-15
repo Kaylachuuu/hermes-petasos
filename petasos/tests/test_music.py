@@ -82,7 +82,13 @@ def test_the_chat_names_the_device(home):
     (home / "petasos" / "chats.json").write_text(json.dumps({"car-thing": "s1", "mac": "s2", "*": "s3"}))
     assert music.device_for(None, "s2") == "mac"
     assert music.device_for(None, "s3") == "car-thing"  # shared chat, nobody asked lately
+    assert music.device_for("windows", "s2") == "mac"  # no device called windows has asked yet
+    music.take("windows")
+    music.take("kaylas-car-thing")
     assert music.device_for("windows", "s2") == "windows"
+    # A name the agent made up for a real device finds it; one for no device is ignored.
+    assert music.device_for("Kayla's Car Thing", "s2") == "kaylas-car-thing"
+    assert music.device_for("the kitchen", "s2") == "mac"
 
 
 def test_a_new_queue_replaces_one_not_yet_picked_up(home):

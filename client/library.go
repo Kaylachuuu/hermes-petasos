@@ -56,6 +56,49 @@ type libraryPlayer struct {
 	repeat  string     // "one" (this track again), "all" (the queue again) or "" (stop at the end)
 	shuffle bool       // the queue is in a random order
 	order   []libTrack // the queue as it came, for when shuffle is turned off
+
+	// The last track's whole MP3, so a song on repeat, or carrying on after Athena, plays
+	// from memory instead of being downloaded again.
+	cacheKey  string
+	cacheData []byte
+}
+
+// libraryCacheMax is the most kept of one track: about 20 minutes at 192 kbps.
+const libraryCacheMax = 32 << 20
+
+func trackKey(t libTrack) string { return t.Source + "\x00" + t.ID }
+
+// cached is the track's MP3 when it is the one kept.
+func (l *libraryPlayer) cached(t libTrack) []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.cacheKey == trackKey(t) {
+		return l.cacheData
+	}
+	return nil
+}
+
+func (l *libraryPlayer) keep(t libTrack, data []byte) {
+	l.mu.Lock()
+	l.cacheKey, l.cacheData = trackKey(t), data
+	l.mu.Unlock()
+}
+
+// capture keeps what is read from a stream, up to libraryCacheMax.
+type capture struct {
+	buf  bytes.Buffer
+	over bool
+}
+
+func (c *capture) Write(p []byte) (int, error) {
+	if !c.over {
+		if c.buf.Len()+len(p) > libraryCacheMax {
+			c.over, c.buf = true, bytes.Buffer{}
+		} else {
+			c.buf.Write(p)
+		}
+	}
+	return len(p), nil
 }
 
 type libRun struct {
@@ -297,22 +340,41 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 	if h == nil || v == nil {
 		return from, fmt.Errorf("not connected")
 	}
-	body, err := h.openStream("/api/plugins/petasos/music/stream?source=" + url.QueryEscape(t.Source) +
-		"&id=" + url.QueryEscape(t.ID))
-	if err != nil {
-		return from, err
-	}
-	stopped := make(chan struct{})
-	defer close(stopped)
-	go func() { // closing the stream ends a read waiting on the network
-		select {
-		case <-r.stop:
-			body.Close()
-		case <-stopped:
-			body.Close()
+	var src io.Reader
+	if data := l.cached(t); data != nil {
+		src = bytes.NewReader(data)
+	} else {
+		body, err := h.openStream("/api/plugins/petasos/music/stream?source=" + url.QueryEscape(t.Source) +
+			"&id=" + url.QueryEscape(t.ID))
+		if err != nil {
+			return from, err
 		}
-	}()
-	dec, err := mp3.NewDecoder(body)
+		got := &capture{}
+		tee := io.TeeReader(body, got)
+		src = tee
+		finished := make(chan bool, 1) // true: the whole track was read
+		defer func() {
+			select {
+			case whole := <-finished:
+				body.Close()
+				if whole && !got.over {
+					l.keep(t, got.buf.Bytes())
+				}
+			default:
+				// Stopped partway (Athena, say): fetch the rest meanwhile, so carrying on, or the
+				// track coming round again, plays from memory.
+				go func() {
+					_, err := io.Copy(io.Discard, tee)
+					body.Close()
+					if err == nil && !got.over {
+						l.keep(t, got.buf.Bytes())
+					}
+				}()
+			}
+		}()
+		src = &endWatch{r: tee, done: finished}
+	}
+	dec, err := mp3.NewDecoder(src)
 	if err != nil {
 		return from, err
 	}
@@ -687,4 +749,20 @@ func firstErr(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// endWatch says when its reader reaches the end, so the whole of a track can be kept.
+type endWatch struct {
+	r    io.Reader
+	done chan bool
+	sent bool
+}
+
+func (e *endWatch) Read(p []byte) (int, error) {
+	n, err := e.r.Read(p)
+	if err != nil && !e.sent {
+		e.sent = true
+		e.done <- err == io.EOF
+	}
+	return n, err
 }

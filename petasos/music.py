@@ -84,7 +84,13 @@ def device_for(requested: str | None, session_id: str | None = None) -> str:
     """The device a request is for: the one named, else the one whose chat this is, else the one
     that last asked something (when chats are shared, or the request came from elsewhere)."""
     if requested:
-        return requested
+        # Only a device that has asked for its commands: a name the agent made up ("Car Thing")
+        # would leave them where no device looks, and the music would carry on.
+        seen = _read_json(petasos_dir() / "devices.json", {})
+        want = re.sub(r"[^a-z0-9]", "", requested.lower())
+        for ident in (seen if isinstance(seen, dict) else {}):
+            if re.sub(r"[^a-z0-9]", "", ident.lower()) == want:
+                return ident
     if session_id:
         chats = _read_json(petasos_dir() / "chats.json", {})
         for key, sid in (chats.items() if isinstance(chats, dict) else ()):
@@ -118,6 +124,12 @@ def take(device: str) -> list[dict]:
     """The commands left for a device, removed as they are handed over."""
     path = petasos_dir() / "pending.json"
     with _PENDING_LOCK:
+        seen = _read_json(petasos_dir() / "devices.json", {})
+        if not isinstance(seen, dict):
+            seen = {}
+        if time.time() - float(seen.get(device) or 0) > 3600:  # the devices there are, for device_for
+            seen[device] = time.time()
+            _write_json(petasos_dir() / "devices.json", seen)
         pending = _read_json(path, {})
         if not isinstance(pending, dict) or not pending.get(device):
             return []
@@ -821,7 +833,7 @@ MUSIC_CONTROL = {
     "parameters": {"type": "object", "properties": {
         "action": {"type": "string", "enum": ["pause", "resume", "next", "previous", "stop", "repeat_one",
                                               "repeat_all", "repeat_off", "shuffle_on", "shuffle_off"]},
-        "device": {"type": "string", "description": "Device id, only when the user names another device"},
+        "device": {"type": "string", "description": "Device id, only when the user names another device; normally left out"},
     }, "required": ["action"]},
 }
 

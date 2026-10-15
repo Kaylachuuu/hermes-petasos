@@ -15,7 +15,8 @@ import (
 )
 
 // A queue from the library plays through to the end on the speaker, at 48 kHz, stops for
-// Athena and carries on from where it was rather than from the start.
+// Athena and carries on from where it was rather than from the start, without downloading the
+// song again.
 func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
 	dir := t.TempDir()
 	tone, err := os.ReadFile("testdata/tone.mp3") // two seconds at 44.1 kHz
@@ -67,8 +68,8 @@ func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
 	if l.active() {
 		t.Fatal("the queue never finished")
 	}
-	if n := streams.Load(); n != 3 {
-		t.Fatalf("%d streams opened; want 3 (one, one again after Athena, two)", n)
+	if n := streams.Load(); n != 2 {
+		t.Fatalf("%d streams opened; want 2 (after Athena, one carries on from memory)", n)
 	}
 	files, _ := filepath.Glob(filepath.Join(dir, "played.*"))
 	total := 0
@@ -265,5 +266,44 @@ func TestLibraryRepeatAndShuffle(t *testing.T) {
 	l.control("next")
 	if l.active() {
 		t.Fatal("next past the last song should end the queue")
+	}
+}
+
+// A song on repeat is downloaded once and then plays from memory.
+func TestLibraryRepeatsASongFromMemory(t *testing.T) {
+	dir := t.TempDir()
+	tone, err := os.ReadFile("testdata/tone.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streams atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		streams.Add(1)
+		w.Write(tone)
+	}))
+	defer srv.Close()
+	// aplay at ten times a speaker's pace, so a two-second song takes a fifth of a second.
+	os.WriteFile(filepath.Join(dir, "aplay"), []byte("#!/bin/sh\n"+
+		"while :; do n=$(dd bs=19200 count=1 iflag=fullblock status=none | wc -c); [ $n -gt 0 ] || exit 0; sleep 0.01; done\n"), 0o755)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	oldV := virtual
+	virtual = false
+	defer func() { virtual = oldV }()
+	display.setPhase("idle")
+	l := &libraryPlayer{}
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "test"}, http: srv.Client()}
+	l.attach(h, &voice{h: h, speaker: "bluealsa"})
+	saved := library
+	library = l
+	defer func() { library = saved }()
+
+	l.start("One", []libTrack{{Source: "folder", ID: "a", Title: "One"}}, "one", false)
+	time.Sleep(1500 * time.Millisecond)
+	if !l.active() {
+		t.Fatal("a song on repeat ended")
+	}
+	l.control("stop")
+	if n := streams.Load(); n != 1 {
+		t.Fatalf("%d downloads of a song on repeat; want 1", n)
 	}
 }
