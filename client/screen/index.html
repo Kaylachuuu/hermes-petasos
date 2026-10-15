@@ -953,7 +953,9 @@ function drawMusicPage(s) {
   }
   if (mpName !== s.page) { mpName = s.page; mpShown = ""; }
   mp = pageState(s.page);
-  const m = s.music, t = THEMES[m && m.service] || THEMES[s.page];
+  // Apple Music's and Spotify's pages show the phone's music, not the library's paused song.
+  const m = s.music && !(s.music.library && (s.page === "apple" || s.page === "spotify")) ? s.music : null;
+  const t = THEMES[m && m.service] || THEMES[s.page];
   $("mp-art").style.cssText = m && m.art ? artStyle(m.art) : "";
   $("mp-art").innerHTML = m && m.art ? "" : icon("music");
   $("mp-src").textContent = m ? t.name + (m.service && m.source && !m.library ? " · " + m.source : "") : THEMES[s.page].name;

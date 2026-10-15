@@ -17,6 +17,13 @@ import (
 
 var musicPages = map[string]bool{"soundcloud": true, "navidrome": true, "spotify": true, "apple": true}
 
+// onPhonePage is whether a page for music played on the phone (Apple Music's or Spotify's) is
+// open: its controls are the phone's, even with the library's music paused.
+func onPhonePage() bool {
+	p := display.snapshot().Page
+	return p == "apple" || p == "spotify"
+}
+
 // showPage opens a page: "petasos" (or "") is home. A page's own soft key again swaps between
 // what's playing and the lists.
 func showPage(page string) {

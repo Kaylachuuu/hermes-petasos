@@ -54,7 +54,7 @@ func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	display.setPhase("listening") // Athena takes the speaker partway into the first song
 	time.Sleep(100 * time.Millisecond)
-	if l.playing() {
+	if l.running() {
 		t.Fatal("still playing while Athena listens")
 	}
 	if st := display.snapshot(); st.Music == nil || st.Music.Title != "One" || st.Music.Source != "Music" {
@@ -86,7 +86,7 @@ func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
 	}
 }
 
-func (l *libraryPlayer) playing() bool {
+func (l *libraryPlayer) running() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.run != nil
@@ -129,7 +129,7 @@ func TestMusicCommandsGoToTheLibraryOnceItPlays(t *testing.T) {
 	for !l.active() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !l.active() || l.playing() {
+	if !l.active() || l.running() {
 		t.Fatalf("active %v, playing %v: it should wait for Athena", l.active(), l.run != nil)
 	}
 	if st := display.snapshot(); st.Music == nil || !strings.Contains(st.Music.Source, "Navidrome") {

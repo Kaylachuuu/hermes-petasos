@@ -131,6 +131,8 @@ func (v *voice) carryOut(c map[string]any) {
 func musicControl(op string) {
 	if strings.HasPrefix(op, "repeat") || strings.HasPrefix(op, "shuffle") {
 		go library.control(op) // only the library's own queue repeats and shuffles
+	} else if onPhonePage() && music.present() {
+		go music.control(op)
 	} else if library.active() {
 		go library.control(op)
 	} else {
@@ -869,6 +871,10 @@ func mustJSON(v any) []byte {
 // toggleMusic pauses or resumes whichever music there is, the library's or the phone's, and
 // says whether there was any.
 func toggleMusic() bool {
+	if onPhonePage() && music.present() {
+		go music.control("toggle")
+		return true
+	}
 	if library.active() {
 		go library.control("toggle")
 		return true

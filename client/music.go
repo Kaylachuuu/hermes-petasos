@@ -53,6 +53,7 @@ type phoneMusic struct {
 	relay      *relay          // bluealsa-aplay, passing the phone's stream to the car
 	held       bool            // Athena has the speaker (from listening until idle again)
 	pausedByUs bool            // the phone was playing when Athena took over
+	lastStatus string          // the status at the last refresh, to see the phone start playing
 }
 
 var music = &phoneMusic{}
@@ -174,6 +175,16 @@ func (m *phoneMusic) refresh() {
 		}
 	}
 
+	m.mu.Lock()
+	started := status == "playing" && m.lastStatus != "playing"
+	m.lastStatus = status
+	m.mu.Unlock()
+	if started && library.active() && !library.playing() {
+		// Music chosen on the phone while the library's is paused: the phone's takes over the
+		// speaker, the screen and the controls, as starting the library's pauses the phone's.
+		log.Printf("the phone started playing; the library's paused music makes way")
+		library.control("stop")
+	}
 	ours := library.active() // the home library has the speaker and the screen
 	m.mu.Lock()
 	m.player, m.status, m.phone = player, status, phone

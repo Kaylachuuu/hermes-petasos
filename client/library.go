@@ -126,6 +126,13 @@ func (l *libraryPlayer) active() bool {
 	return l.want != ""
 }
 
+// playing is whether the library's music is playing now, rather than paused.
+func (l *libraryPlayer) playing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.want == "playing"
+}
+
 // start plays the queue the plugin sent: {"op":"play","title":...,"tracks":[...],"repeat":...,
 // "shuffle":...}. The plugin has already shuffled a queue asked for shuffled.
 func (l *libraryPlayer) start(title string, tracks []libTrack, repeat string, shuffle bool) {
