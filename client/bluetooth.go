@@ -110,6 +110,7 @@ func (b *bluetooth) start() {
 			log.Printf("Bluetooth pairing agent ready")
 			b.nameAdapter()
 			routeSCOOverHCI()
+			setSpeakerClass()
 			go b.watchLinks()
 			return
 		}
