@@ -31,7 +31,7 @@ INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob
           "car-play", "car-next", "car-previous")
 GESTURES = ("press", "hold", "tap", "turn")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
-           "music_toggle", "music_next", "music_previous", "none")
+           "music_toggle", "music_next", "music_previous", "music_stop", "none")
 
 DEFAULT_MAPPING: dict = {
     "agent_name": "Hermes",
@@ -41,7 +41,8 @@ DEFAULT_MAPPING: dict = {
     "conversation": {"end_of_speech_ms": 1000, "idle_end_s": 30},
     "controls": {
         "front": {"hold": {"action": "push_to_talk"}, "tap": {"action": "conversation"}},
-        "knob": {"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}},
+        # Tap: stop the agent speaking, or pause and resume the music when she isn't. Hold: stop it.
+        "knob": {"tap": {"action": "stop_speaking"}, "hold": {"action": "music_stop"}, "turn": {"action": "volume"}},
         "mute": {"press": {"action": "mic_toggle"}},
         "preset-1": {"press": {"action": "prompt", "text": "What's next on my calendar?", "label": "Calendar"}},
         "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
@@ -59,8 +60,12 @@ DEFAULT_MAPPING: dict = {
 _OLD_CAR_DEFAULTS = {"car-next": {"press": {"action": "stop_speaking"}},
                      "car-previous": {"press": {"action": "none"}}}
 
+# The knob before a hold stopped the music; a mapping still holding it unchanged gets today's.
+_OLD_KNOB = {"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}}
+
 # The screen's name for an action with no label of its own, where its words alone read badly.
 _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "music_previous": "Previous song",
+                  "music_stop": "Stop the music",
                   "mic_toggle": "Mic on / off"}
 
 LABEL_MAX = 32  # two lines on the screen
@@ -292,6 +297,8 @@ class Petasos:
                 # A mapping written before the car buttons existed, or before they played
                 # music, gets their defaults.
                 controls = DEFAULT_MAPPING["controls"][name]
+            if name == "knob" and controls == _OLD_KNOB:
+                controls = DEFAULT_MAPPING["controls"]["knob"]
             controls = controls or {}
             if action == "press":
                 out = self._press(state, mapping, name, controls, now_ms)

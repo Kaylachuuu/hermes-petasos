@@ -267,6 +267,16 @@ func (m *phoneMusic) yieldToLibrary() {
 }
 
 // control carries out the plugin's music command: toggle, next or previous.
+// present is whether a phone is playing or has paused music through the Car Thing.
+func (m *phoneMusic) present() bool {
+	if virtual {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.player != "" && (m.status == "playing" || m.status == "paused")
+}
+
 func (m *phoneMusic) control(op string) {
 	if virtual {
 		display.notice("Music plays from the Car Thing, not here.")

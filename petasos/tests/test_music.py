@@ -339,3 +339,19 @@ def test_a_request_to_play_gets_a_reminder_that_it_means_music():
         assert "play_music" in (music.music_hint(user_message=asked) or ""), asked
     for said in ("Sin made me holy", "I'd love to play chess later", "What's on today?", None):
         assert music.music_hint(user_message=said) is None, said
+
+
+def test_a_song_named_in_full_plays_alone_and_repeat_reaches_the_device(tmp_path, monkeypatch):
+    assert music._names_song("play Sin Made Me Holy", "Sin Made Me Holy")
+    assert music._names_song("dreams by fleetwood mac", "Dreams")
+    assert not music._names_song("some daft punk", "One More Time")
+    assert music._names_song("sin made me holy", "Someone - Sin Made Me Holy (feat. Another) [Official Audio]")
+    left = []
+    monkeypatch.setattr(music, "find", lambda q, k, s: ("Dreams by Fleetwood Mac", [{"source": "folder", "id": "1", "title": "Dreams"}]))
+    monkeypatch.setattr(music, "leave", lambda device, cmd: left.append(cmd))
+    monkeypatch.setattr(music, "device_for", lambda d, s: "car")
+    music.play_music({"query": "Dreams", "repeat": "one"})
+    assert left[-1]["repeat"] == "one" and left[-1]["shuffle"] is False
+    assert json.loads(music.music_control({"action": "shuffle_on"}))["done"] == "shuffle_on"
+    assert left[-1] == {"do": "music", "op": "shuffle_on"}
+    assert "error" in json.loads(music.music_control({"action": "wiggle"}))

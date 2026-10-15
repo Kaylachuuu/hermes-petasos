@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os/exec"
@@ -51,6 +52,10 @@ type libraryPlayer struct {
 	held   bool   // Athena has the speaker
 	run    *libRun
 	failed int // tracks in a row that wouldn't play
+
+	repeat  string     // "one" (this track again), "all" (the queue again) or "" (stop at the end)
+	shuffle bool       // the queue is in a random order
+	order   []libTrack // the queue as it came, for when shuffle is turned off
 }
 
 type libRun struct {
@@ -73,8 +78,9 @@ func (l *libraryPlayer) active() bool {
 	return l.want != ""
 }
 
-// start plays the queue the plugin sent: {"op":"play","title":...,"tracks":[...]}.
-func (l *libraryPlayer) start(title string, tracks []libTrack) {
+// start plays the queue the plugin sent: {"op":"play","title":...,"tracks":[...],"repeat":...,
+// "shuffle":...}. The plugin has already shuffled a queue asked for shuffled.
+func (l *libraryPlayer) start(title string, tracks []libTrack, repeat string, shuffle bool) {
 	if len(tracks) == 0 {
 		return
 	}
@@ -82,6 +88,7 @@ func (l *libraryPlayer) start(title string, tracks []libTrack) {
 	l.halt()
 	l.mu.Lock()
 	l.queue, l.pos, l.frame, l.title, l.want, l.failed = tracks, 0, 0, title, "playing", 0
+	l.order, l.shuffle, l.repeat = tracks, shuffle, repeatMode(repeat)
 	l.held = display.snapshot().Phase != "idle" // it waits for Athena to finish her reply
 	l.mu.Unlock()
 	log.Printf("playing %s (%d songs)", title, len(tracks))
@@ -116,6 +123,31 @@ func (l *libraryPlayer) control(op string) {
 		l.frame, restart = 0, true
 	case "stop":
 		l.want, l.queue = "", nil
+	case "repeat_one", "repeat_all", "repeat_off":
+		l.repeat = repeatMode(strings.TrimPrefix(op, "repeat_"))
+	case "shuffle_on":
+		if !l.shuffle && l.pos < len(l.queue) {
+			// The song playing stays first; the rest come in a random order.
+			rest := append([]libTrack(nil), l.queue[l.pos+1:]...)
+			rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+			l.queue = append(append([]libTrack(nil), l.queue[:l.pos+1]...), rest...)
+		}
+		l.shuffle = true
+	case "shuffle_off":
+		if l.shuffle && l.pos < len(l.queue) && len(l.order) > 0 {
+			// Back to the order it came in, carrying on from the song playing.
+			now := l.queue[l.pos]
+			for i, t := range l.order {
+				if t == now {
+					l.queue, l.pos = l.order, i
+					break
+				}
+			}
+		}
+		l.shuffle = false
+	}
+	if l.pos >= len(l.queue) && l.repeat != "" && len(l.queue) > 0 && op == "next" {
+		l.pos = 0 // repeating: past the end is the start again
 	}
 	if l.pos >= len(l.queue) {
 		l.want, l.queue = "", nil
@@ -125,6 +157,15 @@ func (l *libraryPlayer) control(op string) {
 		l.halt()
 	}
 	l.kick()
+}
+
+// repeatMode is "one", "all" or "" from what the plugin or Athena said.
+func repeatMode(s string) string {
+	switch s {
+	case "one", "all":
+		return s
+	}
+	return ""
 }
 
 // phaseChanged follows Athena: the music stops while she listens, thinks and speaks.
@@ -220,7 +261,18 @@ func (l *libraryPlayer) play(r *libRun) {
 		} else {
 			l.failed = 0
 		}
-		l.pos, l.frame = l.pos+1, 0
+		if l.repeat != "one" || err != nil {
+			l.pos++
+		}
+		l.frame = 0
+		if l.pos >= len(l.queue) && l.repeat == "all" && l.failed < len(l.queue) {
+			l.pos = 0
+			if l.shuffle { // a new order each time round
+				q := append([]libTrack(nil), l.queue...)
+				rand.Shuffle(len(q), func(i, j int) { q[i], q[j] = q[j], q[i] })
+				l.queue = q
+			}
+		}
 		over := l.pos >= len(l.queue) || l.failed >= 3
 		if over {
 			l.want, l.queue, l.run = "", nil, nil

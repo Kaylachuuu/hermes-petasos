@@ -43,7 +43,8 @@ def test_events_come_back_as_commands(hermes):
     assert r.status_code == 200, r.text
     assert r.json() == {"commands": [{"do": "listen", "mode": "hold"}]}
     assert post({"input": "front", "action": "release", "t": 800}).json() == {"commands": [{"do": "send"}]}
-    assert post({"input": "knob", "action": "press"}).json() == {"commands": [{"do": "stop_speaking"}]}
+    assert post({"input": "knob", "action": "press", "t": 1000}).json() == {"commands": []}
+    assert post({"input": "knob", "action": "release", "t": 1100}).json() == {"commands": [{"do": "stop_speaking"}]}
     assert post({"input": "nope", "action": "press"}).status_code == 400
     assert (home / "petasos" / "mapping.json").is_file()
 

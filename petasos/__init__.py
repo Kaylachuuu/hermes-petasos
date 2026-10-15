@@ -45,7 +45,7 @@ def _describe(step: dict, agent: str) -> str:
     return {"push_to_talk": "push-to-talk", "conversation": "start or end conversation mode",
             "stop_speaking": f"stop {agent} speaking", "volume": "volume", "mic_toggle": "mic on/off",
             "music_toggle": "play or pause the music", "music_next": "next song",
-            "music_previous": "previous song", "none": "nothing"}.get(action, action)
+            "music_previous": "previous song", "music_stop": "stop the music", "none": "nothing"}.get(action, action)
 
 
 def _slash(_args: str = "") -> str:

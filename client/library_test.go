@@ -49,7 +49,7 @@ func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
 	library = l
 	defer func() { library = saved }()
 
-	l.start("Tones by Nobody", []libTrack{{Source: "folder", ID: "a", Title: "One"}, {Source: "folder", ID: "b", Title: "Two"}})
+	l.start("Tones by Nobody", []libTrack{{Source: "folder", ID: "a", Title: "One"}, {Source: "folder", ID: "b", Title: "Two"}}, "", false)
 	time.Sleep(300 * time.Millisecond)
 	display.setPhase("listening") // Athena takes the speaker partway into the first song
 	time.Sleep(100 * time.Millisecond)
@@ -236,5 +236,34 @@ func TestAppSoundCloudSignsInThroughTheBrowser(t *testing.T) {
 	appSoundCloud(rec, httptest.NewRequest("GET", "/app/soundcloud?error=access_denied", nil))
 	if !strings.Contains(rec.Body.String(), "Couldn&#39;t sign in") || !strings.Contains(rec.Body.String(), "access_denied") {
 		t.Fatalf("error page: %s", rec.Body)
+	}
+}
+
+// Repeat and shuffle change what comes next without touching the song playing.
+func TestLibraryRepeatAndShuffle(t *testing.T) {
+	l := &libraryPlayer{}
+	songs := []libTrack{{ID: "1"}, {ID: "2"}, {ID: "3"}, {ID: "4"}, {ID: "5"}}
+	l.queue, l.order, l.want, l.pos = songs, songs, "paused", 1
+	l.control("shuffle_on")
+	if l.queue[1].ID != "2" || len(l.queue) != 5 || !l.shuffle {
+		t.Fatalf("shuffle moved the song playing: %+v", l.queue)
+	}
+	l.pos = 3
+	now := l.queue[3]
+	l.control("shuffle_off")
+	if l.queue[l.pos] != now || l.queue[0].ID != "1" || l.shuffle {
+		t.Fatalf("shuffle off: pos %d of %+v, want %+v", l.pos, l.queue, now)
+	}
+	l.control("repeat_all")
+	l.pos = 4
+	l.control("next")
+	if l.pos != 0 || !l.active() {
+		t.Fatalf("repeat all: next from the last song went to %d (active %v)", l.pos, l.active())
+	}
+	l.control("repeat_off")
+	l.pos = 4
+	l.control("next")
+	if l.active() {
+		t.Fatal("next past the last song should end the queue")
 	}
 }

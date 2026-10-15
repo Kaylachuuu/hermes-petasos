@@ -11,7 +11,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const LABEL_MAX = 32
 // The screen's own names for these (petasos core._ACTION_LABELS).
-const ACTION_LABELS = { mic_toggle: 'Mic on / off', music_next: 'Next song', music_previous: 'Previous song', music_toggle: 'Play / pause' }
+const ACTION_LABELS = { mic_toggle: 'Mic on / off', music_next: 'Next song', music_previous: 'Previous song', music_toggle: 'Play / pause', music_stop: 'Stop the music' }
 const AGENT_NAME_MAX = 24
 const TABS = [['agent', 'Agent'], ['keys', 'Soft keys'], ['music', 'Music']]
 const ACTIONS = [
@@ -22,6 +22,7 @@ const ACTIONS = [
   ['music_toggle', 'Play or pause music'],
   ['music_next', 'Next song'],
   ['music_previous', 'Previous song'],
+  ['music_stop', 'Stop the music'],
   ['none', 'Nothing']
 ]
 

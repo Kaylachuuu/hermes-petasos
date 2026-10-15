@@ -69,10 +69,18 @@ def test_server_clock_is_used_without_device_timestamps(setup):
     assert petasos.handle(ev("front", "release")) == [{"do": "send"}]
 
 
-def test_knob_stops_speaking_and_turns_volume(setup):
+def tap_knob(petasos):
+    petasos.handle(ev("knob", "press", t=0))
+    return petasos.handle(ev("knob", "release", t=100))
+
+
+def test_knob_stops_speaking_stops_the_music_and_turns_volume(setup):
     petasos, _ = setup
-    assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
-    assert petasos.handle(ev("knob", "release")) == []
+    # A tap stops the agent speaking (or, on the device, pauses the music when she isn't).
+    assert petasos.handle(ev("knob", "press", t=0)) == []
+    assert petasos.handle(ev("knob", "release", t=100)) == [{"do": "stop_speaking"}]
+    assert petasos.handle(ev("knob", "press", t=1000)) == []
+    assert petasos.handle(ev("knob", "release", t=1600)) == [{"do": "music", "op": "stop"}]
     assert petasos.handle(ev("knob", "turn", delta=-1)) == [{"do": "volume", "delta": -5}]
     assert petasos.handle(ev("knob", "turn", delta=2)) == [{"do": "volume", "delta": 10}]
 
@@ -125,12 +133,12 @@ def test_a_broken_file_keeps_the_last_good_layout(setup):
     petasos, _ = setup
     petasos.mapping.current()
     petasos.mapping.path.write_text("{ not json")
-    assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
+    assert tap_knob(petasos) == [{"do": "stop_speaking"}]
     assert "could not be read as JSON" in petasos.status()["mapping_problems"][0]
     bad = copy.deepcopy(core.DEFAULT_MAPPING)
     bad["controls"]["front"]["tap"] = {"action": "push_to_talk"}
     petasos.mapping.path.write_text(json.dumps(bad))
-    assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
+    assert tap_knob(petasos) == [{"do": "stop_speaking"}]
     assert petasos.status()["mapping_problems"] == ["front.tap: push_to_talk only works on hold."]
 
 
@@ -174,15 +182,23 @@ def test_screen_gets_preset_labels_on_hello_and_when_they_change(setup):
     petasos, _ = setup
     assert petasos.handle(ev("device", "hello")) == [
         {"do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Hermes"}]
-    assert petasos.handle(ev("knob", "press")) == [{"do": "stop_speaking"}]
+    assert petasos.handle(ev("preset-4", "press")) == []
     mapping = petasos.mapping.current()
     mapping["controls"]["preset-3"] = {"press": {"action": "prompt", "text": "What's the weather tomorrow in Casper?"}}
     mapping["controls"]["preset-1"]["press"].pop("label")
     petasos.mapping.replace(mapping)
-    assert petasos.handle(ev("knob", "press")) == [
+    assert petasos.handle(ev("preset-4", "press")) == [
         {"do": "screen", "presets": ["What's next on my calendar", "Last message", "What's the weather tomorrow in…", ""],
-         "agent": "Hermes"},
-        {"do": "stop_speaking"}]
+         "agent": "Hermes"}]
+
+
+def test_a_knob_left_as_it_was_gets_the_hold_to_stop_the_music(setup):
+    petasos, _ = setup
+    mapping = petasos.mapping.current()
+    mapping["controls"]["knob"] = {"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}}
+    petasos.mapping.path.write_text(json.dumps(mapping))
+    assert petasos.handle(ev("knob", "press", t=0)) == []
+    assert petasos.handle(ev("knob", "release", t=900)) == [{"do": "music", "op": "stop"}]
 
 
 def test_labels_must_be_short(setup):

@@ -85,6 +85,10 @@ func (v *voice) carryOut(c map[string]any) {
 		v.finish(false)
 		display.setPhase("idle")
 	case "stop_speaking":
+		// With nothing to stop, it pauses or resumes the music instead: the knob's tap.
+		if display.snapshot().Phase == "idle" && toggleMusic() {
+			return
+		}
 		v.stopSpeaking() // the turn then ends as usual, starting the next one in conversation mode
 	case "prompt":
 		if text, _ := c["text"].(string); text != "" {
@@ -110,7 +114,11 @@ func (v *voice) carryOut(c map[string]any) {
 			data, _ := json.Marshal(raw)
 			_ = json.Unmarshal(data, &tracks)
 			title, _ := c["title"].(string)
-			go library.start(title, tracks)
+			repeat, _ := c["repeat"].(string)
+			shuffle, _ := c["shuffle"].(bool)
+			go library.start(title, tracks, repeat, shuffle)
+		} else if strings.HasPrefix(op, "repeat") || strings.HasPrefix(op, "shuffle") {
+			go library.control(op) // only the library's own queue repeats and shuffles
 		} else if library.active() {
 			go library.control(op)
 		} else {
@@ -816,4 +824,18 @@ func intOf(v any, fallback int) int {
 func mustJSON(v any) []byte {
 	raw, _ := json.Marshal(v)
 	return raw
+}
+
+// toggleMusic pauses or resumes whichever music there is, the library's or the phone's, and
+// says whether there was any.
+func toggleMusic() bool {
+	if library.active() {
+		go library.control("toggle")
+		return true
+	}
+	if music.present() {
+		go music.control("toggle")
+		return true
+	}
+	return false
 }

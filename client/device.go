@@ -87,6 +87,7 @@ var softKeyActions = []choiceOf{
 	{"music_toggle", "Play or pause music"},
 	{"music_next", "Next song"},
 	{"music_previous", "Previous song"},
+	{"music_stop", "Stop the music"},
 	{"none", "Nothing"},
 }
 
@@ -149,7 +150,7 @@ func (s presetStep) describe(agent string) string {
 	case "prompt":
 		return "Asks “" + truncate(s.Text, 60) + "”"
 	case "stop_speaking":
-		return "Stops " + agent + " speaking"
+		return "Stops " + agent + " speaking, or pauses the music"
 	case "none", "":
 		return "Does nothing"
 	}

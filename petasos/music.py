@@ -199,8 +199,9 @@ class Navidrome:
                 return f"songs by {artist.get('name')}", [self._song(s) for s in songs]
         songs = found.get("song", [])
         if songs:
-            return (f"{songs[0].get('title')} by {songs[0].get('artist')}" if kind == "song" else f"songs matching {query}",
-                    [self._song(s) for s in (songs[:1] if kind == "song" else songs)])
+            one = kind == "song" or _names_song(query, songs[0].get("title") or "")
+            return (f"{songs[0].get('title')} by {songs[0].get('artist')}" if one else f"songs matching {query}",
+                    [self._song(s) for s in (songs[:1] if one else songs)])
         return "", []
 
     def stream_url(self, ident: str) -> str:
@@ -218,6 +219,17 @@ def _score(query: str, text: str) -> float:
         return 0.0
     have = set(_words(text))
     return sum(1 for w in want if w in have) / len(want)
+
+
+def _names_song(query: str, title: str) -> bool:
+    """Whether the request names this one song: every word of its title is in the query
+    ("play Sin Made Me Holy", "Dreams by Fleetwood Mac"), so it plays alone rather than with
+    whatever else matched."""
+    bare = re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", title)  # "(feat. …)", "[Official Video]"
+    for name in (bare, bare.split(" - ", 1)[-1]):  # SoundCloud's "Artist - Title"
+        if _words(name) and _score(name, query) >= 0.99:
+            return True
+    return False
 
 
 def _best(query: str, items: list, key) -> dict | None:
@@ -338,7 +350,7 @@ class Folders:
         if best[0] >= 0.99 or (best[0] > 0 and kind in ("album", "artist")):
             return best[1], best[2]
         if songs:
-            if kind == "song":
+            if kind == "song" or _names_song(query, songs[0]["title"]):
                 return f"{songs[0]['title']} by {songs[0]['artist']}", songs[:1]
             return f"songs matching {query}", songs[:50]
         return "", []
@@ -565,8 +577,8 @@ class SoundCloud:
         songs = self._songs(self._items(self.call("/tracks", q=query, limit=50, linked_partitioning="true", access="playable")))
         if not songs:
             return "", []
-        if kind in ("song", "any"):
-            return f"{songs[0]['title']} by {songs[0]['artist']} on SoundCloud", songs[:1] if kind == "song" else songs[:20]
+        if kind == "song" or (kind == "any" and _names_song(query, songs[0]["title"])):
+            return f"{songs[0]['title']} by {songs[0]['artist']} on SoundCloud", songs[:1]
         return f"SoundCloud tracks matching {query}", songs[:20]
 
     def _playlist(self, playlist: dict) -> list[dict]:
@@ -786,6 +798,8 @@ PLAY_MUSIC = {
                     "Petasos device: the Car Thing in their car, which plays it through the car's speakers. "
                     "Use it whenever the user asks to play, put on or listen to something, even when the "
                     "title reads like a statement or a question (\"play Sin Made Me Holy\"). "
+                    "A single song plays once and stops; a playlist, album or artist plays through and stops, "
+                    "unless repeat says otherwise. "
                     "It plays after your reply. Say what you put on, in a few words."),
     "parameters": {"type": "object", "properties": {
         "query": {"type": "string", "description": "What to play: a song, album, artist or playlist name. Empty for a random mix."},
@@ -794,15 +808,19 @@ PLAY_MUSIC = {
         "source": {"type": "string", "enum": ["navidrome", "folders", "soundcloud"],
                    "description": "Only when the user names where to play from; otherwise their own library is tried first, then SoundCloud"},
         "shuffle": {"type": "boolean", "description": "Shuffle the songs"},
+        "repeat": {"type": "string", "enum": ["off", "one", "all"],
+                   "description": "Only when asked: 'one' plays the same song over and over, 'all' starts the queue again when it ends"},
         "device": {"type": "string", "description": "Device id, only when the user names another device; normally left out"},
     }},
 }
 
 MUSIC_CONTROL = {
     "name": "music_control",
-    "description": "Pause, resume, skip or stop the music playing on the user's Petasos device (the Car Thing).",
+    "description": ("Pause, resume, skip or stop the music playing on the user's Petasos device (the Car Thing), "
+                    "or turn repeat (one song, or the whole queue) and shuffle on or off."),
     "parameters": {"type": "object", "properties": {
-        "action": {"type": "string", "enum": ["pause", "resume", "next", "previous", "stop"]},
+        "action": {"type": "string", "enum": ["pause", "resume", "next", "previous", "stop", "repeat_one",
+                                              "repeat_all", "repeat_off", "shuffle_on", "shuffle_off"]},
         "device": {"type": "string", "description": "Device id, only when the user names another device"},
     }, "required": ["action"]},
 }
@@ -838,15 +856,18 @@ def play_music(args: dict | None = None, session_id: str | None = None, **_) -> 
         tracks = random.sample(tracks, len(tracks))
     tracks = tracks[:MAX_QUEUE]
     device = device_for(args.get("device"), session_id)
-    leave(device, {"do": "music", "op": "play", "title": said, "tracks": tracks})
+    repeat = args.get("repeat") if args.get("repeat") in ("one", "all") else ""
+    leave(device, {"do": "music", "op": "play", "title": said, "tracks": tracks, "repeat": repeat,
+                   "shuffle": bool(args.get("shuffle"))})
     return json.dumps({"playing": said, "songs": len(tracks), "first": tracks[0]["title"], "device": device})
 
 
 def music_control(args: dict | None = None, session_id: str | None = None, **_) -> str:
     args = args or {}
     action = args.get("action")
-    if action not in ("pause", "resume", "next", "previous", "stop"):
-        return json.dumps({"error": "action is pause, resume, next, previous or stop"})
+    actions = MUSIC_CONTROL["parameters"]["properties"]["action"]["enum"]
+    if action not in actions:
+        return json.dumps({"error": "action is one of " + ", ".join(actions)})
     device = device_for(args.get("device"), session_id)
     leave(device, {"do": "music", "op": action})
     return json.dumps({"done": action, "device": device})
