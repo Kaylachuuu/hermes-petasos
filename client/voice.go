@@ -105,7 +105,17 @@ func (v *voice) carryOut(c map[string]any) {
 		showScreenCommand(c)
 	case "music":
 		op, _ := c["op"].(string)
-		go music.control(op)
+		if raw, ok := c["tracks"]; ok && op == "play" { // a queue Athena chose from the library
+			var tracks []libTrack
+			data, _ := json.Marshal(raw)
+			_ = json.Unmarshal(data, &tracks)
+			title, _ := c["title"].(string)
+			go library.start(title, tracks)
+		} else if library.active() {
+			go library.control(op)
+		} else {
+			go music.control(op)
+		}
 	}
 }
 
@@ -380,9 +390,10 @@ func (v *voice) idleOrRelisten(gen int) {
 // --- asking and playing ------------------------------------------------------------------------
 
 type answer struct {
-	Heard string  `json:"heard"`
-	Reply string  `json:"reply"`
-	Audio *string `json:"audio"`
+	Heard    string           `json:"heard"`
+	Reply    string           `json:"reply"`
+	Audio    *string          `json:"audio"`
+	Commands []map[string]any `json:"commands"` // what her tools left for this device: music she put on
 }
 
 func (v *voice) ask(path, contentType string, payload []byte) {
@@ -423,6 +434,9 @@ func (v *voice) askWithGen(gen int, path, contentType string, payload []byte) {
 	}
 	log.Printf("heard: %s", a.Heard)
 	log.Printf("%s: %s", display.agent(), a.Reply)
+	for _, c := range a.Commands { // the music waits for her to finish (library.phaseChanged)
+		v.carryOut(c)
+	}
 	if !v.current(gen) {
 		return
 	}
@@ -487,7 +501,8 @@ func (v *voice) play(wav []byte) {
 	} else {
 		wav = converted
 	}
-	music.freeSpeaker() // the phone's music lets go of the car's speaker
+	music.freeSpeaker()   // the phone's music lets go of the car's speaker
+	library.freeSpeaker() // and so does the library's
 	cmd := v.playCommand()
 	cmd.Stdin = bytes.NewReader(wav)
 	var stderr bytes.Buffer

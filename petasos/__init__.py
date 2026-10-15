@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 
 _CORE = "hermes_petasos_core"
+_MUSIC = "hermes_petasos_music"
 
 _LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3",
            "preset-4": "Preset 4", "mute": "Top-right button", "front": "Front button", "knob": "Knob",
@@ -76,6 +77,33 @@ def _slash(_args: str = "") -> str:
     return "\n".join(lines)
 
 
+def _music():
+    """music.py, loaded like core.py; Athena's music tools run in the gateway, the streaming
+    routes in the dashboard, and they share only files under <Hermes home>/petasos/."""
+    module = sys.modules.get(_MUSIC)
+    if module is not None:
+        return module
+    with _LOADING:
+        module = sys.modules.get(_MUSIC)
+        if module is None:
+            spec = importlib.util.spec_from_file_location(_MUSIC, Path(__file__).with_name("music.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module = sys.modules.setdefault(_MUSIC, module)
+    return module
+
+
+def _play_music(args=None, **kwargs) -> str:
+    return _music().play_music(args, **kwargs)
+
+
+def _music_control(args=None, **kwargs) -> str:
+    return _music().music_control(args, **kwargs)
+
+
 def register(ctx) -> None:
     ctx.register_command("petasos", handler=_slash,
                          description="Show the Car Thing's button layout and where to change it.")
+    music = _music()
+    ctx.register_tool(name="play_music", toolset="petasos", schema=music.PLAY_MUSIC, handler=_play_music)
+    ctx.register_tool(name="music_control", toolset="petasos", schema=music.MUSIC_CONTROL, handler=_music_control)

@@ -129,6 +129,7 @@ func (s *screen) snapshot() screenState {
 
 func (s *screen) setPhase(phase string) {
 	music.phaseChanged(phase)
+	library.phaseChanged(phase)
 	s.update(func(st *screenState) {
 		st.Phase = phase
 		if phase == "idle" || phase == "ready" || phase == "listening" {

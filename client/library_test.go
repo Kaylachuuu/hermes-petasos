@@ -1,0 +1,150 @@
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// A queue from the library plays through to the end on the speaker, at 48 kHz, stops for
+// Athena and carries on from where it was rather than from the start.
+func TestLibraryPlaysAndStepsAsideForAthena(t *testing.T) {
+	dir := t.TempDir()
+	tone, err := os.ReadFile("testdata/tone.mp3") // two seconds at 44.1 kHz
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streams atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/petasos/music/stream" && r.URL.Query().Get("source") == "folder" {
+			streams.Add(1)
+			w.Write(tone)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	// aplay, checking it is asked for raw 48 kHz stereo and keeping what it was given, at twice
+	// a speaker's pace.
+	os.WriteFile(filepath.Join(dir, "aplay"), []byte("#!/bin/sh\ncase \"$*\" in *'-t raw -f S16_LE -r 48000 -c 2'*) ;; *) exit 3;; esac\n"+
+		"while :; do n=$(dd bs=19200 count=1 iflag=fullblock status=none | tee -a "+dir+"/played.$$ | wc -c); [ $n -gt 0 ] || exit 0; sleep 0.05; done\n"), 0o755)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	oldV := virtual
+	virtual = false
+	defer func() { virtual = oldV }()
+	display.setPhase("idle")
+
+	l := &libraryPlayer{}
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "test"}, http: srv.Client()}
+	l.attach(h, &voice{h: h, speaker: "bluealsa"})
+	saved := library
+	library = l
+	defer func() { library = saved }()
+
+	l.start("Tones by Nobody", []libTrack{{Source: "folder", ID: "a", Title: "One"}, {Source: "folder", ID: "b", Title: "Two"}})
+	time.Sleep(300 * time.Millisecond)
+	display.setPhase("listening") // Athena takes the speaker partway into the first song
+	time.Sleep(100 * time.Millisecond)
+	if l.playing() {
+		t.Fatal("still playing while Athena listens")
+	}
+	if st := display.snapshot(); st.Music == nil || st.Music.Title != "One" || st.Music.Source != "Music" {
+		t.Fatalf("screen shows %+v", st.Music)
+	}
+	display.setPhase("idle")
+	deadline := time.Now().Add(10 * time.Second)
+	for l.active() && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if l.active() {
+		t.Fatal("the queue never finished")
+	}
+	if n := streams.Load(); n != 3 {
+		t.Fatalf("%d streams opened; want 3 (one, one again after Athena, two)", n)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "played.*"))
+	total := 0
+	for _, f := range files {
+		data, _ := os.ReadFile(f)
+		total += len(data)
+	}
+	// Both songs once each at 48 kHz stereo 16-bit (MP3 adds a little padding).
+	if want := 2 * 2 * 48000 * 4; total < want*95/100 || total > want*110/100 {
+		t.Fatalf("played %d bytes; want about %d", total, want)
+	}
+	if display.snapshot().Music != nil {
+		t.Fatal("the screen still shows music after the queue ended")
+	}
+}
+
+func (l *libraryPlayer) playing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.run != nil
+}
+
+func TestResampleStereoKeepsLengthAndShape(t *testing.T) {
+	in := make([]byte, 44100*4)
+	for i := 0; i < 44100; i++ {
+		binary.LittleEndian.PutUint16(in[4*i:], uint16(int16(i%1000)))
+		binary.LittleEndian.PutUint16(in[4*i+2:], uint16(int16(-(i % 1000))))
+	}
+	out, err := io.ReadAll(resampleStereo(bytes.NewReader(in), 44100, 48000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frames := len(out) / 4; frames < 47990 || frames > 48000 {
+		t.Fatalf("%d frames from a second at 44.1 kHz", frames)
+	}
+	for i := 0; i < len(out)/4; i += 997 {
+		l, r := int16(binary.LittleEndian.Uint16(out[4*i:])), int16(binary.LittleEndian.Uint16(out[4*i+2:]))
+		if l != -r {
+			t.Fatalf("frame %d: channels swapped or mixed (%d, %d)", i, l, r)
+		}
+	}
+}
+
+// Music Athena chose comes with her reply and goes to the library; the knob and buttons then
+// control the library rather than the phone.
+func TestMusicCommandsGoToTheLibraryOnceItPlays(t *testing.T) {
+	l := &libraryPlayer{}
+	saved := library
+	library = l
+	defer func() { library = saved }()
+	display.setPhase("thinking")
+	defer display.setPhase("idle")
+	v := &voice{}
+	v.carryOut(map[string]any{"do": "music", "op": "play", "title": "Rumours",
+		"tracks": []any{map[string]any{"source": "navidrome", "id": "1", "title": "Dreams", "artist": "Fleetwood Mac"}}})
+	deadline := time.Now().Add(2 * time.Second)
+	for !l.active() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !l.active() || l.playing() {
+		t.Fatalf("active %v, playing %v: it should wait for Athena", l.active(), l.run != nil)
+	}
+	if st := display.snapshot(); st.Music == nil || !strings.Contains(st.Music.Source, "Navidrome") {
+		t.Fatalf("screen shows %+v", st.Music)
+	}
+	v.carryOut(map[string]any{"do": "music", "op": "toggle"})
+	time.Sleep(50 * time.Millisecond)
+	l.mu.Lock()
+	want := l.want
+	l.mu.Unlock()
+	if want != "paused" {
+		t.Fatalf("toggle left it %q", want)
+	}
+	v.carryOut(map[string]any{"do": "music", "op": "stop"})
+	time.Sleep(50 * time.Millisecond)
+	if l.active() {
+		t.Fatal("still active after stop")
+	}
+}

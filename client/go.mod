@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/google/btree v1.1.2 // indirect
+	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/time v0.7.0 // indirect

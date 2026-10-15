@@ -480,6 +480,8 @@ func (h *hermes) run(eventsFile string) {
 	}
 
 	v := newVoice(h, presses)
+	library.attach(h, v)
+	go h.pollCommands(v)
 	if !virtual {
 		volumes.load(h.dir)
 		go v.keepVolumes()

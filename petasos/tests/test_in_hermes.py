@@ -138,3 +138,24 @@ def test_voice_routes(hermes, monkeypatch):
     assert client.post("/api/plugins/petasos/ask", json={"text": " "}).status_code == 400
     assert client.post("/api/plugins/petasos/voice", content=b"").status_code == 400
     assert client.get("/api/plugins/petasos/voice/audio/nope").status_code == 404
+
+
+def test_the_agent_gets_the_music_tools_and_the_device_gets_their_commands(hermes):
+    client, home = hermes
+    from tools.registry import registry
+    assert registry.get_entry("play_music") is not None and registry.get_entry("music_control") is not None
+    music = (home / "petasos" / "music")
+    music.mkdir()
+    (music / "Song.mp3").write_bytes(b"ID3 tune")
+    r = client.put("/api/plugins/petasos/music/settings", json={"folders": [str(music)]})
+    assert r.status_code == 200, r.text
+    assert client.post("/api/plugins/petasos/music/check").json()["folders"][0]["songs"] == 1
+    import json
+    answer = json.loads(registry.dispatch("play_music", {"query": "song", "device": "car-thing"}))
+    assert answer["songs"] == 1, answer
+    commands = client.get("/api/plugins/petasos/devices/car-thing/commands").json()["commands"]
+    assert commands[0]["op"] == "play"
+    track = commands[0]["tracks"][0]
+    r = client.get(f"/api/plugins/petasos/music/stream?source={track['source']}&id={track['id']}")
+    assert r.status_code == 200 and r.content == b"ID3 tune"
+    assert client.get("/api/plugins/petasos/devices/car-thing/commands").json() == {"commands": []}

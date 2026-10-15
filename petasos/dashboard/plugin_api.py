@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 router = APIRouter()
 
@@ -45,6 +45,10 @@ def _core():
 
 def _voice():
     return _load("hermes_petasos_voice", "voice.py")
+
+
+def _music():
+    return _load("hermes_petasos_music", "music.py")
 
 
 @router.post("/input")
@@ -124,14 +128,56 @@ async def ask(body: dict, device: str = "car-thing") -> dict:
 
 
 async def _turn(text: str, device: str) -> dict:
-    voice = _voice()
+    """One turn with the agent. Commands its tools left for the device (music it put on) come
+    back with the reply, so they happen as soon as it has been said."""
+    voice, music = _voice(), _music()
+    device = voice.device_name(device)
+    music.note_turn(device)
     try:
         core = _core()
         mapping = core.shared().mapping.current()
-        return await voice.turn(text, voice.device_name(device), core.agent_name(mapping),
-                                shared_chat=mapping.get("chats") == "shared")
+        answer = await voice.turn(text, device, core.agent_name(mapping),
+                                  shared_chat=mapping.get("chats") == "shared")
     except voice.VoiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+    return {**answer, "commands": music.take(device)}
+
+
+@router.get("/devices/{device}/commands")
+def device_commands(device: str) -> dict:
+    """Commands left for a device since it last asked: music the agent put on from another chat."""
+    return {"commands": _music().take(_voice().device_name(device))}
+
+
+@router.get("/music/settings")
+def music_settings() -> dict:
+    return _music().settings()
+
+
+@router.put("/music/settings")
+def put_music_settings(body: dict) -> dict:
+    music = _music()
+    try:
+        return music.save_settings(body)
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/music/check")
+def music_check() -> dict:
+    """Tries each source; a folder's first check reads its files' tags, so it can take a while."""
+    return _music().check()
+
+
+@router.get("/music/stream")
+def music_stream(source: str, id: str) -> StreamingResponse:
+    """One track of the home library as MP3, from Navidrome or a music folder on this machine."""
+    music = _music()
+    try:
+        pieces = music.stream(source, id)
+    except (music.MusicError, OSError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)[:300]) from None
+    return StreamingResponse(pieces, media_type="audio/mpeg")
 
 
 @router.get("/voice/audio/{key}")

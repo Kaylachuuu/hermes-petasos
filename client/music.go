@@ -145,9 +145,10 @@ func (m *phoneMusic) refresh() {
 		}
 	}
 
+	ours := library.active() // the home library has the speaker and the screen
 	m.mu.Lock()
 	m.player, m.status, m.phone = player, status, phone
-	start := phone != "" && car != "" && !m.held && m.relay == nil
+	start := phone != "" && car != "" && !m.held && m.relay == nil && !ours
 	stop := m.relay != nil && phone == ""
 	m.mu.Unlock()
 	if stop {
@@ -155,6 +156,9 @@ func (m *phoneMusic) refresh() {
 	}
 	if start {
 		m.startRelay(phone, car)
+	}
+	if ours {
+		return
 	}
 	display.update(func(st *screenState) {
 		if np == nil || (np.Title == "" && !np.Playing) {
@@ -247,6 +251,21 @@ func (m *phoneMusic) freeSpeaker() {
 	m.stopRelay()
 }
 
+// yieldToLibrary makes way for the home library: the phone pauses and the relay stops.
+func (m *phoneMusic) yieldToLibrary() {
+	if virtual {
+		return
+	}
+	m.mu.Lock()
+	player, playing := m.player, m.status == "playing"
+	m.pausedByUs = false
+	m.mu.Unlock()
+	if playing {
+		m.call(player, "Pause")
+	}
+	m.stopRelay()
+}
+
 // control carries out the plugin's music command: toggle, next or previous.
 func (m *phoneMusic) control(op string) {
 	if virtual {
@@ -255,7 +274,7 @@ func (m *phoneMusic) control(op string) {
 	}
 	m.mu.Lock()
 	player, status := m.player, m.status
-	if op == "toggle" || op == "play" || op == "pause" {
+	if op != "next" && op != "previous" {
 		m.pausedByUs = false // a deliberate choice stands, even after Athena
 	}
 	m.mu.Unlock()
@@ -263,7 +282,8 @@ func (m *phoneMusic) control(op string) {
 		display.notice("No music from a phone. Choose " + bt.shownName() + " as its speaker.")
 		return
 	}
-	method := map[string]string{"next": "Next", "previous": "Previous", "play": "Play", "pause": "Pause"}[op]
+	method := map[string]string{"next": "Next", "previous": "Previous", "play": "Play", "pause": "Pause",
+		"resume": "Play", "stop": "Pause"}[op]
 	if op == "toggle" {
 		method = "Play"
 		if status == "playing" {

@@ -1,0 +1,538 @@
+"""Petasos music: the home library, played on the Car Thing.
+
+Two kinds of source, set in ``<Hermes home>/petasos/music.json``:
+
+    {"navidrome": {"url": "http://10.0.0.20:4533", "username": "kayla", "password": "..."},
+     "folders": ["/srv/music", "/mnt/nas/music"]}
+
+Navidrome (or any Subsonic server) is searched through its API and streams as MP3 at the
+bit rate set here. A folder is any directory Hermes can read, a mounted network share
+included; its files are indexed by their tags (mutagen, when installed) or else by their
+paths (Artist/Album/01 Title.mp3), and anything that isn't MP3 is converted with ffmpeg.
+
+Athena chooses what plays with the ``play_music`` tool and controls it with
+``music_control``. Both leave a command for the device (``pending``), which picks it up with
+its next request or its regular check (``/devices/<id>/commands``); the device then streams
+each track from the plugin's ``/music/stream`` route, so the Navidrome password and the
+folders never leave Hermes.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import random
+import re
+import secrets
+import shutil
+import subprocess
+import threading
+import time
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Iterator
+
+AUDIO_SUFFIXES = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".alac"}
+MAX_QUEUE = 200
+BIT_RATE = 192
+INDEX_MAX_AGE_S = 30 * 60
+LAST_TURN_S = 15 * 60  # a play_music call within this of a device's turn is for that device
+
+
+def _root() -> Path:
+    try:
+        from hermes_constants import get_default_hermes_root
+        return Path(get_default_hermes_root())
+    except ImportError:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+
+
+def petasos_dir() -> Path:
+    return _root() / "petasos"
+
+
+def _read_json(path: Path, default):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def _write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def config() -> dict:
+    cfg = _read_json(petasos_dir() / "music.json", {})
+    return cfg if isinstance(cfg, dict) else {}
+
+
+# --- which device, and what it should do --------------------------------------------------------
+
+def note_turn(device: str) -> None:
+    """Records that a device is in a turn with the agent, so music asked for in it plays there."""
+    _write_json(petasos_dir() / "last-turn.json", {"device": device, "at": time.time()})
+
+
+def device_for(requested: str | None, session_id: str | None = None) -> str:
+    """The device a request is for: the one named, else the one whose chat this is, else the one
+    that last asked something (when chats are shared, or the request came from elsewhere)."""
+    if requested:
+        return requested
+    if session_id:
+        chats = _read_json(petasos_dir() / "chats.json", {})
+        for key, sid in (chats.items() if isinstance(chats, dict) else ()):
+            if sid == session_id and key != "*":
+                return key
+    last = _read_json(petasos_dir() / "last-turn.json", {})
+    if isinstance(last, dict) and last.get("device") and time.time() - float(last.get("at") or 0) < LAST_TURN_S:
+        return str(last["device"])
+    return "car-thing"
+
+
+_PENDING_LOCK = threading.Lock()
+
+
+def leave(device: str, command: dict) -> None:
+    """Leaves a command for the device to pick up."""
+    path = petasos_dir() / "pending.json"
+    with _PENDING_LOCK:
+        pending = _read_json(path, {})
+        if not isinstance(pending, dict):
+            pending = {}
+        queue = [c for c in pending.get(device, []) if isinstance(c, dict)]
+        if command.get("op") == "play":  # a new queue replaces anything not yet picked up
+            queue = [c for c in queue if c.get("op") != "play"]
+        queue.append(command)
+        pending[device] = queue[-10:]
+        _write_json(path, pending)
+
+
+def take(device: str) -> list[dict]:
+    """The commands left for a device, removed as they are handed over."""
+    path = petasos_dir() / "pending.json"
+    with _PENDING_LOCK:
+        pending = _read_json(path, {})
+        if not isinstance(pending, dict) or not pending.get(device):
+            return []
+        out = pending.pop(device)
+        _write_json(path, pending)
+    return [c for c in out if isinstance(c, dict)]
+
+
+# --- the sources --------------------------------------------------------------------------------
+
+def _track(source: str, ident: str, title: str, artist: str = "", album: str = "", seconds: int = 0) -> dict:
+    return {"source": source, "id": ident, "title": title or "Untitled", "artist": artist or "",
+            "album": album or "", "seconds": int(seconds or 0)}
+
+
+class MusicError(RuntimeError):
+    pass
+
+
+class Navidrome:
+    """A Subsonic API server: Navidrome, or Airsonic, Gonic and the like."""
+
+    def __init__(self, cfg: dict) -> None:
+        self.url = str(cfg.get("url") or "").rstrip("/")
+        self.username = str(cfg.get("username") or "")
+        self.password = str(cfg.get("password") or "")
+        if not (self.url and self.username and self.password):
+            raise MusicError("music.json's navidrome needs url, username and password")
+
+    def _params(self, **extra) -> dict:
+        salt = secrets.token_hex(6)
+        token = hashlib.md5((self.password + salt).encode()).hexdigest()
+        return {"u": self.username, "t": token, "s": salt, "v": "1.16.1", "c": "petasos", "f": "json", **extra}
+
+    def url_for(self, method: str, **params) -> str:
+        return f"{self.url}/rest/{method}.view?" + urllib.parse.urlencode(self._params(**params))
+
+    def call(self, method: str, **params) -> dict:
+        try:
+            with urllib.request.urlopen(self.url_for(method, **params), timeout=15) as resp:
+                body = json.loads(resp.read())
+        except (OSError, ValueError) as exc:
+            raise MusicError(f"Navidrome didn't answer: {exc}") from None
+        answer = body.get("subsonic-response") or {}
+        if answer.get("status") != "ok":
+            raise MusicError(f"Navidrome: {(answer.get('error') or {}).get('message') or 'failed'}")
+        return answer
+
+    @staticmethod
+    def _song(s: dict) -> dict:
+        return _track("navidrome", str(s.get("id")), s.get("title"), s.get("artist"), s.get("album"), s.get("duration"))
+
+    def find(self, query: str, kind: str) -> tuple[str, list[dict]]:
+        """What to play for a request: a playlist, an album, an artist's songs or songs."""
+        if kind in ("playlist", "any"):
+            lists = self.call("getPlaylists").get("playlists", {}).get("playlist", [])
+            match = _best(query, lists, lambda p: p.get("name", ""))
+            if match and (kind == "playlist" or _score(query, match.get("name", "")) >= 0.99):
+                songs = self.call("getPlaylist", id=match["id"]).get("playlist", {}).get("entry", [])
+                return f"the playlist {match['name']}", [self._song(s) for s in songs]
+            if kind == "playlist":
+                return "", []
+        if kind == "random" or not query.strip():
+            songs = self.call("getRandomSongs", size=50).get("randomSongs", {}).get("song", [])
+            return "a random mix", [self._song(s) for s in songs]
+        found = self.call("search3", query=query, songCount=50, albumCount=10, artistCount=5).get("searchResult3", {})
+        if kind in ("album", "any") and found.get("album"):
+            album = _best(query, found["album"], lambda a: f"{a.get('name', '')} {a.get('artist', '')}")
+            if kind == "album" or _score(query, album.get("name", "")) >= 0.99:
+                songs = self.call("getAlbum", id=album["id"]).get("album", {}).get("song", [])
+                return f"{album.get('name')} by {album.get('artist')}", [self._song(s) for s in songs]
+        if kind in ("artist", "any") and found.get("artist"):
+            artist = _best(query, found["artist"], lambda a: a.get("name", ""))
+            if kind == "artist" or _score(query, artist.get("name", "")) >= 0.99:
+                albums = self.call("getArtist", id=artist["id"]).get("artist", {}).get("album", [])
+                songs: list[dict] = []
+                for album in albums[:20]:
+                    songs += self.call("getAlbum", id=album["id"]).get("album", {}).get("song", [])
+                return f"songs by {artist.get('name')}", [self._song(s) for s in songs]
+        songs = found.get("song", [])
+        if songs:
+            return (f"{songs[0].get('title')} by {songs[0].get('artist')}" if kind == "song" else f"songs matching {query}",
+                    [self._song(s) for s in (songs[:1] if kind == "song" else songs)])
+        return "", []
+
+    def stream_url(self, ident: str) -> str:
+        return self.url_for("stream", id=ident, format="mp3", maxBitRate=BIT_RATE)
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.lower().replace("&", " and "))
+
+
+def _score(query: str, text: str) -> float:
+    """How well text matches the query: the share of the query's words found in it."""
+    want = _words(query)
+    if not want:
+        return 0.0
+    have = set(_words(text))
+    return sum(1 for w in want if w in have) / len(want)
+
+
+def _best(query: str, items: list, key) -> dict | None:
+    scored = [(_score(query, key(i)), n, i) for n, i in enumerate(items)]
+    scored = [s for s in scored if s[0] > 0]
+    if not scored:
+        return None
+    return max(scored, key=lambda s: (s[0], -s[1]))[2]
+
+
+class Folders:
+    """Music files under folders Hermes can read, mounted network shares included.
+
+    The index (``music-index.json``) keeps each file's tags with its modification time, so a
+    rescan only opens new or changed files: a big share is read once, not every half hour."""
+
+    _lock = threading.Lock()
+    _tracks: list[dict] = []
+    _built: tuple[float, tuple] = (0.0, ())
+
+    def __init__(self, folders: list) -> None:
+        self.folders = tuple(os.path.abspath(os.path.expanduser(f)) for f in folders if isinstance(f, str) and f.strip())
+
+    @staticmethod
+    def ident(path: str) -> str:
+        return hashlib.sha1(path.encode("utf-8", "surrogateescape")).hexdigest()[:20]
+
+    @staticmethod
+    def _index_path() -> Path:
+        return petasos_dir() / "music-index.json"
+
+    def tracks(self) -> list[dict]:
+        with Folders._lock:
+            built, folders = Folders._built
+            if folders != self.folders or time.time() - built > INDEX_MAX_AGE_S:
+                Folders._tracks = self._scan()
+                Folders._built = (time.time(), self.folders)
+            return list(Folders._tracks)
+
+    def _inside(self, path: str) -> bool:
+        return any(os.path.commonpath([path, f]) == f for f in self.folders)
+
+    def path(self, ident: str) -> str | None:
+        """A track's file, from the index the agent's search wrote (it runs in another process)."""
+        files = _read_json(self._index_path(), {}).get("files", {})
+        for path in files:
+            if self.ident(path) == ident and self._inside(path) and os.path.isfile(path):
+                return path
+        return None
+
+    def _scan(self) -> list[dict]:
+        old = _read_json(self._index_path(), {}).get("files", {})
+        files: dict[str, list] = {}
+        can_convert = shutil.which("ffmpeg") is not None
+        for folder in self.folders:
+            for dirpath, dirnames, filenames in os.walk(folder, followlinks=True):
+                dirnames.sort()
+                for name in sorted(filenames):
+                    suffix = Path(name).suffix.lower()
+                    if suffix not in AUDIO_SUFFIXES or (suffix != ".mp3" and not can_convert):
+                        continue
+                    path = os.path.join(dirpath, name)
+                    try:
+                        mtime = os.stat(path).st_mtime
+                    except OSError:
+                        continue
+                    known = old.get(path)
+                    if isinstance(known, list) and len(known) == 4 and known[0] == mtime:
+                        files[path] = known
+                    else:
+                        files[path] = [mtime, *self._tags(path, folder)]
+        _write_json(self._index_path(), {"folders": list(self.folders), "files": files})
+        return [_track("folder", self.ident(p), t, ar, al) for p, (_, t, ar, al) in files.items()]
+
+    @staticmethod
+    def _tags(path: str, folder: str) -> tuple[str, str, str]:
+        rel = Path(os.path.relpath(path, folder))
+        title = re.sub(r"^\d+[\s._-]+", "", rel.stem).strip() or rel.stem
+        parts = rel.parts[:-1]
+        artist = parts[-2] if len(parts) >= 2 else (parts[0] if parts else "")
+        album = parts[-1] if parts else ""
+        try:
+            import mutagen
+            tags = mutagen.File(path, easy=True)
+            if tags:
+                title = (tags.get("title") or [title])[0]
+                artist = (tags.get("artist") or tags.get("albumartist") or [artist])[0]
+                album = (tags.get("album") or [album])[0]
+        except Exception:  # no mutagen, or a file it can't read: the path will do
+            pass
+        return str(title), str(artist), str(album)
+
+    def find(self, query: str, kind: str) -> tuple[str, list[dict]]:
+        tracks = self.tracks()
+        if kind == "random" or not query.strip():
+            return "a random mix", random.sample(tracks, min(50, len(tracks)))
+        if kind in ("playlist",):
+            return "", []
+        best: tuple[float, str, list[dict]] = (0.0, "", [])
+        groups: list[tuple[str, str, list[dict]]] = []
+        if kind in ("album", "any"):
+            albums: dict[tuple, list[dict]] = {}
+            for t in tracks:
+                albums.setdefault((t["album"], t["artist"]), []).append(t)
+            groups += [(f"{a} {ar}", f"{a} by {ar}" if ar else a, ts) for (a, ar), ts in albums.items() if a]
+        if kind in ("artist", "any"):
+            artists: dict[str, list[dict]] = {}
+            for t in tracks:
+                artists.setdefault(t["artist"], []).append(t)
+            groups += [(a, f"songs by {a}", ts) for a, ts in artists.items() if a]
+        for text, said, ts in groups:
+            s = _score(query, text)
+            if s > best[0]:
+                best = (s, said, ts)
+        songs = sorted(((_score(query, f"{t['title']} {t['artist']} {t['album']}"), t) for t in tracks),
+                       key=lambda p: -p[0])
+        songs = [t for s, t in songs if s >= 0.5]
+        if best[0] >= 0.99 or (best[0] > 0 and kind in ("album", "artist")):
+            return best[1], best[2]
+        if songs:
+            if kind == "song":
+                return f"{songs[0]['title']} by {songs[0]['artist']}", songs[:1]
+            return f"songs matching {query}", songs[:50]
+        return "", []
+
+
+def sources() -> list:
+    cfg = config()
+    out: list = []
+    if cfg.get("navidrome"):
+        out.append(Navidrome(cfg["navidrome"]))
+    if cfg.get("folders"):
+        out.append(Folders(cfg["folders"]))
+    return out
+
+
+def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dict]]:
+    """The first source that has something for the request."""
+    found_any = False
+    problems = []
+    for src in sources():
+        name = "navidrome" if isinstance(src, Navidrome) else "folders"
+        if source and source != name:
+            continue
+        found_any = True
+        try:
+            said, tracks = src.find(query, kind)
+        except MusicError as exc:
+            problems.append(str(exc))
+            continue
+        if tracks:
+            return said, tracks
+    if not found_any:
+        raise MusicError("No music library is set up yet: add Navidrome or folders to petasos/music.json on Hermes.")
+    if problems:
+        raise MusicError(" ".join(problems))
+    return "", []
+
+
+# --- settings, from the dashboard --------------------------------------------------------------
+
+def settings() -> dict:
+    """music.json as the dashboard shows it: the Navidrome password is never sent back."""
+    cfg = config()
+    nav = cfg.get("navidrome") if isinstance(cfg.get("navidrome"), dict) else {}
+    return {"navidrome": {"url": nav.get("url", ""), "username": nav.get("username", ""),
+                          "has_password": bool(nav.get("password"))},
+            "folders": [f for f in cfg.get("folders") or [] if isinstance(f, str)],
+            "ffmpeg": shutil.which("ffmpeg") is not None,
+            "path": str(petasos_dir() / "music.json")}
+
+
+def save_settings(body: dict) -> dict:
+    """Saves the dashboard's changes; an empty password keeps the saved one."""
+    if not isinstance(body, dict):
+        raise MusicError("settings must be an object")
+    cfg = config()
+    nav = body.get("navidrome") if isinstance(body.get("navidrome"), dict) else {}
+    url, username = str(nav.get("url") or "").strip().rstrip("/"), str(nav.get("username") or "").strip()
+    password = str(nav.get("password") or "") or (cfg.get("navidrome") or {}).get("password", "")
+    if url and not re.match(r"^https?://", url):
+        raise MusicError("The Navidrome address starts with http:// or https://")
+    if url:
+        if not (username and password):
+            raise MusicError("Navidrome needs a username and password")
+        cfg["navidrome"] = {"url": url, "username": username, "password": password}
+    else:
+        cfg.pop("navidrome", None)
+    folders = []
+    for f in body.get("folders") or []:
+        f = str(f).strip()
+        if f and f not in folders:
+            if not os.path.isabs(os.path.expanduser(f)):
+                raise MusicError(f"{f} isn't a full path (it starts with /)")
+            folders.append(f)
+    cfg["folders"] = folders
+    _write_json(petasos_dir() / "music.json", cfg)
+    try:
+        os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
+    except OSError:
+        pass
+    return settings()
+
+
+def check() -> dict:
+    """Whether each source works: Navidrome answers, and how many songs each folder has."""
+    cfg = config()
+    out: dict = {"navidrome": None, "folders": []}
+    if cfg.get("navidrome"):
+        try:
+            Navidrome(cfg["navidrome"]).call("ping")
+            out["navidrome"] = {"ok": True}
+        except MusicError as exc:
+            out["navidrome"] = {"ok": False, "problem": str(exc)}
+    folders = Folders(cfg.get("folders") or [])
+    tracks = folders.tracks() if folders.folders else []
+    for folder in folders.folders:
+        if not os.path.isdir(folder):
+            out["folders"].append({"path": folder, "ok": False,
+                                   "problem": "Hermes can't see this folder (is the share mounted?)"})
+            continue
+        n = sum(1 for p in _read_json(Folders._index_path(), {}).get("files", {}) if p.startswith(folder.rstrip("/") + "/"))
+        out["folders"].append({"path": folder, "ok": True, "songs": n})
+    out["songs"] = len(tracks)
+    return out
+
+
+# --- streaming ----------------------------------------------------------------------------------
+
+def stream(source: str, ident: str) -> Iterator[bytes]:
+    """A track as MP3, in pieces."""
+    cfg = config()
+    if source == "navidrome":
+        if not cfg.get("navidrome"):
+            raise MusicError("Navidrome isn't set up")
+        url = Navidrome(cfg["navidrome"]).stream_url(ident)
+        return _pieces(urllib.request.urlopen(url, timeout=30))
+    if source == "folder":
+        path = Folders(cfg.get("folders") or []).path(ident)
+        if not path:
+            raise MusicError("no such track")
+        if path.lower().endswith(".mp3"):
+            return _pieces(open(path, "rb"))
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise MusicError("ffmpeg isn't installed to convert this track")
+        proc = subprocess.Popen([ffmpeg, "-v", "error", "-i", path, "-vn", "-ac", "2", "-ar", "48000",
+                                 "-b:a", f"{BIT_RATE}k", "-f", "mp3", "pipe:1"],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        return _pieces(proc.stdout, proc)
+    raise MusicError("unknown source")
+
+
+def _pieces(f, proc=None) -> Iterator[bytes]:
+    try:
+        while True:
+            chunk = f.read(32 * 1024)
+            if not chunk:
+                return
+            yield chunk
+    finally:
+        f.close()
+        if proc is not None:
+            proc.kill()
+            proc.wait()
+
+
+# --- the agent's tools --------------------------------------------------------------------------
+
+PLAY_MUSIC = {
+    "name": "play_music",
+    "description": ("Play music from the user's own library (their Navidrome server and music folders) on a "
+                    "Petasos device: the Car Thing in their car, which plays it through the car's speakers. "
+                    "It plays after your reply. Say what you put on, in a few words."),
+    "parameters": {"type": "object", "properties": {
+        "query": {"type": "string", "description": "What to play: a song, album, artist or playlist name. Empty for a random mix."},
+        "kind": {"type": "string", "enum": ["any", "song", "album", "artist", "playlist", "random"],
+                 "description": "What the query names, if you know; 'any' to let the library decide"},
+        "shuffle": {"type": "boolean", "description": "Shuffle the songs"},
+        "device": {"type": "string", "description": "Device id, only when the user names another device; normally left out"},
+    }},
+}
+
+MUSIC_CONTROL = {
+    "name": "music_control",
+    "description": "Pause, resume, skip or stop the music playing on the user's Petasos device (the Car Thing).",
+    "parameters": {"type": "object", "properties": {
+        "action": {"type": "string", "enum": ["pause", "resume", "next", "previous", "stop"]},
+        "device": {"type": "string", "description": "Device id, only when the user names another device"},
+    }, "required": ["action"]},
+}
+
+
+def play_music(args: dict | None = None, session_id: str | None = None, **_) -> str:
+    args = args or {}
+    query = str(args.get("query") or "").strip()
+    kind = args.get("kind") if args.get("kind") in PLAY_MUSIC["parameters"]["properties"]["kind"]["enum"] else "any"
+    try:
+        said, tracks = find(query, kind)
+    except MusicError as exc:
+        return json.dumps({"error": str(exc)})
+    if not tracks:
+        return json.dumps({"error": f"Nothing in the library matches {query!r}."})
+    if args.get("shuffle"):
+        tracks = random.sample(tracks, len(tracks))
+    tracks = tracks[:MAX_QUEUE]
+    device = device_for(args.get("device"), session_id)
+    leave(device, {"do": "music", "op": "play", "title": said, "tracks": tracks})
+    return json.dumps({"playing": said, "songs": len(tracks), "first": tracks[0]["title"], "device": device})
+
+
+def music_control(args: dict | None = None, session_id: str | None = None, **_) -> str:
+    args = args or {}
+    action = args.get("action")
+    if action not in ("pause", "resume", "next", "previous", "stop"):
+        return json.dumps({"error": "action is pause, resume, next, previous or stop"})
+    device = device_for(args.get("device"), session_id)
+    leave(device, {"do": "music", "op": action})
+    return json.dumps({"done": action, "device": device})
