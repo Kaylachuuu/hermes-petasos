@@ -158,6 +158,7 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M7.2 6.5a7.5 7.5 0 1 0 9.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-forget" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M6 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-device" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
     <symbol id="emblem" viewBox="0 0 200 190">
@@ -235,6 +236,8 @@ body.virtual .topbar > span:hover { background: var(--row); }
   <button id="c-up" title="Volume up (↑)">+</button>
   <button id="c-settings" title="Settings"><svg><use href="#i-gear"/></svg></button>
   <button id="c-pin" title="Keep this window on top"><svg><use href="#i-pin"/></svg></button>
+  <button id="c-min" title="Minimize" hidden><svg><use href="#i-minimize"/></svg></button>
+  <button id="c-close" title="Close Petasos" hidden><svg><use href="#i-close"/></svg></button>
 </div>
 
 <script>
@@ -644,6 +647,11 @@ function setUpControls(s) {
                            body: JSON.stringify({ on_top: !(state && state.on_top) }) }).catch(() => {});
   });
   $("c-down").addEventListener("click", () => press("knob", "turn", -1));
+  if (window.petasosWindow) { // the Windows app's window has no title bar of its own
+    $("c-min").hidden = $("c-close").hidden = false;
+    $("c-min").addEventListener("click", () => petasosWindow("minimize"));
+    $("c-close").addEventListener("click", () => petasosWindow("close"));
+  }
   const keys = { " ": ["front", "c-front"], m: ["mute", "c-mute"], M: ["mute", "c-mute"], Enter: ["knob", "c-knob"],
                  1: ["preset-1", "p0"], 2: ["preset-2", "p1"], 3: ["preset-3", "p2"], 4: ["preset-4", "p3"] };
   addEventListener("keydown", (e) => {
@@ -661,6 +669,12 @@ function setUpControls(s) {
     while (Math.abs(wheel) >= 60) { press("knob", "turn", wheel < 0 ? 1 : -1); wheel -= Math.sign(wheel) * 60; }
   }, { passive: true });
 }
+
+// In the Windows app, which has no title bar, the window moves by dragging the page's background.
+if (window.petasosWindow) addEventListener("mousedown", (e) => {
+  if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row"))
+    petasosWindow("drag");
+});
 
 document.fonts.ready.then(connect);
 </script>

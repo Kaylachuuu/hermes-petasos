@@ -334,6 +334,9 @@ them. The volume keys (arrows, scroll, − and +) press Windows's own volume key
 shows its volume display. The file isn't signed, so Windows SmartScreen asks once before the
 first run: **More info**, then **Run anyway**.
 
+The Windows window has no title bar: drag it by the screen's background, and use the − and ×
+at the right of the controls to minimize or close it. Resizing keeps its shape, as on the Mac.
+
 The screen keeps the Car Thing's shape in a window of any size, in both apps.
 
 ### Petasos chats in the Hermes desktop app

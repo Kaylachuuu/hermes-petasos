@@ -102,6 +102,12 @@ $("form").addEventListener("submit", async (e) => {
     $("go").textContent = "Sign In";
   }
 });
+
+// In the Windows app, which has no title bar, the window moves by dragging the page's background.
+if (window.petasosWindow) addEventListener("mousedown", (e) => {
+  if (e.button === 0 && !e.target.closest("button, a, input, select, textarea, label"))
+    petasosWindow("drag");
+});
 </script>
 </body>
 </html>

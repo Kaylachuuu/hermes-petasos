@@ -318,6 +318,12 @@ async function waitForRestart() {
 }
 
 load().catch((err) => { $("loading").textContent = String(err.message || err); });
+
+// In the Windows app, which has no title bar, the window moves by dragging the page's background.
+if (window.petasosWindow) addEventListener("mousedown", (e) => {
+  if (e.button === 0 && !e.target.closest("button, a, input, select, textarea, label"))
+    petasosWindow("drag");
+});
 </script>
 </body>
 </html>

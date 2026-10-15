@@ -103,6 +103,9 @@ func runWindow() {
 	defer w.Destroy()
 	w.SetSize(800, 544, webview2.HintNone) // the inside of the window: the screen and its controls
 	w.SetSize(420, 286, webview2.HintMin)
+	hwnd := uintptr(w.Window())
+	shapeWindow(hwnd)
+	w.Bind("petasosWindow", func(what string) { windowAction(hwnd, what) })
 	go keepOnTop(w, dir)
 	w.SetHtml(`<html><body style="margin:0;background:#1f1b17"></body></html>`)
 	go func() {
@@ -121,6 +124,104 @@ func runWindow() {
 		})
 	}()
 	w.Run()
+}
+
+// The window has no title bar, like a gadget: the page draws minimize and close buttons and
+// is dragged by its background (windowAction). The inside keeps the Car Thing's shape, as on
+// the Mac: its screen plus the controls under it.
+const aspectW, aspectH = 800, 544
+
+var (
+	windowProc     uintptr // the window's own procedure, which ours passes everything on to
+	shapeProc      = syscall.NewCallback(shapeWindowProc)
+	callWindowProc = user32.NewProc("CallWindowProcW")
+	getWindowRect  = user32.NewProc("GetWindowRect")
+	getClientRect  = user32.NewProc("GetClientRect")
+	setWindowPos   = user32.NewProc("SetWindowPos")
+)
+
+type winRect struct{ Left, Top, Right, Bottom int32 }
+
+// shapeWindow steps in front of the window's procedure (shapeWindowProc), then sizes the
+// window so its inside is aspectW by aspectH now that the title bar is gone.
+func shapeWindow(hwnd uintptr) {
+	const gwlpWndProc = ^uintptr(3) // GWLP_WNDPROC (-4)
+	windowProc, _, _ = user32.NewProc("SetWindowLongPtrW").Call(hwnd, gwlpWndProc, shapeProc)
+	const noMove, noZOrder, noActivate, frameChanged = 0x2, 0x4, 0x10, 0x20
+	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0, 0x1|noMove|noZOrder|noActivate|frameChanged) // 0x1: SWP_NOSIZE
+	fw, fh := frame(hwnd)
+	setWindowPos.Call(hwnd, 0, 0, 0, uintptr(aspectW+fw), uintptr(aspectH+fh), noMove|noZOrder|noActivate)
+}
+
+// frame is how much wider and taller the window is than its inside: its resizing borders.
+func frame(hwnd uintptr) (int32, int32) {
+	var win, client winRect
+	getWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&win)))
+	getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&client)))
+	return (win.Right - win.Left) - (client.Right - client.Left), (win.Bottom - win.Top) - (client.Bottom - client.Top)
+}
+
+func shapeWindowProc(hwnd, msg, wParam, lParam uintptr) uintptr {
+	const wmNCCalcSize, wmSizing = 0x0083, 0x0214
+	switch {
+	case msg == wmNCCalcSize && wParam == 1:
+		// The window keeps its borders (for resizing, snapping and its shadow) but not its title
+		// bar: the inside reaches the top, where the title bar was. A maximized window's frame
+		// hangs off the screen, so its top is brought back in by the same amount.
+		r := rectAt(lParam)
+		top := r.Top
+		ret, _, _ := callWindowProc.Call(windowProc, hwnd, msg, wParam, lParam)
+		r.Top = top
+		if zoomed, _, _ := user32.NewProc("IsZoomed").Call(hwnd); zoomed != 0 {
+			r.Top += int32(systemMetric(33) + systemMetric(92)) // SM_CYSIZEFRAME + SM_CXPADDEDBORDER
+		}
+		return ret
+	case msg == wmSizing && lParam != 0:
+		keepShape(hwnd, wParam, rectAt(lParam))
+	}
+	r, _, _ := callWindowProc.Call(windowProc, hwnd, msg, wParam, lParam)
+	return r
+}
+
+// rectAt is the RECT a window message points to (for WM_NCCALCSIZE, the first of its three).
+func rectAt(lParam uintptr) *winRect {
+	return (*winRect)(unsafe.Add(unsafe.Pointer(nil), lParam))
+}
+
+func systemMetric(i uintptr) uintptr {
+	v, _, _ := user32.NewProc("GetSystemMetrics").Call(i)
+	return v
+}
+
+// keepShape changes the proposed window rectangle r so the inside keeps aspectW:aspectH,
+// moving the edge that isn't being dragged.
+func keepShape(hwnd, edge uintptr, r *winRect) {
+	fw, fh := frame(hwnd)
+	w, h := r.Right-r.Left-fw, r.Bottom-r.Top-fh
+	const top, topLeft, topRight, bottom = 3, 4, 5, 6 // WMSZ_*
+	switch edge {
+	case top, bottom: // dragging the top or bottom: the width follows
+		r.Right = r.Left + h*aspectW/aspectH + fw
+	case topLeft, topRight: // a top corner: the top follows the width
+		r.Top = r.Bottom - w*aspectH/aspectW - fh
+	default: // a side or a bottom corner: the bottom follows the width
+		r.Bottom = r.Top + w*aspectH/aspectW + fh
+	}
+}
+
+// windowAction is the page's petasosWindow(what): "drag" (the mouse went down on the page's
+// background, so the window moves with it as if by its title bar), "minimize" or "close".
+func windowAction(hwnd uintptr, what string) {
+	post := user32.NewProc("PostMessageW")
+	switch what {
+	case "drag":
+		user32.NewProc("ReleaseCapture").Call()
+		post.Call(hwnd, 0x00A1, 2, 0) // WM_NCLBUTTONDOWN on HTCAPTION
+	case "minimize":
+		user32.NewProc("ShowWindow").Call(hwnd, 6) // SW_MINIMIZE
+	case "close":
+		post.Call(hwnd, 0x0010, 0, 0) // WM_CLOSE
+	}
 }
 
 // keepOnTop keeps the window above other windows while the pin under the screen says so
