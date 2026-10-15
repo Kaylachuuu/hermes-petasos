@@ -131,6 +131,8 @@ class FakeNavidrome(BaseHTTPRequestHandler):
             body["playlists"] = {"playlist": [{"id": "p1", "name": "Road Trip"}]}
         elif method == "getPlaylist":
             body["playlist"] = {"entry": [song("s9", "Hyperballad")]}
+        elif method == "getStarred2":
+            body["starred2"] = {"song": [song("s5", "Starred One")]}
         self.send_response(200)
         self.end_headers()
         self.wfile.write(json.dumps({"subsonic-response": body}).encode())
@@ -387,3 +389,188 @@ def test_the_music_page_lists_likes_playlists_and_searches(home, soundcloud, nav
 def test_the_music_page_says_when_nothing_is_set_up(home):
     with pytest.raises(music.MusicError):
         music.browse("playlists")
+
+
+class FakeSpotify(BaseHTTPRequestHandler):
+    challenge = ""
+    devices = []
+    premium = True
+    played = []
+
+    def log_message(self, *_):
+        pass
+
+    def _json(self, body, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def _mine(self):
+        return (self.headers.get("Authorization") or "").startswith("Bearer at")
+
+    def do_POST(self):
+        import base64
+        form = {k: v[0] for k, v in parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode()).items()}
+        # PKCE: the app's ID in the form, and no secret anywhere.
+        if form.get("client_id") != "spid" or "client_secret" in form or self.headers.get("Authorization"):
+            return self._json({"error": "invalid_client"}, 400)
+        if form["grant_type"] == "authorization_code":
+            challenge = base64.urlsafe_b64encode(hashlib.sha256(form["code_verifier"].encode()).digest()).decode().rstrip("=")
+            if form["code"] != "c0de" or challenge != FakeSpotify.challenge:
+                return self._json({"error": "invalid_grant"}, 400)
+            return self._json({"access_token": "at1", "refresh_token": "rt1", "expires_in": 3600})
+        if form["grant_type"] == "refresh_token" and form["refresh_token"] == "rt1":
+            return self._json({"access_token": "at2", "refresh_token": "rt2", "expires_in": 3600})
+        self._json({"error": "invalid_grant"}, 400)
+
+    def do_PUT(self):
+        if not self._mine():
+            return self._json({"error": {"status": 401, "message": "Invalid access token"}}, 401)
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+        if not FakeSpotify.premium:
+            return self._json({"error": {"status": 403, "message": "Player command failed: Premium required",
+                                         "reason": "PREMIUM_REQUIRED"}}, 403)
+        FakeSpotify.played.append((q.get("device_id"), body))
+        self.send_response(204)
+        self.end_headers()
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if not self._mine():
+            return self._json({"error": {"status": 401, "message": "Invalid access token"}}, 401)
+        base = f"http://127.0.0.1:{self.server.server_port}/v1"
+        art = [{"url": "https://i.scdn.co/640", "width": 640}, {"url": "https://i.scdn.co/300", "width": 300},
+               {"url": "https://i.scdn.co/64", "width": 64}]
+        song = lambda n, title: {"type": "track", "uri": f"spotify:track:{n}", "name": title, "duration_ms": 200500,
+                                 "artists": [{"name": "Robyn"}], "album": {"name": "Body Talk", "images": art}}
+        if url.path == "/v1/me":
+            return self._json({"id": "kayla.r", "display_name": "Kayla"})
+        if url.path == "/v1/me/tracks":
+            if q.get("offset") == "1":  # the second page
+                return self._json({"items": [{"track": song(2, "Call Your Girlfriend")}], "next": None})
+            return self._json({"items": [{"track": song(1, "Dancing On My Own")}], "next": base + "/me/tracks?offset=1&limit=50"})
+        if url.path == "/v1/me/playlists":
+            return self._json({"items": [
+                {"id": "pl1", "name": "Drive", "owner": {"id": "kayla.r"}, "items": {"total": 2}, "images": [{"url": "https://i.scdn.co/pl"}]},
+                {"id": "pl2", "name": "Shared", "owner": {"id": "friend"}, "collaborative": True, "items": {"total": 5}},
+                {"id": "pl3", "name": "Today's Top Hits", "owner": {"id": "spotify"}, "items": {"total": 50}}], "next": None})
+        if url.path == "/v1/playlists/pl1/items":
+            return self._json({"items": [{"item": song(3, "Hang With Me")}, {"item": {"type": "episode", "uri": "spotify:episode:9"}}],
+                               "next": None})
+        if url.path == "/v1/playlists/pl3/items":
+            return self._json({"error": {"status": 403, "message": "Forbidden"}}, 403)
+        if url.path == "/v1/search":
+            assert int(q["limit"]) <= 10  # development mode's limit
+            if q["offset"] == "0":
+                return self._json({"tracks": {"items": [song(4, "Robyn Search")], "next": base + "/search?offset=10"}})
+            return self._json({"tracks": {"items": [song(5, "Second Page")], "next": None}})
+        if url.path == "/v1/me/player/devices":
+            return self._json({"devices": FakeSpotify.devices})
+        self._json({"error": {"status": 404, "message": "Not found"}}, 404)
+
+
+@pytest.fixture
+def spotify(home, monkeypatch):
+    server = HTTPServer(("127.0.0.1", 0), FakeSpotify)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setattr(music.Spotify, "API", base + "/v1")
+    monkeypatch.setattr(music.Spotify, "TOKEN_URL", base + "/api/token")
+    FakeSpotify.devices, FakeSpotify.premium, FakeSpotify.played = [], True, []
+    configure(home, {"spotify": {"client_id": "spid"}})
+    yield base
+    server.shutdown()
+
+
+def sign_in_to_spotify():
+    url = music.spotify().authorize_url("http://127.0.0.1:8187/app/spotify")
+    q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+    assert q["redirect_uri"] == "http://127.0.0.1:8187/app/spotify" and q["code_challenge_method"] == "S256"
+    assert "user-modify-playback-state" in q["scope"].split()
+    FakeSpotify.challenge = q["code_challenge"]
+    return music.spotify().connect("c0de", q["state"])
+
+
+def test_signing_in_to_spotify_brings_your_songs_and_playlists(home, spotify):
+    with pytest.raises(music.MusicError, match="Sign in to Spotify in the Petasos app"):
+        music.browse("likes", "spotify")
+    assert not music.check()["spotify"]["ok"]
+    with pytest.raises(music.MusicError):
+        music.spotify().connect("c0de", "some-other-state")
+    assert sign_in_to_spotify() == "Kayla"
+    assert oct((home / "petasos" / "spotify-account.json").stat().st_mode & 0o777) == "0o600"
+    assert music.settings()["spotify"] == {"client_id": "spid", "account": "Kayla"}
+    assert music.check()["spotify"] == {"ok": True, "account": "Kayla"}
+    likes = music.browse("likes", "spotify")["tracks"]
+    assert likes[0] == {"source": "spotify", "id": "spotify:track:1", "title": "Dancing On My Own", "artist": "Robyn",
+                        "album": "Body Talk", "seconds": 200, "art": "https://i.scdn.co/300"}
+    assert [t["title"] for t in likes] == ["Dancing On My Own", "Call Your Girlfriend"]  # both pages
+    # Only playlists you made or collaborate on: Spotify won't show the songs of the others.
+    lists = music.browse("playlists", "spotify")["playlists"]
+    assert [(p["id"], p["count"]) for p in lists] == [("pl1", 2), ("pl2", 5)] and lists[0]["art"] == "https://i.scdn.co/pl"
+    assert [t["title"] for t in music.browse("playlist", "spotify", "pl1")["tracks"]] == ["Hang With Me"]
+    assert "you made or collaborate on" in music.browse("playlist", "spotify", "pl3")["note"]
+    assert [t["title"] for t in music.browse("search", "spotify", query="robyn")["tracks"]] == ["Robyn Search", "Second Page"]
+    # An hour on, the refresh token may come back a new one: it's kept.
+    account = json.loads((home / "petasos" / "spotify-account.json").read_text())
+    account["expires_at"] = 0
+    (home / "petasos" / "spotify-account.json").write_text(json.dumps(account))
+    music.browse("likes", "spotify")
+    assert json.loads((home / "petasos" / "spotify-account.json").read_text())["refresh_token"] == "rt2"
+    music.spotify().disconnect()
+    assert music.settings()["spotify"]["account"] == ""
+
+
+def test_spotify_is_only_browsed_never_streamed(home, spotify):
+    configure(home, {"folders": [str(library(home))], "spotify": {"client_id": "spid"}})
+    sign_in_to_spotify()
+    assert all(not isinstance(s, music.Spotify) for s in music.sources())
+    assert {t["source"] for t in music.browse("search", query="dreams")["tracks"]} == {"folder"}
+    assert {t["source"] for t in music.browse("search", "folders,spotify", query="robyn")["tracks"]} == {"spotify"}
+    with pytest.raises(music.MusicError):
+        music.stream("spotify", "spotify:track:1")
+
+
+def test_spotify_plays_on_the_active_device_or_else_your_phone(home, spotify):
+    sign_in_to_spotify()
+    uris = ["spotify:track:1", "spotify:track:2", "spotify:track:3"]
+    with pytest.raises(music.MusicError, match="Open Spotify on your phone first"):
+        music.spotify().play(uris, 1)
+    FakeSpotify.devices = [{"id": "mac", "type": "Computer", "is_active": False},
+                           {"id": "phone", "type": "Smartphone", "is_active": False}]
+    music.spotify().play(uris, 1)
+    assert FakeSpotify.played[-1] == ("phone", {"uris": uris, "offset": {"position": 1}})
+    FakeSpotify.devices[0]["is_active"] = True  # already playing on the Mac: carry on there
+    music.spotify().play(["spotify:playlist:pl1"], 4)
+    assert FakeSpotify.played[-1] == (None, {"context_uri": "spotify:playlist:pl1", "offset": {"position": 4}})
+    FakeSpotify.premium = False
+    with pytest.raises(music.MusicError, match="Spotify Premium"):
+        music.spotify().play(uris, 0)
+    music.spotify().disconnect()
+    with pytest.raises(music.MusicError, match="Sign in to Spotify"):
+        music.spotify().play(uris, 0)
+
+
+def test_spotify_settings_save_and_an_empty_client_id_removes_it(home):
+    shown = music.save_settings({"folders": [], "spotify": {"client_id": " spid "}})
+    assert shown["spotify"] == {"client_id": "spid", "account": ""}
+    music.save_settings({"folders": []})  # an older settings page leaves Spotify alone
+    assert music.config()["spotify"] == {"client_id": "spid"}
+    music.save_settings({"folders": [], "spotify": {"client_id": ""}})
+    assert "spotify" not in music.config() and music.check()["spotify"] is None
+
+
+def test_likes_come_from_the_source_asked_for(home, soundcloud, navidrome):
+    configure(home, {"navidrome": {"url": navidrome, "username": "kayla", "password": "secret"},
+                     "folders": [str(library(home))], "soundcloud": {"client_id": "cid", "client_secret": "secret"}})
+    assert [t["title"] for t in music.browse("likes", "navidrome")["tracks"]] == ["Starred One"]
+    assert "Sign in" in music.browse("likes")["note"]  # no source, as older devices ask: SoundCloud's
+    assert music.browse("likes", "folders")["tracks"] == []  # folders have no likes
+    # Several sources, comma-separated.
+    found = music.browse("search", "navidrome,folders", query="dreams")
+    assert {t["source"] for t in found["tracks"]} == {"navidrome", "folder"}
+    found = music.browse("search", "folder", query="dreams")
+    assert {t["source"] for t in found["tracks"]} == {"folder"}

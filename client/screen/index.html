@@ -14,47 +14,55 @@
 }
 html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden; cursor: none; }
 .screen { container-type: inline-size; position: relative; width: 100vw; height: 100vh; overflow: hidden;
-          font-family: var(--body); color: var(--bronze); }
+          font-family: var(--body); color: var(--bronze); --a: var(--ember); }
 [hidden] { display: none !important; }
 
-/* Four equal columns, one under each preset button; a long label wraps to a second line. */
-.topbar { position: absolute; left: 0; right: 0; top: 0; height: 10cqw; display: grid;
+/* Four equal columns, one under each preset button, one line each. The one opening the page
+   showing lights in its colour (--a); dots at the right say which set of soft keys this is. */
+.topbar { position: absolute; left: 0; right: 0; top: 0; height: 7cqw; display: grid;
           grid-template-columns: repeat(4, 1fr); align-items: center; }
-.topbar > span { text-align: center; font-size: 2.3cqw; line-height: 1.15; letter-spacing: .06em; padding: 0 1.5cqw;
-                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-                 overflow-wrap: anywhere; text-wrap: balance; }
+.topbar > span { text-align: center; font-size: 2.4cqw; letter-spacing: .06em; padding: 0 1.25cqw;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar > span.off { color: #5a4f42; }
-.topbar > span.tab { color: var(--ember); }
-/* The link icons stand in a column at the left edge, centred between the two meanders. */
-.links { position: absolute; left: 2cqw; top: 18.5cqw; height: 33cqw; display: flex; flex-direction: column;
-         justify-content: center; align-items: center; gap: 2.4cqw; }
-.links svg { width: 3.6cqw; height: 3.6cqw; color: var(--dust); }
+.topbar > span.tab, .topbar > span.on { color: var(--a); }
+.sets { position: absolute; right: 1.25cqw; top: 5.6cqw; display: flex; gap: .6cqw; }
+.sets i { width: .75cqw; height: .75cqw; border-radius: 50%; background: #5a4f42; }
+.sets i.on { background: var(--bronze); }
+/* The link icons stand in a column at the left edge, between the two meanders, on every page. */
+.links { position: absolute; left: 2cqw; top: 14.5cqw; height: 38.25cqw; display: flex; flex-direction: column;
+         justify-content: center; align-items: center; gap: 2.4cqw; z-index: 1; }
+.links svg { width: 3.6cqw; height: 3.6cqw; color: var(--link, var(--dust)); }
 .links svg.lost { color: var(--alarm); }
-.band { position: absolute; left: 0; right: 0; height: 7.5cqw; display: block; }
-.band.top { top: 11cqw; } .band.bottom { top: 51.5cqw; }
-.band .lit { transition: opacity .6s ease; }
+.band { position: absolute; left: 0; right: 0; height: 6cqw; display: block; }
+.band.top { top: 7.25cqw; } .band.bottom { top: 54cqw; }
 
-.middle { position: absolute; left: 0; right: 0; top: 19.5cqw; height: 31cqw; display: flex; flex-direction: column;
-          align-items: center; justify-content: center; text-align: center; gap: 1.3cqw; }
-.greek { font-family: var(--display); color: var(--ember); font-size: 8.6cqw; line-height: 1; letter-spacing: .24em; margin-right: -.24em; }
+.middle { position: absolute; left: 0; right: 0; top: 13.25cqw; height: 40.75cqw; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; text-align: center; gap: 1.6cqw; }
+.with-song .middle { height: 35cqw; }
+.greek { font-family: var(--display); color: var(--ember); font-size: 9cqw; line-height: 1; letter-spacing: .24em; margin-right: -.24em; }
 .latin { font-family: var(--display); font-size: 3.6cqw; letter-spacing: .5em; margin-right: -.5em; }
 .motto { font-size: 2.2cqw; letter-spacing: .45em; margin-right: -.45em; color: var(--dust); }
-.hint { font-size: 2.7cqw; letter-spacing: .02em; margin-top: 1cqw; max-width: 64cqw; }
+.hint { font-size: 2.75cqw; letter-spacing: .02em; margin-top: 1.2cqw; max-width: 64cqw; }
 .hint.wait { color: var(--dust); }
 .hint.live { color: var(--ember); font-family: var(--display); font-size: 3.2cqw; letter-spacing: .12em; animation: breathe 1.8s ease-in-out infinite; }
-.hint.music { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70cqw; margin-left: auto; margin-right: auto; }
 @keyframes breathe { 50% { opacity: .55 } }
 .heard { font-size: 2.6cqw; color: var(--dust); font-style: italic; max-width: 76cqw;
          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.speaking { position: absolute; left: 9.5cqw; right: 8cqw; top: 20.5cqw; height: 29cqw; overflow: hidden; }
+.speaking { position: absolute; left: 9.5cqw; right: 8cqw; top: 15cqw; height: 37.5cqw; overflow: hidden;
+            display: flex; flex-direction: column; justify-content: center; }
+.with-song .speaking { height: 32.5cqw; }
 .speaking b { display: block; color: var(--ember); font-weight: 400; font-family: var(--display); font-size: 2.2cqw;
               letter-spacing: .45em; margin-bottom: 1cqw; }
 .reply { font-family: var(--display); font-size: 3.4cqw; line-height: 1.4; }
 .reply.long { font-size: 3cqw; }
-.emblem { position: absolute; right: 4cqw; top: 27.4cqw; width: 16cqw; }
+.emblem { position: absolute; right: 4cqw; top: 24cqw; width: 16cqw; }
+/* The song playing, just above its progress along the bottom meander. */
+.song { position: absolute; left: 9cqw; right: 9cqw; top: 48.6cqw; text-align: center; font-size: 2.3cqw; letter-spacing: .04em;
+        color: var(--song, var(--dust)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.song b { font-weight: 400; color: var(--bronze); }
 
 /* Settings: the Bluetooth and Screen tabs */
-.bt { position: absolute; left: 0; right: 0; top: 18.5cqw; bottom: 8cqw;
+.bt { position: absolute; left: 0; right: 0; top: 14cqw; bottom: 8cqw;
       display: flex; flex-direction: column; padding: 1.2cqw 5cqw 1cqw; gap: 1cqw; }
 .bt h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 3.2cqw; letter-spacing: .12em; }
 .bt .note { color: var(--dust); font-size: 2.2cqw; line-height: 1.35; margin: 0; }
@@ -97,74 +105,83 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
 
-/* The music page: what's playing on the left, your music to pick from on the right, by touch. */
-.mp { position: absolute; left: 0; right: 0; top: 11cqw; bottom: 0; display: grid; grid-template-columns: 34cqw 1fr;
-      grid-template-rows: minmax(0, 1fr); border-top: .3cqw solid var(--bronze); }
-.np { display: flex; flex-direction: column; align-items: center; padding: 1.8cqw 2.5cqw 1.4cqw; gap: .6cqw;
-      border-right: .15cqw solid var(--rule); min-width: 0; }
-.np .art { width: 14cqw; height: 14cqw; border-radius: 1cqw; background: var(--row) center / cover no-repeat;
-           display: flex; align-items: center; justify-content: center; flex: none; }
-.np .art svg { width: 6cqw; height: 6cqw; color: var(--dust); }
-.np .title { font-family: var(--display); font-size: 2.6cqw; line-height: 1.2; text-align: center; max-width: 100%;
-             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: .6cqw; }
-.np .artist { font-size: 2.1cqw; color: var(--dust); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.np .bar { width: 100%; height: .6cqw; border-radius: .3cqw; background: var(--rule); margin-top: auto; overflow: hidden; }
-.np .fill { height: 100%; width: 0; background: var(--ember); }
-.np .times { width: 100%; display: flex; justify-content: space-between; font-size: 1.7cqw; color: var(--dust);
-             font-variant-numeric: tabular-nums; }
-.np .ctl { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-.mp button { font: inherit; color: var(--bronze); background: transparent; border: 0; padding: 0; display: flex;
-             align-items: center; justify-content: center; touch-action: manipulation; }
-.np .ctl button { width: 5.6cqw; height: 5.6cqw; border-radius: 50%; }
-.np .ctl button svg { width: 3.4cqw; height: 3.4cqw; }
-.np .ctl button.big { width: 7.6cqw; height: 7.6cqw; border: .2cqw solid var(--ember); color: var(--ember); }
-.np .ctl button.big svg { width: 4cqw; height: 4cqw; }
-.np .ctl button.on { color: var(--ember); }
-.np .ctl button.off { color: #5a4f42; }
-.np .ctl button:active, .lib .tr:active, .lib .pl:active { background: var(--row); }
-.lib { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.lib .tabs { display: flex; gap: 1cqw; padding: 1.4cqw 2cqw .8cqw; align-items: center; flex: none; }
-.lib .tabs button { font-size: 2.2cqw; letter-spacing: .08em; padding: .6cqw 1.8cqw; border-radius: 3cqw; border: .15cqw solid var(--rule); }
-.lib .tabs button.on { border-color: var(--ember); color: var(--ember); background: var(--row); }
-.lib .tabs .athena { margin-left: auto; color: var(--dust); gap: .6cqw; border-color: transparent; }
-.lib .tabs .athena svg { width: 2.4cqw; height: 2.4cqw; }
-.lib .list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 1.6cqw 1.6cqw; touch-action: pan-y;
-             scrollbar-width: none; overscroll-behavior: contain; }
+/* The music pages: one view at a time between the meanders, chosen on the row at the top: what's
+   playing, with big controls, or one of the lists. The page's colour is --a. */
+.page { position: absolute; left: 8cqw; right: 3cqw; top: 14cqw; height: 39.25cqw; display: flex; flex-direction: column; }
+.page button { font: inherit; color: var(--bronze); background: transparent; border: 0; padding: 0; display: flex;
+               align-items: center; justify-content: center; touch-action: manipulation; }
+.views { display: flex; gap: 1cqw; margin: 0 0 1cqw; flex: none; }
+.views button { gap: .75cqw; font-size: 2.1cqw; letter-spacing: .06em; padding: .6cqw 2cqw; border-radius: 2.5cqw;
+                border: .19cqw solid var(--rule); color: var(--dust); }
+.views button svg { width: 1.75cqw; height: 1.75cqw; }
+.views button.now { margin-right: 1.25cqw; }
+.views button.on { border-color: var(--a); color: var(--a); background: var(--row); }
+.views button.sel { outline: .2cqw solid var(--a); outline-offset: .2cqw; }
+.npv { flex: 1; display: grid; grid-template-columns: 24.5cqw 1fr; gap: 3.5cqw; align-items: center; padding: 0 1.5cqw; min-height: 0; }
+.npv .art { width: 24.5cqw; height: 24.5cqw; border-radius: 1.25cqw; background: var(--row) center / cover no-repeat;
+            display: flex; align-items: center; justify-content: center; }
+.npv .art svg { width: 10cqw; height: 10cqw; color: var(--a); opacity: .7; }
+.npv .meta { display: flex; flex-direction: column; gap: .75cqw; min-width: 0; }
+.npv .src { font-family: var(--display); font-size: 1.9cqw; letter-spacing: .28em; text-transform: uppercase; color: var(--a); }
+.npv .title { font-family: var(--display); font-size: 4.25cqw; line-height: 1.15;
+              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.npv .artist { font-size: 2.6cqw; color: var(--dust); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.npv .times { display: flex; justify-content: space-between; font-size: 1.9cqw; color: var(--dust); margin-top: 1.25cqw;
+              font-variant-numeric: tabular-nums; max-width: 52.5cqw; }
+.npv .ctl { display: flex; align-items: center; justify-content: space-between; margin-top: 1cqw; max-width: 52.5cqw; }
+.npv .ctl button { width: 8cqw; height: 8cqw; border-radius: 50%; }
+.npv .ctl button svg { width: 4.25cqw; height: 4.25cqw; }
+.npv .ctl button.big { width: 10cqw; height: 10cqw; border: .25cqw solid var(--a); color: var(--a); }
+.npv .ctl button.big svg { width: 5cqw; height: 5cqw; }
+.npv .ctl button.on { color: var(--a); }
+.npv .ctl button.off { color: #5a4f42; }
+.npv .ctl button:active, .lib .tr:active, .lib .pl:active { background: var(--row); }
+.pnote { flex: none; text-align: center; color: var(--dust); font-size: 2.1cqw; padding-bottom: .6cqw; }
+.lib { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lib .list { flex: 1; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; scrollbar-width: none; overscroll-behavior: contain; }
 .lib .list::-webkit-scrollbar { display: none; }
-.lib .tr, .lib .pl, .lib .head, .lib .find { display: grid; grid-template-columns: 5.4cqw 1fr auto; align-items: center; gap: 1.4cqw;
-             padding: .7cqw .8cqw; border-radius: .8cqw; }
+.lib .tr, .lib .pl, .lib .head, .lib .find { display: grid; grid-template-columns: 5.4cqw 1fr auto; align-items: center; gap: 1.75cqw;
+             padding: .7cqw 1cqw; border-radius: .8cqw; }
+.lib .sel { outline: .2cqw solid var(--a); outline-offset: -.2cqw; background: var(--row); }
 .lib .thumb { width: 5.4cqw; height: 5.4cqw; border-radius: .6cqw; background: var(--row) center / cover no-repeat;
               display: flex; align-items: center; justify-content: center; }
 .lib .thumb svg { width: 2.6cqw; height: 2.6cqw; color: var(--dust); }
 .lib .tr div, .lib .pl div { min-width: 0; }
-.lib b { display: block; font-weight: 400; font-size: 2.3cqw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib b { display: block; font-weight: 400; font-size: 2.4cqw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lib span { display: block; font-size: 1.8cqw; color: var(--dust); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lib em { font-style: normal; font-size: 1.8cqw; color: var(--dust); font-variant-numeric: tabular-nums; }
-.lib .tr.now b { color: var(--ember); }
-.lib .head { grid-template-columns: 3cqw 1fr auto; color: var(--dust); font-size: 2.1cqw; }
+.lib .tr.now b { color: var(--a); }
+.lib .head { grid-template-columns: 3cqw 1fr auto; color: var(--dust); font-size: 2.2cqw; }
 .lib .head svg { width: 2.8cqw; height: 2.8cqw; }
 .lib .head em { font-size: 1.8cqw; }
 .lib .find { grid-template-columns: 3cqw 1fr; border: .15cqw solid var(--rule); margin-bottom: .8cqw; font-size: 2.3cqw; color: var(--dust); }
 .lib .find svg { width: 2.8cqw; height: 2.8cqw; }
 .lib .note { color: var(--dust); font-size: 2.2cqw; line-height: 1.4; padding: 2cqw 1cqw; text-align: center; }
-.mp-kb { position: absolute; left: 0; right: 0; top: 11cqw; bottom: 0; display: flex; flex-direction: column; padding: 2cqw 5cqw 2.4cqw;
-         background: var(--night); }
+.mp-kb { position: absolute; left: 0; right: 0; top: 7cqw; bottom: 0; display: flex; flex-direction: column; padding: 2cqw 5cqw 2.4cqw;
+         background: var(--night); z-index: 2; }
 .kb .kx { flex: none; font-size: 3cqw; color: var(--dust); padding: 0 .6cqw; }
 
+/* A passing note in the middle of the screen: the mic turned off or on. */
+.toast { position: absolute; left: 50%; top: 33.75cqw; transform: translate(-50%, -50%); background: #261d15;
+         border: .2cqw solid var(--a); border-radius: 1.4cqw; padding: 2cqw 3.5cqw; display: flex; align-items: center; gap: 1.75cqw;
+         font-family: var(--display); font-size: 3.2cqw; letter-spacing: .08em; color: var(--a);
+         box-shadow: 0 1cqw 4cqw rgba(0,0,0,.6); z-index: 6; }
+.toast svg { width: 4cqw; height: 4cqw; }
+
 /* Held: what letting go of the knob (or another control with holds) would do now. */
-.holdpop { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: 46cqw; box-sizing: border-box;
-           background: #261d15; border: .2cqw solid var(--ember); border-radius: 1.4cqw; padding: 2cqw 2.6cqw 2.2cqw;
+.holdpop { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); width: 46cqw; box-sizing: border-box;
+           background: #261d15; border: .2cqw solid var(--a); border-radius: 1.4cqw; padding: 2cqw 2.6cqw 2.2cqw;
            box-shadow: 0 1cqw 4cqw rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 1cqw; z-index: 5; }
 .holdpop h4 { margin: 0 0 .4cqw; font-family: var(--display); font-weight: 400; font-size: 2.1cqw; letter-spacing: .28em;
               text-transform: uppercase; color: var(--dust); }
 .holdpop .step { display: grid; grid-template-columns: 2cqw 1fr auto; align-items: center; gap: 1.4cqw; font-size: 2.8cqw; color: #6b5f50; }
 .holdpop .step i { width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .2cqw solid currentColor; }
 .holdpop .step em { font-style: normal; font-size: 1.9cqw; }
-.holdpop .step.on { color: var(--ember); font-family: var(--display); }
-.holdpop .step.on i { background: var(--ember); }
+.holdpop .step.on { color: var(--a); font-family: var(--display); }
+.holdpop .step.on i { background: var(--a); }
 .holdpop .step.past { color: var(--dust); }
 .holdpop .track { position: relative; height: .7cqw; border-radius: .35cqw; background: var(--rule); margin-top: .8cqw; }
-.holdpop .track .fill { height: 100%; width: 0; border-radius: .35cqw; background: var(--ember); }
+.holdpop .track .fill { height: 100%; width: 0; border-radius: .35cqw; background: var(--a); }
 .holdpop .track .tick { position: absolute; top: -.5cqw; width: .25cqw; height: 1.7cqw; background: var(--bronze); }
 
 /* The virtual Petasos (the Mac and Windows apps): the screen above, its controls below, sized
@@ -260,24 +277,36 @@ body.virtual .topbar > span:hover { background: var(--row); }
   </defs>
 </svg>
 
-<div class="screen">
+<div class="screen" id="screen">
   <div class="topbar">
     <span id="p0" class="off">—</span><span id="p1" class="off">—</span><span id="p2" class="off">—</span><span id="p3" class="off">—</span>
   </div>
+  <div class="sets" id="sets" hidden><i></i><i></i></div>
+
+  <div id="bands">
+  <svg class="band top" id="top-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
+    <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
+    <rect class="cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
+    <rect class="lit" x="0" y="0" width="0" height="60" fill="url(#l-petasos)" transform="translate(2 0)"/>
+    <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
+    <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
+    <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
+  </svg>
+  <svg class="band bottom" id="bottom-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
+    <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
+    <rect class="cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
+    <rect class="lit" x="0" y="0" width="0" height="60" fill="url(#l-petasos)" transform="translate(2 0)"/>
+    <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
+    <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
+    <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
+  </svg>
+  </div>
+  <div class="links" id="links">
+    <svg id="l-phone"><use href="#i-phone"/></svg><svg id="l-home"><use href="#i-home"/></svg>
+    <svg id="l-speaker"><use href="#i-speaker"/></svg><svg id="l-mic"><use href="#i-mic"/></svg>
+  </div>
 
   <div id="home">
-    <div class="links">
-      <svg id="l-phone"><use href="#i-phone"/></svg><svg id="l-home"><use href="#i-home"/></svg>
-      <svg id="l-speaker"><use href="#i-speaker"/></svg><svg id="l-mic"><use href="#i-mic"/></svg>
-    </div>
-    <svg class="band top" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
-      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
-      <g class="lit" id="vol" opacity="0">
-        <rect id="vol-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
-        <rect id="vol-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
-      </g>
-      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
-    </svg>
     <div class="middle" id="stack">
       <div class="greek">ΠΕΤΑΣΟΣ</div>
       <div class="latin" id="latin">PETASOS</div>
@@ -287,61 +316,47 @@ body.virtual .topbar > span:hover { background: var(--row); }
     </div>
     <div class="speaking" id="speaking" hidden><div id="scroller"><b id="speaker-name"></b><div class="reply" id="reply"></div></div></div>
     <svg class="emblem" id="warn" viewBox="0 0 200 190" hidden><use href="#emblem"/></svg>
-    <svg class="band bottom" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
-      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
-      <g class="lit" id="mic-lit" opacity="0">
-        <rect id="mic-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
-        <rect id="mic-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
-      </g>
-      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
-    </svg>
+    <div class="song" id="song" hidden></div>
   </div>
 
   <div id="bt" hidden>
     <div class="bt" id="bt-body"></div>
-    <svg class="band top" id="bt-band" viewBox="0 0 800 60" preserveAspectRatio="none" aria-hidden="true">
-      <rect width="800" height="60" fill="url(#key-band)" transform="translate(2 0)"/>
-      <rect id="bt-band-cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
-      <rect id="bt-band-keys" x="0" y="0" width="0" height="60" fill="url(#key-band-ember)" transform="translate(2 0)"/>
-      <path d="M0 2 H800 M0 58 H800" stroke="#c9b48a" stroke-width="2.5"/>
-    </svg>
     <div class="keys" id="bt-keys"></div>
   </div>
 
   <div id="mpage" hidden>
-    <div class="mp">
-      <div class="np">
+    <div class="page">
+      <div class="views" id="mp-views"></div>
+      <div class="npv" id="mp-now">
         <div class="art" id="mp-art"></div>
-        <div class="title" id="mp-title"></div>
-        <div class="artist" id="mp-artist"></div>
-        <div class="bar"><div class="fill" id="mp-fill"></div></div>
-        <div class="times"><span id="mp-pos"></span><span id="mp-len"></span></div>
-        <div class="ctl">
-          <button id="mp-repeat" title="Repeat"><svg><use href="#i-repeat"/></svg></button>
-          <button data-op="previous" title="Previous"><svg><use href="#i-prev"/></svg></button>
-          <button class="big" id="mp-play" data-op="toggle" title="Play or pause"><svg><use href="#i-play"/></svg></button>
-          <button data-op="next" title="Next"><svg><use href="#i-next"/></svg></button>
-          <button id="mp-shuffle" title="Shuffle"><svg><use href="#i-shuffle"/></svg></button>
+        <div class="meta">
+          <div class="src" id="mp-src"></div>
+          <div class="title" id="mp-title"></div>
+          <div class="artist" id="mp-artist"></div>
+          <div class="times"><span id="mp-pos"></span><span id="mp-len"></span></div>
+          <div class="ctl">
+            <button id="mp-repeat" title="Repeat"><svg><use href="#i-repeat"/></svg></button>
+            <button data-op="previous" title="Previous"><svg><use href="#i-prev"/></svg></button>
+            <button class="big" id="mp-play" data-op="toggle" title="Play or pause"><svg><use href="#i-play"/></svg></button>
+            <button data-op="next" title="Next"><svg><use href="#i-next"/></svg></button>
+            <button id="mp-shuffle" title="Shuffle"><svg><use href="#i-shuffle"/></svg></button>
+          </div>
         </div>
       </div>
-      <div class="lib">
-        <div class="tabs">
-          <button data-tab="likes">Likes</button><button data-tab="playlists">Playlists</button><button data-tab="search">Search</button>
-          <button class="athena" id="mp-close"><svg><use href="#i-back"/></svg><span id="mp-agent">Athena</span></button>
-        </div>
-        <div class="list" id="mp-list"></div>
-      </div>
+      <div class="pnote" id="mp-note" hidden></div>
+      <div class="lib" id="mp-lib" hidden><div class="list" id="mp-list"></div></div>
     </div>
     <div class="mp-kb" id="mp-kb" hidden></div>
   </div>
 
   <div class="holdpop" id="holdpop" hidden></div>
+  <div class="toast" id="toast" hidden></div>
 </div>
 
 <div class="controls" id="controls" hidden>
-  <button id="c-mute" title="Mic on or off (M)"><svg><use href="#i-mic"/></svg><kbd>M</kbd></button>
+  <button id="c-mute" title="The other soft keys (M)"><svg><use href="#i-key"/></svg><kbd>M</kbd></button>
   <button class="talk" id="c-front" title="Hold to talk; tap for a conversation (Space)">Hold to talk <kbd>Space</kbd></button>
-  <button id="c-knob" title="Stop speaking (Return)">Stop <kbd>⏎</kbd></button>
+  <button id="c-knob" title="Stop speaking or play and pause; hold for the mic on or off (Return)">Knob <kbd>⏎</kbd></button>
   <button id="c-down" title="Volume down (↓)">−</button>
   <button id="c-up" title="Volume up (↑)">+</button>
   <button id="c-settings" title="Settings"><svg><use href="#i-gear"/></svg></button>
@@ -357,7 +372,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const icon = (name) => `<svg><use href="#i-${name}"/></svg>`;
 const rest = (a) => state && state.virtual ? `Hold Space to talk to ${a}`
                                            : `Hold the front button to talk to ${a}`;
-let state = null, noticeSeen = 0, noticeUntil = 0, volumeSeen = null, volumeTimer = 0, lastReply = "", scrollAnim = null;
+let state = null, noticeSeen = 0, noticeUntil = 0, lastReply = "", scrollAnim = null, micNoteSeen = null;
 
 function warning(s) {
   const l = s.links, a = s.agent;
@@ -373,7 +388,32 @@ function warning(s) {
 // In the settings the preset buttons are its tabs.
 const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["device", "Device"], ["music", "Music"]];
 
+// Each page's colours: the meander's own, its dim one (under a level), the lit one, and the
+// accent for text and buttons.
+const THEMES = {
+  petasos: { band: "#c9b48a", dim: "#4a3f30", lit: "#e8823a", accent: "#d97a3a", name: "Petasos" },
+  soundcloud: { band: "#ff8a3d", dim: "#5a3a22", lit: "#ff8a3d", accent: "#ff8a3d", name: "SoundCloud" },
+  navidrome: { band: "#5b9ee8", dim: "#24364d", lit: "#5b9ee8", accent: "#5b9ee8", name: "Navidrome" },
+  spotify: { band: "#4cc879", dim: "#24452f", lit: "#4cc879", accent: "#4cc879", name: "Spotify" },
+  apple: { band: "#f0505a", dim: "#4f2427", lit: "#f0505a", accent: "#f0505a", name: "Apple Music" },
+};
+(function makePatterns() {
+  const pat = (id, c) => `<pattern id="${id}" width="40" height="60" patternUnits="userSpaceOnUse">
+    <path d="M4 48 V13 H33 V42 H13 V22 H24 V33" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="square"/>
+    <path d="M4 48 H40" fill="none" stroke="${c}" stroke-width="3.5"/></pattern>`;
+  let html = "";
+  for (const [k, t] of Object.entries(THEMES)) html += pat("b-" + k, t.band) + pat("d-" + k, t.dim) + pat("l-" + k, t.lit);
+  document.querySelector("svg defs").insertAdjacentHTML("beforeend", html);
+})();
+
+// The page showing: a music page's name, or "petasos" for home (also while Athena is busy, when
+// the music page steps aside) and the settings.
+function shownPage(s) {
+  return s.page && !s.bt && s.phase === "idle" && THEMES[s.page] ? s.page : "petasos";
+}
+
 function drawTop(s) {
+  const page = shownPage(s);
   s.presets.forEach((label, i) => {
     const el = $("p" + i);
     if (s.bt) {
@@ -383,8 +423,11 @@ function drawTop(s) {
       return;
     }
     el.textContent = label || "—";
-    el.className = label ? "" : "off";
+    el.className = !label ? "off" : (s.key_pages || [])[i] === page ? "on" : "";
   });
+  const sets = $("sets");
+  sets.hidden = !!s.bt || !(s.key_sets > 1);
+  [...sets.children].forEach((dot, i) => dot.classList.toggle("on", i + 1 === (s.keys || 1)));
   const l = s.links, checked = l.checked;
   $("l-phone").classList.toggle("lost", checked && !l.phone);
   if (s.virtual) { // the network icon: a shield while Hermes is reached through the VPN
@@ -398,19 +441,99 @@ function drawTop(s) {
   mic.firstElementChild.setAttribute("href", s.muted ? "#i-mic-off" : "#i-mic");
 }
 
+// --- the meanders ---------------------------------------------------------------------------------
+
+// The top one shows the volume as it changes, then the sound: your voice while Athena listens,
+// and her voice or the music as it plays, under a mark at the volume. A music page keeps the
+// volume lit when there's no sound to show. The bottom one is the song's progress, in its
+// service's colour.
+let volumeSeen = null, volumeUntil = 0, micTarget = 0, micShown = 0, lvlTarget = 0, lvlShown = 0, bandFrame = 0;
+const bandsDrawn = {};
+
+function setBand(id, b) {
+  const t = THEMES[b.theme] || THEMES.petasos, key = JSON.stringify(b);
+  if (bandsDrawn[id] === key) return;
+  bandsDrawn[id] = key;
+  const el = $(id), w = (1000 * Math.max(0, Math.min(1, b.lit || 0))).toFixed(1);
+  const part = (c) => el.querySelector("." + c);
+  part("base").setAttribute("fill", `url(#${b.dim ? "d" : "b"}-${b.theme})`);
+  part("cover").setAttribute("width", w);
+  part("lit").setAttribute("width", w);
+  part("lit").setAttribute("fill", `url(#l-${b.theme})`);
+  part("rule").setAttribute("stroke", b.dim ? t.dim : t.band);
+  part("litrule").setAttribute("d", b.dim ? `M0 2 H${w} M0 58 H${w}` : "M0 2 H0");
+  part("litrule").setAttribute("stroke", t.lit);
+  part("mark").setAttribute("x", b.mark == null ? -10 : (1000 * b.mark - 4).toFixed(1));
+  part("mark").setAttribute("fill", t.lit);
+}
+
+function musicProgress(m) {
+  if (!m || !m.seconds) return 0;
+  const pos = (m.position || 0) + (m.moving && m.playing ? (Date.now() - m.at) / 1000 : 0);
+  return Math.min(1, pos / m.seconds);
+}
+
+function drawBands() {
+  const s = state;
+  if (!s) return;
+  const page = shownPage(s), onMusic = page !== "petasos";
+  const vol = s.volume >= 0 ? s.volume / 100 : null;
+  let top;
+  if (s.bt) top = { theme: "petasos", lit: (s.bt.meter || 0) / 100 };
+  else if (Date.now() < volumeUntil && vol != null) top = { theme: page, dim: onMusic, lit: vol };
+  else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
+  else if (lvlTarget > 0 || lvlShown > 0.01) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol };
+  else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
+  else top = { theme: "petasos", lit: 0 };
+  setBand("top-band", top);
+  const m = s.music, service = m && THEMES[m.service] ? m.service : onMusic ? page : "";
+  $("bottom-band").style.display = s.bt ? "none" : "";
+  setBand("bottom-band", m && service ? { theme: service, dim: true, lit: musicProgress(m) }
+                                      : { theme: onMusic ? page : "petasos", dim: onMusic, lit: m ? musicProgress(m) : 0 });
+}
+
+// stepBands eases the levels towards where they're heading, a frame at a time, while they move.
+function stepBands() {
+  bandFrame = 0;
+  const ease = (shown, target) => {
+    shown += (target - shown) * (target > shown ? 0.5 : 0.15);
+    return Math.abs(target - shown) < 0.005 ? target : shown;
+  };
+  micShown = ease(micShown, state && state.phase === "listening" ? micTarget : 0);
+  lvlShown = ease(lvlShown, lvlTarget);
+  drawBands();
+  if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget) bandFrame = requestAnimationFrame(stepBands);
+}
+
+function moveBands() {
+  if (!bandFrame) bandFrame = requestAnimationFrame(stepBands);
+}
+
 function drawVolume(s) {
   if (volumeSeen === null) { volumeSeen = s.volume_id; return; } // not on first load
   if (s.volume_id === volumeSeen || s.volume < 0) return;
   volumeSeen = s.volume_id;
-  const w = 8 * Math.max(0, Math.min(100, s.volume));
-  $("vol-cover").setAttribute("width", w);
-  $("vol-keys").setAttribute("width", w);
-  $("vol").setAttribute("opacity", "1");
-  clearTimeout(volumeTimer);
-  volumeTimer = setTimeout(() => $("vol").setAttribute("opacity", "0"), 2000);
+  volumeUntil = Date.now() + 2000;
+  setTimeout(drawBands, 2050);
+}
+
+// The song's progress moves on by itself between updates.
+let progressTimer = 0;
+function stepProgress() {
+  clearTimeout(progressTimer);
+  const m = state && state.music;
+  drawBands();
+  if (!$("mpage").hidden) {
+    const len = m && m.seconds || 0;
+    const pos = m ? (m.position || 0) + (m.moving && m.playing ? (Date.now() - m.at) / 1000 : 0) : 0;
+    $("mp-pos").textContent = len ? clock(Math.min(pos, len)) : "";
+    $("mp-len").textContent = len ? clock(len) : "";
+  }
+  if (m && m.moving && m.playing) progressTimer = setTimeout(stepProgress, 500);
 }
 
 function drawHome(s) {
+  drawSong(s);
   const speaking = s.phase === "speaking" && s.reply;
   $("stack").hidden = !!speaking;
   $("speaking").hidden = !speaking;
@@ -437,13 +560,23 @@ function drawHome(s) {
   else if (thinking) [text, cls] = [`${a} is thinking…`, "wait"];
   else if (Date.now() < noticeUntil && s.notice) [text, cls] = [s.notice, "wait"];
   else if (warn) [text, cls] = [warn, "wait"];
-  else if (s.muted) [text, cls] = [s.virtual ? "The mic is off. Press M to turn it on." : "The mic is off. Press the mic button to turn it on.", "wait"];
-  else if (s.music && (s.music.title || s.music.playing)) // the phone's music, playing through the Car Thing
-    [text, cls] = [(s.music.playing ? "♪ " : "Paused · ") + [s.music.title, s.music.artist].filter(Boolean).join(" · "), "music"];
+  else if (s.muted) [text, cls] = [s.virtual ? "The mic is off. Hold Return to turn it on." : "The mic is off. Hold the knob to turn it on.", "wait"];
   const hint = $("hint");
   hint.textContent = text;
   hint.className = "hint " + cls;
   showEmblem(s.phase === "idle" && !!warn && !(Date.now() < noticeUntil && s.notice));
+}
+
+// The song playing, above its progress on the bottom meander.
+function drawSong(s) {
+  const m = s.music, on = !!(m && (m.title || m.playing));
+  $("song").hidden = !on;
+  $("home").classList.toggle("with-song", on);
+  if (!on) return;
+  const t = THEMES[m.service];
+  $("song").style.setProperty("--song", t ? t.accent : "var(--dust)");
+  const words = [m.title, m.artist].filter(Boolean);
+  $("song").innerHTML = (m.playing ? "♪ " : "Paused · ") + (words.length ? `<b>${esc(words[0])}</b>` + (words[1] ? " · " + esc(words[1]) : "") : esc(m.source || "Music"));
 }
 
 // The emblem is an <svg>, which has no hidden property; the attribute works.
@@ -483,12 +616,8 @@ function drawBT(b) {
                  message: [] }[b.view] || [];
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
-  // A level (the Screen tab's brightness) lights the band the way the volume does at home.
-  // The band sits where it does at home, under the tabs, and lights up to a level (the Screen
-  // tab's brightness or dim level) the way the volume lights it there.
-  const w = 8 * Math.max(0, Math.min(100, b.meter || 0));
-  $("bt-band-cover").setAttribute("width", w);
-  $("bt-band-keys").setAttribute("width", w);
+  // The top meander lights up to a level (the Screen tab's brightness or dim level) the way the
+  // volume lights it at home (drawBands).
   if (b.view === "keyboard") { drawKeyboard(b); return; }
   kb = null;
   if (b.view === "pair" || b.view === "message") {
@@ -595,66 +724,142 @@ function draw(s) {
   if (s.virtual) setUpControls(s);
   $("motto").textContent = `MESSENGER OF ${s.agent.toUpperCase()}`;
   $("speaker-name").textContent = s.agent.toUpperCase();
+  const page = shownPage(s), onMusic = page !== "petasos", t = THEMES[page];
+  $("screen").style.setProperty("--a", t.accent);
+  $("links").style.setProperty("--link", onMusic ? t.band : "var(--dust)");
   drawTop(s);
-  // The music page steps aside for the home screen while the agent is busy.
-  const onMusic = s.page === "music" && !s.bt && s.phase === "idle";
+  // A music page steps aside for the home screen while the agent is busy.
   $("bt").hidden = !s.bt;
   $("mpage").hidden = !onMusic;
   $("home").hidden = !!s.bt || onMusic;
+  $("links").hidden = !!s.bt;
   if (s.bt) drawBT(s.bt);
   else if (onMusic) drawMusicPage(s);
   else drawHome(s);
   if (!onMusic) closeMusicKeyboard();
   drawHold(s);
   drawVolume(s);
-  drawMic(s);
+  drawMicNote(s);
+  if (s.phase !== "listening") micTarget = 0;
   drawCapture(s);
+  stepProgress();
+  moveBands();
 }
 
-// --- the music page ------------------------------------------------------------------------------
+// --- the music pages -----------------------------------------------------------------------------
 
-// What's playing comes with the state; the lists come from /music/browse when a tab opens and
-// stay until it's opened again, so they keep their place while the music plays.
-const mp = { ready: false, tab: "likes", lists: {}, open: null, query: "", found: null, shown: "" };
+// Each page's lists, by the source the plugin browses for it. Apple Music has none: its music is
+// chosen on the phone.
+const PAGES = {
+  soundcloud: { source: "soundcloud", tabs: [["likes", "Likes"], ["playlists", "Playlists"], ["search", "Search"]] },
+  navidrome: { source: "navidrome,folders", tabs: [["likes", "Starred"], ["playlists", "Playlists"], ["search", "Search"]] },
+  spotify: { source: "spotify", tabs: [["likes", "Liked"], ["playlists", "Playlists"], ["search", "Search"]] },
+  apple: { tabs: [] },
+};
+
+// What's playing comes with the state. The lists come from /music/browse when a tab first opens
+// and stay, so they keep their place while the music plays. Each page keeps its own; mp is the
+// one showing. sel is the knob's highlight, counting the view buttons first, then the rows.
+const pages = {};
+let mp = null, mpName = "", mpOpened = "", mpShown = "";
+
+function pageState(name) {
+  if (!pages[name]) pages[name] = { name, view: "now", lastTab: (PAGES[name].tabs[0] || [])[0], lists: {}, open: null, query: "", found: null, sel: 0 };
+  return pages[name];
+}
 
 const clock = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
 const artStyle = (url) => url ? `background-image:url('${String(url).replace(/['\\()]/g, encodeURIComponent)}')` : "";
 const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).catch(() => {});
+const viewList = () => [["now", "Now playing"], ...PAGES[mpName].tabs];
 
+let mpReady = false;
 function setUpMusicPage() {
-  if (mp.ready) return;
-  mp.ready = true;
-  document.querySelectorAll(".np [data-op]").forEach((b) => b.addEventListener("click", () => post("/music/control", { op: b.dataset.op })));
+  if (mpReady) return;
+  mpReady = true;
+  document.querySelectorAll(".npv [data-op]").forEach((b) => b.addEventListener("click", () => post("/music/control", { op: b.dataset.op })));
   $("mp-repeat").addEventListener("click", () => {
     const r = state && state.music && state.music.repeat;
     post("/music/control", { op: !r ? "repeat_all" : r === "all" ? "repeat_one" : "repeat_off" });
   });
   $("mp-shuffle").addEventListener("click", () => post("/music/control", { op: state && state.music && state.music.shuffle ? "shuffle_off" : "shuffle_on" }));
-  $("mp-close").addEventListener("click", () => post("/music/page"));
-  document.querySelectorAll(".lib [data-tab]").forEach((b) => b.addEventListener("click", () => {
-    const again = mp.tab === b.dataset.tab;
-    mp.tab = b.dataset.tab;
-    if (mp.tab === "playlists" && again) mp.open = null; // the tab again: back to the playlists
-    if (mp.tab !== "search" || !mp.found) loadTab(again);
-    renderList();
-    if (mp.tab === "search" && !mp.found) openMusicKeyboard();
-  }));
+  $("mp-views").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-view]");
+    if (b) pickView(b.dataset.view);
+  });
   $("mp-list").addEventListener("click", (e) => {
     const row = e.target.closest("[data-i], [data-p], [data-back], [data-find]");
-    if (!row) return;
-    if (row.dataset.find) { openMusicKeyboard(); return; }
-    if (row.dataset.back) { mp.open = null; renderList(); return; }
-    if (row.dataset.p) {
-      const p = (mp.lists.playlists || {}).playlists[+row.dataset.p];
-      mp.open = { title: p.title, loading: true };
-      renderList();
-      browse({ what: "playlist", source: p.source, id: p.id }).then((got) => { if (mp.open && mp.open.title === p.title) { mp.open = { ...got, title: p.title }; renderList(); } });
-      return;
-    }
-    const list = shownList();
-    if (list && list.tracks) post("/music/play", { title: list.title || "", tracks: list.tracks, at: +row.dataset.i });
+    if (row) pickRow(row);
   });
-  loadTab(false);
+}
+
+// pickView opens a view: its button touched or chosen with the knob. A list's button again goes
+// back to its top (the playlists, from an open one).
+function pickView(view) {
+  const again = mp.view === view;
+  if (view === "playlists" && again) mp.open = null;
+  setView(view);
+  if (view === "search" && !mp.found) openMusicKeyboard();
+  if (again && view !== "search") loadTab(true);
+}
+
+function setView(view) {
+  if (view !== "now") { mp.lastTab = view; loadTab(false); }
+  mp.view = view;
+  mp.sel = viewList().length; // the first row
+  renderMusic();
+  post("/music/view", { view });
+}
+
+function pickRow(row) {
+  if (row.dataset.find) { openMusicKeyboard(); return; }
+  if (row.dataset.back) { mp.open = null; mp.sel = viewList().length; renderMusic(); return; }
+  if (row.dataset.p) {
+    const p = (mp.lists.playlists || {}).playlists[+row.dataset.p], page = mp;
+    page.open = { title: p.title, loading: true };
+    page.sel = viewList().length;
+    renderMusic();
+    browse({ what: "playlist", source: p.source, id: p.id }).then((got) => {
+      if (page.open && page.open.title === p.title) { page.open = { ...got, title: p.title }; if (page === mp) renderMusic(); }
+    });
+    return;
+  }
+  const list = shownList();
+  if (!list || !list.tracks) return;
+  fetch("/music/play", { method: "POST", headers: { "Content-Type": "application/json" },
+                         body: JSON.stringify({ title: list.title || "", tracks: list.tracks, at: +row.dataset.i }) })
+    .then(async (res) => { if (!res.ok) showToast((await res.text()).trim() || "Couldn't play that.", "music"); })
+    .catch(() => showToast("Couldn't reach Petasos.", "music"));
+  setView("now");
+}
+
+// musicNav is the knob and the front button on a music page, from petasos (pagecontrols.go):
+// a turn, "press", "back", or "swap" (the page's own soft key again).
+function musicNav(n) {
+  if (!mp || $("mpage").hidden) return;
+  if (!$("mp-kb").hidden && kb) {
+    if (n === "back") closeMusicKeyboard();
+    else if (n === "press") kbKnob("press");
+    else if (typeof n === "number") kbKnob({ turn: n });
+    return;
+  }
+  const views = viewList();
+  if (n === "swap") { if (views.length > 1) setView(mp.view === "now" ? mp.lastTab : "now"); return; }
+  if (n === "back") {
+    if (mp.view === "playlists" && mp.open) { mp.open = null; mp.sel = views.length; renderMusic(); }
+    else setView("now");
+    return;
+  }
+  const rows = [...$("mp-list").querySelectorAll("[data-i], [data-p], [data-back], [data-find]")];
+  if (n === "press") {
+    if (mp.sel < views.length) pickView(views[mp.sel][0]);
+    else if (rows[mp.sel - views.length]) pickRow(rows[mp.sel - views.length]);
+    return;
+  }
+  if (typeof n === "number") {
+    mp.sel = Math.max(0, Math.min(views.length + rows.length - 1, mp.sel + Math.sign(n)));
+    renderMusic();
+  }
 }
 
 function browse(params) {
@@ -663,16 +868,16 @@ function browse(params) {
 }
 
 function loadTab(force) {
-  const tab = mp.tab;
-  if (tab === "search" || (mp.lists[tab] && !force)) return;
-  if (!mp.lists[tab]) mp.lists[tab] = { loading: true };
-  browse({ what: tab }).then((got) => { mp.lists[tab] = got; renderList(); });
+  const tab = mp.lastTab, page = mp;
+  if (!tab || tab === "search" || (page.lists[tab] && !page.lists[tab].loading && !force)) return;
+  if (!page.lists[tab]) page.lists[tab] = { loading: true };
+  browse({ what: tab, source: PAGES[page.name].source }).then((got) => { page.lists[tab] = got; if (page === mp) renderMusic(); });
 }
 
 function shownList() {
-  if (mp.tab === "playlists" && mp.open) return mp.open;
-  if (mp.tab === "search") return mp.found;
-  return mp.lists[mp.tab];
+  if (mp.view === "playlists" && mp.open) return mp.open;
+  if (mp.view === "search") return mp.found;
+  return mp.lists[mp.view];
 }
 
 function trackRows(tracks, now) {
@@ -683,73 +888,84 @@ function trackRows(tracks, now) {
   }).join("");
 }
 
-function renderList() {
-  document.querySelectorAll(".lib [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === mp.tab));
+function listHTML() {
   const now = state && state.music;
   const note = (text) => `<div class="note">${esc(text)}</div>`;
-  let html = "";
-  if (mp.tab === "search") {
-    html = `<div class="find" data-find="1">${icon("search")}<div>${esc(mp.query || "Search your music")}</div></div>`;
+  if (mp.view === "search") {
+    let html = `<div class="find" data-find="1">${icon("search")}<div>${esc(mp.query || "Search " + THEMES[mp.name].name)}</div></div>`;
     if (mp.found && mp.found.loading) html += note("Searching…");
     else if (mp.found) html += mp.found.tracks && mp.found.tracks.length ? trackRows(mp.found.tracks, now) : note(mp.found.note || "Nothing found.");
-  } else if (mp.tab === "playlists" && mp.open) {
-    const o = mp.open;
-    html = `<div class="head" data-back="1">${icon("back")}<div>${esc(o.title)}</div><em>${o.tracks ? o.tracks.length + " songs" : ""}</em></div>`;
-    html += o.loading ? note("Loading…") : o.tracks && o.tracks.length ? trackRows(o.tracks, now) : note(o.note || "This playlist is empty.");
-  } else {
-    const l = mp.lists[mp.tab];
-    if (!l || l.loading) html = note("Loading…");
-    else if (mp.tab === "playlists")
-      html = (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art)}">${p.art ? "" : icon("list")}</div>
-        <div><b>${esc(p.title)}</b><span>${p.source === "soundcloud" ? "SoundCloud" : p.source === "navidrome" ? "Navidrome" : ""}</span></div><em>${p.count || ""}</em></div>`).join("")
-        : note(l.note || "No playlists yet.");
-    else html = (l.tracks || []).length ? trackRows(l.tracks, now) : note(l.note || "Nothing here yet.");
+    return html;
   }
-  if (html !== mp.shown) { $("mp-list").innerHTML = html; mp.shown = html; }
+  if (mp.view === "playlists" && mp.open) {
+    const o = mp.open;
+    return `<div class="head" data-back="1">${icon("back")}<div>${esc(o.title)}</div><em>${o.tracks ? o.tracks.length + " songs" : ""}</em></div>` +
+      (o.loading ? note("Loading…") : o.tracks && o.tracks.length ? trackRows(o.tracks, now) : note(o.note || "This playlist is empty."));
+  }
+  const l = mp.lists[mp.view];
+  if (!l || l.loading) return note("Loading…");
+  if (mp.view === "playlists")
+    return (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art)}">${p.art ? "" : icon("list")}</div>
+      <div><b>${esc(p.title)}</b><span>${p.count ? p.count + " songs" : ""}</span></div><em></em></div>`).join("")
+      : note(l.note || "No playlists yet.");
+  return (l.tracks || []).length ? trackRows(l.tracks, now) : note(l.note || "Nothing here yet.");
+}
+
+function renderMusic() {
+  const views = viewList(), listing = mp.view !== "now";
+  $("mp-views").hidden = views.length < 2;
+  $("mp-views").innerHTML = views.map(([v, name], i) => `<button data-view="${v}" class="${v === "now" ? "now" : ""}${v === mp.view ? " on" : ""}${listing && i === mp.sel ? " sel" : ""}">${v === "now" ? icon("play") : ""}${esc(name)}</button>`).join("");
+  $("mp-now").hidden = listing;
+  $("mp-lib").hidden = !listing;
+  const apple = mp.name === "apple";
+  $("mp-note").hidden = !apple;
+  $("mp-note").textContent = apple ? `Choose music on your iPhone, or ask ${state.agent}` : "";
+  if (!listing) return;
+  const html = listHTML();
+  if (html !== mpShown) { $("mp-list").innerHTML = html; mpShown = html; }
+  const rows = $("mp-list").querySelectorAll("[data-i], [data-p], [data-back], [data-find]");
+  rows.forEach((r, i) => r.classList.toggle("sel", i === mp.sel - views.length));
+  const sel = rows[mp.sel - views.length];
+  if (sel) sel.scrollIntoView({ block: "nearest" });
 }
 
 function drawMusicPage(s) {
   setUpMusicPage();
-  $("mp-agent").textContent = s.agent;
-  const m = s.music;
+  if (s.page !== mpOpened) { // opened (petasos starts every page on what's playing)
+    mpOpened = s.page;
+    pageState(s.page).view = "now";
+  }
+  if (mpName !== s.page) { mpName = s.page; mpShown = ""; }
+  mp = pageState(s.page);
+  const m = s.music, t = THEMES[m && m.service] || THEMES[s.page];
   $("mp-art").style.cssText = m && m.art ? artStyle(m.art) : "";
   $("mp-art").innerHTML = m && m.art ? "" : icon("music");
+  $("mp-src").textContent = m ? t.name + (m.service && m.source && !m.library ? " · " + m.source : "") : THEMES[s.page].name;
   $("mp-title").textContent = m ? m.title || "Playing" : "Nothing playing";
-  $("mp-artist").textContent = m ? [m.artist, m.source].filter(Boolean).join(" · ") : `Pick something, or ask ${s.agent}`;
+  $("mp-artist").textContent = m ? m.artist || "" : s.page === "apple" ? "" : `Pick something, or ask ${s.agent}`;
   $("mp-play").firstElementChild.firstElementChild.setAttribute("href", m && m.playing ? "#i-pause" : "#i-play");
   const lib = !!(m && m.library);
   $("mp-repeat").firstElementChild.firstElementChild.setAttribute("href", m && m.repeat === "one" ? "#i-repeat-one" : "#i-repeat");
   $("mp-repeat").className = !lib ? "off" : m.repeat ? "on" : "";
   $("mp-shuffle").className = !lib ? "off" : m.shuffle ? "on" : "";
-  renderList();
-  stepProgress();
-}
-
-let progressTimer = 0;
-function stepProgress() {
-  clearTimeout(progressTimer);
-  const m = state && state.music;
-  if ($("mpage").hidden) return;
-  const len = m && m.seconds || 0;
-  const pos = m ? (m.position || 0) + (m.moving && m.playing ? (Date.now() - m.at) / 1000 : 0) : 0;
-  $("mp-fill").style.width = len ? `${Math.min(100, 100 * pos / len)}%` : "0";
-  $("mp-pos").textContent = m && m.library ? clock(Math.min(pos, len || pos)) : "";
-  $("mp-len").textContent = len ? clock(len) : "";
-  if (m && m.moving && m.playing) progressTimer = setTimeout(stepProgress, 500);
+  renderMusic();
 }
 
 function openMusicKeyboard() {
   $("mp-kb").hidden = false;
   $("mp-kb").innerHTML = `<div class="kb" id="kb"></div>`;
-  kb = { id: "music-search", text: mp.query, max: 60, layout: "abc", shift: !mp.query, sel: -1, sent: false, title: "Search",
+  const page = mp;
+  kb = { id: "music-search", text: page.query, max: 60, layout: "abc", shift: !page.query, sel: -1, sent: false, title: "Search",
          onDone: (text) => {
            closeMusicKeyboard();
-           mp.query = text.trim();
-           if (!mp.query) { mp.found = null; renderList(); return; }
-           mp.found = { loading: true };
-           renderList();
-           const asked = mp.query;
-           browse({ what: "search", q: asked }).then((got) => { if (mp.query === asked) { mp.found = got; renderList(); } });
+           page.query = text.trim();
+           if (!page.query) { page.found = null; renderMusic(); return; }
+           page.found = { loading: true };
+           renderMusic();
+           const asked = page.query;
+           browse({ what: "search", q: asked, source: PAGES[page.name].source }).then((got) => {
+             if (page.query === asked) { page.found = got; if (page === mp) renderMusic(); }
+           });
          },
          onCancel: () => closeMusicKeyboard() };
   $("kb").addEventListener("pointerdown", (e) => {
@@ -770,6 +986,24 @@ function closeMusicKeyboard() {
   $("mp-kb").hidden = true;
   $("mp-kb").innerHTML = "";
   if (kb && kb.onDone) kb = null;
+}
+
+// --- passing notes ---------------------------------------------------------------------------------
+
+let toastTimer = 0;
+function showToast(text, iconName) {
+  $("toast").innerHTML = icon(iconName) + `<span>${esc(text)}</span>`;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, 1800);
+}
+
+// The mic turned off or on (the knob's hold): say so, whichever page is showing.
+function drawMicNote(s) {
+  if (micNoteSeen === null) { micNoteSeen = s.mic_note || 0; return; }
+  if ((s.mic_note || 0) === micNoteSeen) return;
+  micNoteSeen = s.mic_note || 0;
+  showToast(s.muted ? "Mic off" : "Mic on", s.muted ? "mic-off" : "mic");
 }
 
 // --- held: what letting go would do ---------------------------------------------------------------
@@ -879,26 +1113,6 @@ async function sendCapture(run) {
   run.sending = false;
 }
 
-// While listening, the bottom band lights to the microphone's level, as the top one does to
-// the volume: it jumps up with the voice and falls back slowly.
-let micTarget = 0, micShown = 0, micFrame = 0;
-
-function drawMic(s) {
-  const on = s.phase === "listening" && !s.bt;
-  $("mic-lit").setAttribute("opacity", on ? "1" : "0");
-  if (!on) micTarget = 0;
-  if (!micFrame) micFrame = requestAnimationFrame(stepMic);
-}
-
-function stepMic() {
-  micShown += (micTarget - micShown) * (micTarget > micShown ? 0.5 : 0.12);
-  if (Math.abs(micTarget - micShown) < 0.005) micShown = micTarget;
-  const w = (800 * micShown).toFixed(1);
-  $("mic-cover").setAttribute("width", w);
-  $("mic-keys").setAttribute("width", w);
-  micFrame = micShown === micTarget ? 0 : requestAnimationFrame(stepMic);
-}
-
 // The kiosk keeps this page open across petasos updates; when the program behind it is a newer
 // one, load the newer page.
 let pageVersion = null;
@@ -909,9 +1123,11 @@ function connect() {
     const message = JSON.parse(e.data);
     if ("kb" in message) { kbKnob(message.kb); return; }
     if ("mic" in message) { // the microphone's level, many times a second while listening
-      if (state && state.phase === "listening") { micTarget = message.mic; if (!micFrame) micFrame = requestAnimationFrame(stepMic); }
+      if (state && state.phase === "listening") { micTarget = message.mic; moveBands(); }
       return;
     }
+    if ("lvl" in message) { lvlTarget = message.lvl; moveBands(); return; } // the sound's level (audiometer.go)
+    if ("nav" in message) { musicNav(message.nav); return; } // the knob or front button on a music page
     state = message;
     if (pageVersion === null) pageVersion = state.version;
     else if (state.version !== pageVersion) { location.replace("/?v=" + encodeURIComponent(state.version)); return; }
@@ -929,7 +1145,6 @@ function press(input, action, delta) {
 
 let controlsReady = false;
 function setUpControls(s) {
-  $("c-mute").classList.toggle("on", !!s.muted);
   $("c-pin").hidden = !!s.no_pin;
   $("c-pin").classList.toggle("on", !!s.on_top);
   $("c-pin").title = s.on_top ? "Stop keeping this window on top" : "Keep this window on top";
@@ -985,7 +1200,7 @@ function setUpControls(s) {
 
 // In the apps, which have no title bar, the window moves by dragging the page's background.
 if (window.petasosWindow) addEventListener("mousedown", (e) => {
-  if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row, .mp, .mp-kb"))
+  if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row, .page, .mp-kb"))
     petasosWindow("drag");
 });
 

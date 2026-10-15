@@ -1,7 +1,8 @@
 // Petasos, the Hermes Desktop half: its settings under Settings → Plugins → Petasos.
 //
 // The same settings as the dashboard's Petasos tab (dashboard/dist/index.js): the agent's name,
-// whether devices share one chat, and the four preset buttons (the soft keys). It reads and
+// whether devices share one chat, and the preset buttons (the soft keys): the four top buttons,
+// and a second set of four they show after a press of the top-right button. It reads and
 // writes the plugin's /mapping route through the app's own connection to Hermes, so the checks
 // and the file are the ones the Car Thing and mapping.json use. Only each preset's press is
 // edited here; anything else in mapping.json is kept as it is.
@@ -11,7 +12,20 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const LABEL_MAX = 32
 // The screen's own names for these (petasos core._ACTION_LABELS).
-const ACTION_LABELS = { mic_toggle: 'Mic on / off', music_next: 'Next song', music_previous: 'Previous song', music_toggle: 'Play / pause', music_stop: 'Stop the music', music_page: 'Music page' }
+const ACTION_LABELS = {
+  mic_toggle: 'Mic on / off',
+  music_next: 'Next song',
+  music_page: 'Music page',
+  music_previous: 'Previous song',
+  music_stop: 'Stop the music',
+  music_toggle: 'Play / pause',
+  page_apple: 'Apple Music',
+  page_navidrome: 'Navidrome',
+  page_petasos: 'Petasos',
+  page_soundcloud: 'SoundCloud',
+  page_spotify: 'Spotify',
+  soft_keys: 'Other soft keys'
+}
 const AGENT_NAME_MAX = 24
 const TABS = [['agent', 'Agent'], ['keys', 'Soft keys'], ['music', 'Music']]
 const ACTIONS = [
@@ -23,8 +37,18 @@ const ACTIONS = [
   ['music_next', 'Next song'],
   ['music_previous', 'Previous song'],
   ['music_stop', 'Stop the music'],
-  ['music_page', 'Music page'],
+  ['page_petasos', 'Open the Petasos page'],
+  ['page_soundcloud', 'Open the SoundCloud page'],
+  ['page_navidrome', 'Open the Navidrome page'],
+  ['page_spotify', 'Open the Spotify page'],
+  ['page_apple', 'Open the Apple Music page'],
   ['none', 'Nothing']
+]
+// The two sets of soft keys: preset-1..4 on the top buttons, and preset-5..8 on the same
+// buttons after a press of the top-right one.
+const SETS = [
+  ['First set', 0],
+  ['Second set — shown after a press of the top-right button', 4]
 ]
 
 const FIELD = 'w-full rounded border border-(--ui-border) bg-transparent px-2 py-1 text-sm'
@@ -68,15 +92,25 @@ export function ownedBy(mapping) {
   return names.length ? ` (now: ${names.join(', ')})` : ''
 }
 
+// The actions to pick from, with one an older mapping still gives a preset (such as the music
+// page) kept at the end so it shows as it is.
+export function actionsFor(action) {
+  if (ACTIONS.some(([a]) => a === action)) {
+    return ACTIONS
+  }
+
+  return [...ACTIONS.slice(0, -1), [action, ACTION_LABELS[action]], ACTIONS[ACTIONS.length - 1]]
+}
+
 export function presetsOf(mapping) {
   const out = []
 
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 8; i++) {
     const gestures = (mapping.controls || {})[`preset-${i}`] || {}
     const step = gestures.press || {}
 
     out.push({
-      action: ACTIONS.some(([a]) => a === step.action) ? step.action : 'none',
+      action: ACTIONS.some(([a]) => a === step.action) || ACTION_LABELS[step.action] ? step.action : 'none',
       label: step.label || '',
       other: Object.keys(gestures).filter(g => g !== 'press'),
       text: step.text || ''
@@ -132,7 +166,7 @@ function Preset({ index, preset, onChange }) {
     className: 'flex flex-col gap-3 rounded border border-(--ui-border) p-3',
     children: [
       jsx('legend', { className: 'px-1 font-medium', children: `Preset ${index + 1}` }),
-      labelled('When pressed', select(preset.action, set('action'), ACTIONS)),
+      labelled('When pressed', select(preset.action, set('action'), actionsFor(preset.action))),
       preset.action === 'prompt'
         ? labelled('What to ask',
             jsx('input', {
@@ -429,13 +463,20 @@ function Settings({ ctx }) {
       className: HINT,
       children: `The shared preset buttons, which every device without its own uses. A Car Thing gets its own in its Device settings, a Petasos app in its Settings${ownedBy(loaded.mapping)}. Devices pick up changes the next time a button is pressed.`
     }),
-    jsx('div', {
-      'aria-label': 'How the top of the screen will look',
-      className: 'grid grid-cols-4 gap-2 rounded bg-[#1f1b17] p-3 text-center text-[#c9b48a]',
-      children: presets.map((p, i) => jsx('span', { className: shownLabel(p) ? '' : 'opacity-40', children: shownLabel(p) || '—' }, i))
-    }),
-    ...presets.map((p, i) =>
-      jsx(Preset, { index: i, onChange: edited(next => setPresets(presets.map((old, j) => (j === i ? next : old)))), preset: p }, i)),
+    ...SETS.map(([title, first]) =>
+      jsxs('section', {
+        className: 'flex flex-col gap-3',
+        children: [
+          jsx('h3', { className: 'font-medium', children: title }),
+          jsx('div', {
+            'aria-label': 'How the top of the screen will look',
+            className: 'grid grid-cols-4 gap-2 rounded bg-[#1f1b17] p-3 text-center text-[#c9b48a]',
+            children: presets.slice(first, first + 4).map((p, i) => jsx('span', { className: shownLabel(p) ? '' : 'opacity-40', children: shownLabel(p) || '—' }, i))
+          }),
+          ...presets.slice(first, first + 4).map((p, i) =>
+            jsx(Preset, { index: first + i, onChange: edited(next => setPresets(presets.map((old, j) => (j === first + i ? next : old)))), preset: p }, first + i))
+        ]
+      }, first)),
     saveRow
   ]
 

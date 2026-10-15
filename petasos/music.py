@@ -15,6 +15,9 @@ Athena chooses what plays with the ``play_music`` tool and controls it with
 its next request or its regular check (``/devices/<id>/commands``); the device then streams
 each track from the plugin's ``/music/stream`` route, so the Navidrome password and the
 folders never leave Hermes.
+
+SoundCloud is a third source. Spotify isn't one: the device can't stream it, so the music page
+only browses it and has the Spotify app on your phone play what you choose (``Spotify``).
 """
 from __future__ import annotations
 
@@ -234,6 +237,10 @@ class Navidrome:
 
     def playlist_tracks(self, ident: str) -> list[dict]:
         return [self._song(s) for s in self.call("getPlaylist", id=ident).get("playlist", {}).get("entry", [])]
+
+    def likes(self) -> list[dict]:
+        """Your starred songs."""
+        return [self._song(s) for s in self.call("getStarred2").get("starred2", {}).get("song", [])]
 
     def search(self, query: str) -> list[dict]:
         found = self.call("search3", query=query, songCount=30, albumCount=0, artistCount=0).get("searchResult3", {})
@@ -675,6 +682,260 @@ class SoundCloud:
         raise MusicError("SoundCloud has no stream for this track")
 
 
+class Spotify:
+    """Your Spotify account, as a remote for the Spotify app on your phone (Spotify Connect).
+
+    The Car Thing can't play Spotify's audio itself: the phone plays it, and its sound reaches
+    the Car Thing over Bluetooth, which shows what's playing and skips. So Spotify is only on the
+    music page (your saved songs, your playlists, a search), and choosing a song there tells the
+    phone to play that list from that song. It isn't a source for play_music, which streams.
+
+    Sign-in is OAuth with PKCE from the Petasos app (an app registered at
+    developer.spotify.com/dashboard, no client secret), kept in ``spotify-account.json``.
+    Choosing music needs Spotify Premium. An app in Spotify's development mode serves only the
+    accounts listed in its User Management, shows the songs of only the playlists you made or
+    collaborate on, and gives at most ten search results a call."""
+
+    API = "https://api.spotify.com/v1"
+    AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
+    TOKEN_URL = "https://accounts.spotify.com/api/token"
+    SCOPES = ("user-library-read playlist-read-private playlist-read-collaborative "
+              "user-read-playback-state user-modify-playback-state")
+    SIGN_IN = "Sign in to Spotify in the Petasos app's settings (Music)"
+    _lock = threading.Lock()
+
+    def __init__(self, cfg: dict) -> None:
+        self.client_id = str(cfg.get("client_id") or "")
+        if not self.client_id:
+            raise MusicError("music.json's spotify needs client_id")
+
+    def _key(self) -> str:  # which app a saved sign-in belongs to: a changed ID starts over
+        return hashlib.sha256(self.client_id.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _account_path() -> Path:
+        return petasos_dir() / "spotify-account.json"
+
+    @staticmethod
+    def _pending_path() -> Path:
+        return petasos_dir() / "spotify-pending.json"
+
+    def account(self) -> dict:
+        saved = _read_json(self._account_path(), {})
+        return saved if isinstance(saved, dict) and saved.get("app") == self._key() and saved.get("refresh_token") else {}
+
+    def _save_account(self, account: dict) -> None:
+        _write_json(self._account_path(), account)
+        os.chmod(self._account_path(), 0o600)
+
+    def _grant(self, form: dict) -> dict:
+        # With PKCE the app has no secret: its ID goes in the form.
+        req = urllib.request.Request(self.TOKEN_URL, data=urllib.parse.urlencode({**form, "client_id": self.client_id}).encode(),
+                                     method="POST", headers={"Accept": "application/json",
+                                                             "Content-Type": "application/x-www-form-urlencoded"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            said = ""
+            try:
+                body = json.loads(exc.read() or b"{}")
+                said = str(body.get("error_description") or body.get("error") or "")[:200]
+            except (OSError, ValueError, AttributeError):
+                pass
+            raise MusicError(f"Spotify refused the sign-in (HTTP {exc.code}" + (f": {said}" if said else "")
+                             + "); sign in to Spotify again in the Petasos app's settings (Music)") from None
+        except (OSError, ValueError) as exc:
+            raise MusicError(f"Spotify didn't answer: {exc}") from None
+
+    # --- your account: a one-time sign-in (OAuth with PKCE) from the Petasos app ------------------
+
+    def authorize_url(self, redirect_uri: str) -> str:
+        """Where to send the browser to sign in; the PKCE verifier stays here, by state."""
+        import base64
+        verifier = secrets.token_urlsafe(48)
+        state = secrets.token_urlsafe(16)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+        pending = {k: v for k, v in _read_json(self._pending_path(), {}).items()
+                   if time.time() - float(v.get("at") or 0) < 600}
+        pending[state] = {"verifier": verifier, "redirect_uri": redirect_uri, "at": time.time()}
+        _write_json(self._pending_path(), pending)
+        return self.AUTHORIZE_URL + "?" + urllib.parse.urlencode({
+            "client_id": self.client_id, "redirect_uri": redirect_uri, "response_type": "code", "scope": self.SCOPES,
+            "code_challenge": challenge, "code_challenge_method": "S256", "state": state})
+
+    def connect(self, code: str, state: str) -> str:
+        """Finishes the sign-in: the code becomes your tokens. Returns your Spotify name."""
+        pending = _read_json(self._pending_path(), {})
+        ask = pending.pop(state, None)
+        _write_json(self._pending_path(), pending)
+        if not ask or time.time() - float(ask.get("at") or 0) > 600:
+            raise MusicError("That sign-in took too long or didn't start here; try again")
+        got = self._grant({"grant_type": "authorization_code", "code": code, "redirect_uri": ask["redirect_uri"],
+                           "code_verifier": ask["verifier"]})
+        if not got.get("refresh_token"):
+            raise MusicError("Spotify didn't give a lasting sign-in")
+        account = {"app": self._key(), "access_token": got["access_token"], "refresh_token": got["refresh_token"],
+                   "expires_at": time.time() + float(got.get("expires_in") or 3600)}
+        self._save_account(account)
+        me = self.call("GET", "/me")
+        account.update(username=me.get("display_name") or me.get("id") or "", user=me.get("id") or "")
+        self._save_account(account)
+        return account["username"]
+
+    def disconnect(self) -> None:
+        try:
+            self._account_path().unlink()
+        except FileNotFoundError:
+            pass
+
+    def token(self) -> str:
+        """Your account's token, renewed when it has run out."""
+        with Spotify._lock:
+            account = self.account()
+            if not account:
+                raise MusicError(self.SIGN_IN)
+            if time.time() < float(account.get("expires_at") or 0) - 60:
+                return account["access_token"]
+            # Spotify may send a new refresh token in place of the old one: it is saved before use.
+            got = self._grant({"grant_type": "refresh_token", "refresh_token": account["refresh_token"]})
+            if not got.get("access_token"):
+                raise MusicError("Spotify gave no token")
+            account.update(access_token=got["access_token"], refresh_token=got.get("refresh_token") or account["refresh_token"],
+                           expires_at=time.time() + float(got.get("expires_in") or 3600))
+            self._save_account(account)
+            return account["access_token"]
+
+    def call(self, method: str, path: str, body=None, **params):
+        # A path, or the address of a list's next page, which Spotify gives in full.
+        url = (path if path.startswith(self.API + "/") else self.API + path) + ("?" + urllib.parse.urlencode(params) if params else "")
+        headers = {"Authorization": "Bearer " + self.token(), "Accept": "application/json"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
+                                     method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+                return json.loads(data) if data.strip() else {}
+        except urllib.error.HTTPError as exc:
+            said, reason = "", ""
+            try:
+                err = json.loads(exc.read() or b"{}").get("error")
+                if isinstance(err, dict):
+                    said, reason = str(err.get("message") or "")[:200], str(err.get("reason") or "")
+                elif err:
+                    said = str(err)[:200]
+            except (OSError, ValueError, AttributeError):
+                pass
+            if exc.code == 401:  # a token Spotify has dropped: get a new one next time
+                account = self.account()
+                if account:
+                    account["expires_at"] = 0
+                    self._save_account(account)
+            if exc.code == 403 and (reason == "PREMIUM_REQUIRED" or "premium" in said.lower()):
+                raise MusicError("Spotify only lets apps choose music with Spotify Premium") from None
+            if exc.code == 403 and "not registered" in said.lower():  # development mode's allowed accounts
+                raise MusicError("Add your Spotify account to the app's User Management at developer.spotify.com/dashboard") from None
+            if exc.code == 404 and reason == "NO_ACTIVE_DEVICE":
+                raise MusicError("Open Spotify on your phone first") from None
+            raise MusicError(f"Spotify: HTTP {exc.code}" + (f": {said}" if said else "")) from None
+        except (OSError, ValueError) as exc:
+            raise MusicError(f"Spotify didn't answer: {exc}") from None
+
+    def _pages(self, path: str, most: int = MAX_QUEUE, **params) -> list:
+        """A list's items, a page at a time (Spotify gives at most 50 a call)."""
+        items: list = []
+        answer = self.call("GET", path, limit=min(50, most), **params)
+        while True:
+            items += [i for i in answer.get("items") or [] if isinstance(i, dict)]
+            if len(items) >= most or not answer.get("next"):
+                return items[:most]
+            answer = self.call("GET", answer["next"])
+
+    @staticmethod
+    def _art(images) -> str:
+        """The picture closest to 300 pixels across (Spotify sends them largest first)."""
+        images = [i for i in images or [] if isinstance(i, dict) and i.get("url")]
+        if not images:
+            return ""
+        big_enough = [i for i in images if (i.get("width") or 0) >= 300]
+        return (big_enough[-1] if big_enough else images[0])["url"]
+
+    @staticmethod
+    def _song(t) -> dict | None:
+        if not isinstance(t, dict) or t.get("type", "track") != "track" or not t.get("uri") or t.get("is_local"):
+            return None
+        if t.get("is_playable") is False:
+            return None
+        album = t.get("album") or {}
+        return _track("spotify", t["uri"], t.get("name"), ", ".join(a.get("name", "") for a in t.get("artists") or []),
+                      album.get("name", ""), int(t.get("duration_ms") or 0) // 1000, Spotify._art(album.get("images")))
+
+    def _songs(self, tracks) -> list[dict]:
+        return [s for s in (self._song(t) for t in tracks) if s]
+
+    # The music page's lists.
+    def likes(self) -> list[dict]:
+        return self._songs(i.get("track") for i in self._pages("/me/tracks"))
+
+    def playlists(self) -> list[dict]:
+        # Spotify shows the songs of only the playlists you made or collaborate on, so the ones you
+        # only follow, which would open empty, are left out.
+        me = self.account().get("user") or ""
+        out = []
+        for p in self._pages("/me/playlists"):
+            if me and (p.get("owner") or {}).get("id") != me and not p.get("collaborative"):
+                continue
+            count = (p.get("items") or p.get("tracks") or {}).get("total")
+            out.append(_playlist_entry("spotify", str(p.get("id")), p.get("name"), count, self._art(p.get("images"))))
+        return out
+
+    def playlist_tracks(self, ident: str) -> list[dict]:
+        ident = ident.rsplit(":", 1)[-1]  # an ID, or the playlist's spotify:playlist:… URI
+        try:
+            items = self._pages(f"/playlists/{urllib.parse.quote(ident, safe='')}/items")
+        except MusicError as exc:
+            if "HTTP 403" in str(exc):
+                raise MusicError("Spotify only shows the songs of playlists you made or collaborate on") from None
+            raise
+        return self._songs(i.get("item") or i.get("track") for i in items)
+
+    def search(self, query: str) -> list[dict]:
+        # Spotify gives at most ten results a call to apps in development mode: three calls, then.
+        songs: list[dict] = []
+        for offset in (0, 10, 20):
+            found = self.call("GET", "/search", q=query, type="track", limit=10, offset=offset).get("tracks") or {}
+            songs += self._songs(found.get("items") or [])
+            if not found.get("next"):
+                break
+        return songs
+
+    def play(self, uris: list, at: int = 0) -> None:
+        """Plays these songs from the one at ``at`` on the device Spotify is playing on, or else
+        on your phone. A single playlist or album URI plays that, from its song at ``at``."""
+        uris = [u for u in uris or [] if isinstance(u, str) and u.startswith("spotify:")]
+        if not uris:
+            raise MusicError("Nothing to play")
+        at = max(0, int(at or 0))
+        if len(uris) == 1 and uris[0].split(":")[1] not in ("track", "episode"):
+            body: dict = {"context_uri": uris[0], "offset": {"position": at}}
+        else:
+            at = min(at, len(uris) - 1)
+            if len(uris) > MAX_QUEUE:  # a long list: the part from the chosen song on
+                uris, at = uris[at:at + MAX_QUEUE], 0
+            body = {"uris": uris, "offset": {"position": at}}
+        devices = [d for d in self.call("GET", "/me/player/devices").get("devices") or [] if isinstance(d, dict)]
+        params = {}
+        if not any(d.get("is_active") for d in devices):
+            usable = [d for d in devices if d.get("id") and not d.get("is_restricted")]
+            phones = [d for d in usable if d.get("type") == "Smartphone"]
+            if not (phones or usable):
+                raise MusicError("Open Spotify on your phone first")
+            params["device_id"] = (phones or usable)[0]["id"]
+        self.call("PUT", "/me/player/play", body, **params)
+
+
 def sources() -> list:
     cfg = config()
     out: list = []
@@ -688,7 +949,7 @@ def sources() -> list:
 
 
 def _name(src) -> str:
-    return {Navidrome: "navidrome", Folders: "folders", SoundCloud: "soundcloud"}[type(src)]
+    return {Navidrome: "navidrome", Folders: "folders", SoundCloud: "soundcloud", Spotify: "spotify"}[type(src)]
 
 
 def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dict]]:
@@ -718,16 +979,34 @@ def find(query: str, kind: str = "any", source: str = "") -> tuple[str, list[dic
 def browse(what: str, source: str = "", ident: str = "", query: str = "") -> dict:
     """The device's music page: your likes, your playlists, one playlist's tracks, or a search
     of every source. Each answer has a title and tracks or playlists, and a note when a source
-    couldn't help (not signed in, didn't answer)."""
+    couldn't help (not signed in, didn't answer).
+
+    ``source`` names one source or several ("navidrome,folders"); empty means all but Spotify,
+    which is only asked when named (the device can't stream it: it's a remote for your phone)."""
+    wanted = {{"folder": "folders"}.get(n, n) for n in (p.strip().lower() for p in source.split(",")) if n}
+    if what == "likes" and not wanted:
+        wanted = {"soundcloud"}  # older devices ask for likes without a source: SoundCloud's
     srcs = sources()
-    if not srcs:
-        raise MusicError("No music source is set up yet: add SoundCloud, Navidrome or folders in Petasos's settings (Music).")
     notes: list[str] = []
+    if "spotify" in wanted:
+        cfg = config().get("spotify")
+        try:
+            sp = Spotify(cfg if isinstance(cfg, dict) else {})
+        except MusicError:
+            sp = None
+        if sp and sp.account():
+            srcs.append(sp)
+        else:
+            notes.append(Spotify.SIGN_IN)
+    if not srcs:
+        if notes:
+            raise MusicError(" ".join(notes))
+        raise MusicError("No music source is set up yet: add SoundCloud, Navidrome or folders in Petasos's settings (Music).")
     out: dict = {"title": "", "tracks": [], "playlists": []}
 
     def each(method: str, *args) -> None:
         for src in srcs:
-            if source and _name(src) != source or not hasattr(src, method):
+            if wanted and _name(src) not in wanted or not hasattr(src, method):
                 continue
             try:
                 got = getattr(src, method)(*args)
@@ -738,7 +1017,6 @@ def browse(what: str, source: str = "", ident: str = "", query: str = "") -> dic
 
     if what == "likes":
         out["title"] = "Your likes"
-        source = "soundcloud"
         each("likes")
     elif what == "playlists":
         out["title"] = "Playlists"
@@ -768,11 +1046,13 @@ def settings() -> dict:
     cfg = config()
     nav = cfg.get("navidrome") if isinstance(cfg.get("navidrome"), dict) else {}
     sc = cfg.get("soundcloud") if isinstance(cfg.get("soundcloud"), dict) else {}
+    sp = cfg.get("spotify") if isinstance(cfg.get("spotify"), dict) else {}
     return {"navidrome": {"url": nav.get("url", ""), "username": nav.get("username", ""),
                           "has_password": bool(nav.get("password"))},
             "folders": [f for f in cfg.get("folders") or [] if isinstance(f, str)],
             "soundcloud": {"client_id": sc.get("client_id", ""), "has_secret": bool(sc.get("client_secret")),
                            "account": _soundcloud_account(sc)},
+            "spotify": {"client_id": sp.get("client_id", ""), "account": _spotify_account(sp)},
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "path": str(petasos_dir() / "music.json")}
 
@@ -790,6 +1070,21 @@ def soundcloud() -> "SoundCloud":
     if not cfg.get("soundcloud"):
         raise MusicError("Save SoundCloud's client ID and secret first")
     return SoundCloud(cfg["soundcloud"])
+
+
+def _spotify_account(sp: dict) -> str:
+    """Your Spotify name when you've signed in with this app, else empty."""
+    try:
+        return Spotify(sp).account().get("username", "") if sp.get("client_id") else ""
+    except MusicError:
+        return ""
+
+
+def spotify() -> "Spotify":
+    cfg = config()
+    if not cfg.get("spotify"):
+        raise MusicError("Save Spotify's client ID first")
+    return Spotify(cfg["spotify"])
 
 
 def save_settings(body: dict) -> dict:
@@ -826,6 +1121,12 @@ def save_settings(body: dict) -> dict:
             cfg["soundcloud"] = {"client_id": client_id, "client_secret": secret}
         else:
             cfg.pop("soundcloud", None)
+    if isinstance(body.get("spotify"), dict):  # likewise
+        client_id = str(body["spotify"].get("client_id") or "").strip()
+        if client_id:
+            cfg["spotify"] = {"client_id": client_id}
+        else:
+            cfg.pop("spotify", None)
     _write_json(petasos_dir() / "music.json", cfg)
     try:
         os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
@@ -837,13 +1138,22 @@ def save_settings(body: dict) -> dict:
 def check() -> dict:
     """Whether each source works: Navidrome answers, and how many songs each folder has."""
     cfg = config()
-    out: dict = {"navidrome": None, "folders": [], "soundcloud": None}
+    out: dict = {"navidrome": None, "folders": [], "soundcloud": None, "spotify": None}
     if cfg.get("soundcloud"):
         try:
             SoundCloud(cfg["soundcloud"]).token()
             out["soundcloud"] = {"ok": True, "ffmpeg": shutil.which("ffmpeg") is not None}
         except MusicError as exc:
             out["soundcloud"] = {"ok": False, "problem": str(exc)}
+    if cfg.get("spotify"):  # whether your sign-in still works
+        try:
+            sp = Spotify(cfg["spotify"])
+            if not sp.account():
+                raise MusicError("Spotify: not signed in yet. " + Spotify.SIGN_IN + ".")
+            me = sp.call("GET", "/me")
+            out["spotify"] = {"ok": True, "account": me.get("display_name") or me.get("id") or ""}
+        except MusicError as exc:
+            out["spotify"] = {"ok": False, "problem": str(exc)}
     if cfg.get("navidrome"):
         try:
             Navidrome(cfg["navidrome"]).call("ping")

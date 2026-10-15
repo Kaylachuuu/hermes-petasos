@@ -468,8 +468,10 @@ func (h *hermes) run(eventsFile string) {
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
 	filtered := make(chan map[string]any, 64)
+	paged := make(chan map[string]any, 64)
 	go filterInputs(raw, filtered)
-	go countGestures(filtered, presses)
+	go pageInputs(filtered, paged)
+	go countGestures(paged, presses)
 	if virtual {
 		h.startVirtual(raw)
 	} else if eventsFile != "" {

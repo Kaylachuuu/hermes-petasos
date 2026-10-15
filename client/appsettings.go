@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -300,4 +302,83 @@ func appWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	display.update(func(st *screenState) { st.OnTop = set.OnTop })
 	writeJSONResponse(w, http.StatusOK, set)
+}
+
+// spotifyRedirect is where Spotify sends the browser back to after you sign in, and what the
+// Spotify app must list as its redirect URI. Spotify takes only 127.0.0.1 for this, not
+// localhost.
+const spotifyRedirect = "http://" + screenAddr + "/app/spotify"
+
+// appSpotify signs in to your Spotify account from the app's Settings, as appSoundCloud does
+// for SoundCloud: a POST with ?start opens Spotify's sign-in in your own browser, Spotify sends
+// the browser back here with a code, which the plugin on Hermes turns into your tokens, and the
+// browser tab says how it went. A POST with ?disconnect signs out. The Car Thing uses the
+// sign-in to have the Spotify app on your phone play what you choose on its music page.
+func appSpotify(w http.ResponseWriter, r *http.Request) {
+	h := hereNow()
+	if h == nil || !virtual {
+		http.NotFound(w, r)
+		return
+	}
+	back := func(problem string) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		title, text := "Signed in to Spotify", "You can close this tab and go back to Petasos."
+		if problem != "" {
+			title, text = "Couldn't sign in to Spotify", problem
+		}
+		fmt.Fprintf(w, soundCloudDonePage, html.EscapeString(title), html.EscapeString(title), html.EscapeString(text))
+	}
+	q := r.URL.Query()
+	switch {
+	case r.Method == http.MethodPost && q.Has("disconnect"):
+		if _, err := h.exchange("POST", "/api/plugins/petasos/music/spotify/disconnect", "application/json", []byte("{}"), h.http, 1<<16); err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, map[string]string{"account": ""})
+	case q.Get("error") != "":
+		back("Spotify said: " + firstNonEmpty(q.Get("error_description"), q.Get("error")))
+	case q.Get("code") != "":
+		body, _ := json.Marshal(map[string]string{"code": q.Get("code"), "state": q.Get("state")})
+		if _, err := h.exchange("POST", "/api/plugins/petasos/music/spotify/connect", "application/json", body, h.http, 1<<16); err != nil {
+			back(friendlyHermes(err))
+			return
+		}
+		back("")
+	case r.Method == http.MethodPost && q.Has("start"):
+		to, err := spotifySignInPage(h)
+		if err == nil {
+			err = openInBrowser(to)
+		}
+		if err != nil {
+			writeJSONResponse(w, http.StatusBadGateway, map[string]string{"error": friendlyHermes(err)})
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, map[string]bool{"opened": true})
+	default:
+		to, err := spotifySignInPage(h)
+		if err != nil {
+			back(friendlyHermes(err))
+			return
+		}
+		http.Redirect(w, r, to, http.StatusFound)
+	}
+}
+
+// spotifySignInPage asks the plugin for Spotify's sign-in page, with a new PKCE verifier kept
+// on Hermes.
+func spotifySignInPage(h *hermes) (string, error) {
+	body, _ := json.Marshal(map[string]string{"redirect_uri": spotifyRedirect})
+	data, err := h.exchange("POST", "/api/plugins/petasos/music/spotify/authorize", "application/json", body, h.http, 1<<16)
+	var out struct {
+		URL string `json:"url"`
+	}
+	if err == nil {
+		err = json.Unmarshal(data, &out)
+	}
+	if err != nil || !strings.HasPrefix(out.URL, "https://") {
+		return "", firstErr(err, fmt.Errorf("no sign-in page"))
+	}
+	return out.URL, nil
 }

@@ -14,8 +14,9 @@ from pathlib import Path
 _CORE = "hermes_petasos_core"
 _MUSIC = "hermes_petasos_music"
 
-_LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3",
-           "preset-4": "Preset 4", "mute": "Top-right button", "front": "Front button", "knob": "Knob",
+_LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3", "preset-4": "Preset 4",
+           "preset-5": "Preset 1 (second set)", "preset-6": "Preset 2 (second set)",
+           "preset-7": "Preset 3 (second set)", "preset-8": "Preset 4 (second set)", "mute": "Top-right button", "front": "Front button", "knob": "Knob",
            "car-play": "Car play/pause", "car-next": "Car next track", "car-previous": "Car previous track"}
 
 
@@ -45,7 +46,10 @@ def _describe(step: dict, agent: str) -> str:
     return {"push_to_talk": "push-to-talk", "conversation": "start or end conversation mode",
             "stop_speaking": f"stop {agent} speaking", "volume": "volume", "mic_toggle": "mic on/off",
             "music_toggle": "play or pause the music", "music_next": "next song",
-            "music_previous": "previous song", "music_stop": "stop the music", "music_page": "open or close the music page", "none": "nothing"}.get(action, action)
+            "music_previous": "previous song", "music_stop": "stop the music", "music_page": "open the music page", "soft_keys": "show the other soft keys",
+            "page_petasos": "open the Petasos page", "page_soundcloud": "open the SoundCloud page",
+            "page_navidrome": "open the Navidrome page", "page_spotify": "open the Spotify page",
+            "page_apple": "open the Apple Music page", "none": "nothing"}.get(action, action)
 
 
 def _slash(_args: str = "") -> str:
@@ -54,8 +58,9 @@ def _slash(_args: str = "") -> str:
     mapping = petasos.mapping.current()
     agent = core.agent_name(mapping)
     lines = [f"Car Thing layout (talking to {agent}):"]
+    controls = core.controls_for(mapping, None)
     for name in core.INPUTS:
-        gestures = mapping["controls"].get(name)
+        gestures = controls.get(name)
         if gestures is None and name.startswith("car-"):
             gestures = core.DEFAULT_MAPPING["controls"][name]
         gestures = gestures or {}

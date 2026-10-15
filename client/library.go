@@ -299,7 +299,11 @@ func (l *libraryPlayer) show() {
 		if source == "" {
 			source = "Music"
 		}
-		np = &nowPlaying{Title: t.Title, Artist: t.Artist, Playing: l.want == "playing", Source: source,
+		service := t.Source
+		if service == "folders" { // your own music, like Navidrome's
+			service = "navidrome"
+		}
+		np = &nowPlaying{Title: t.Title, Artist: t.Artist, Playing: l.want == "playing", Source: source, Service: service,
 			Art: t.Art, Seconds: t.Seconds, Position: float64(l.positionLocked()) / libraryRate,
 			At: time.Now().UnixMilli(), Moving: l.run != nil && !l.began.IsZero(),
 			Library: true, Repeat: l.repeat, Shuffle: l.shuffle}
@@ -429,6 +433,8 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 		return from, err
 	}
 	l.reached(r, from)
+	defer meter.clear()
+	heard := time.Now().Add(speakerLag) // when the speaker plays the first of it
 	frame := from
 	buf := make([]byte, 4096*4)
 	for {
@@ -442,6 +448,7 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 		n, readErr := io.ReadFull(pcm, buf)
 		n -= n % 4
 		if n > 0 {
+			meter.feed(buf[:n], libraryRate, 2, heard.Add(time.Duration(frame-from)*time.Second/libraryRate))
 			if _, err := in.Write(buf[:n]); err != nil {
 				_ = cmd.Process.Kill()
 				_ = cmd.Wait()
@@ -484,6 +491,8 @@ func (l *libraryPlayer) playWhole(r *libRun, pcm io.Reader, from int) (int, erro
 	}
 	l.reached(r, from)
 	began := time.Now()
+	meter.feed(data, libraryRate, 2, began.Add(speakerLag))
+	defer meter.clear()
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {

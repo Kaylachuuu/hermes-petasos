@@ -26,9 +26,9 @@ func TestMusicTabSavesTheSourcesOnHermes(t *testing.T) {
 				mu.Unlock()
 			}
 			w.Write([]byte(`{"navidrome":{"url":"","username":"","has_password":false},"folders":["/srv/music"],
-				"soundcloud":{"client_id":"","has_secret":false,"account":""},"ffmpeg":true}`))
+				"soundcloud":{"client_id":"","has_secret":false,"account":""},"spotify":{"client_id":"spid","account":"Kayla"},"ffmpeg":true}`))
 		case "/api/plugins/petasos/music/check":
-			w.Write([]byte(`{"navidrome":{"ok":true},"folders":[{"path":"/srv/music","ok":true,"songs":12},{"path":"/mnt/nas","ok":true,"songs":3}],"soundcloud":null}`))
+			w.Write([]byte(`{"navidrome":{"ok":true},"folders":[{"path":"/srv/music","ok":true,"songs":12},{"path":"/mnt/nas","ok":true,"songs":3}],"soundcloud":null,"spotify":{"ok":true,"account":"Kayla"}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -115,14 +115,74 @@ func TestMusicTabSavesTheSourcesOnHermes(t *testing.T) {
 	mu.Unlock()
 	choose("Save and check")
 	v = waitFor("the check", func(v btScreen) bool { return v.View == "message" && v.Title == "Music" })
-	if !strings.Contains(v.Note, "/mnt/nas: 3 songs") || !strings.Contains(v.Note, "Navidrome answers") {
+	if !strings.Contains(v.Note, "/mnt/nas: 3 songs") || !strings.Contains(v.Note, "Navidrome answers") ||
+		!strings.Contains(v.Note, "Spotify works, signed in as Kayla") {
 		t.Fatalf("check: %+v", v)
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	nav, _ := put["navidrome"].(map[string]any)
 	if nav["url"] != "http://localhost:4533" || nav["username"] != "kayla" || nav["password"] != "hunter2" ||
-		len(put["folders"].([]any)) != 2 {
+		len(put["folders"].([]any)) != 2 || put["spotify"].(map[string]any)["client_id"] != "spid" {
 		t.Fatalf("sent %+v", put)
+	}
+}
+
+// Signing in to Spotify, like SoundCloud, opens its page in your own browser, which comes back
+// with a code that Hermes turns into the sign-in.
+func TestAppSpotifySignsInThroughTheBrowser(t *testing.T) {
+	var connected, disconnected string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/petasos/music/spotify/authorize":
+			data, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(data), `"http://127.0.0.1:8187/app/spotify"`) {
+				t.Errorf("authorize body %s", data)
+			}
+			w.Write([]byte(`{"url":"https://accounts.spotify.com/authorize?state=s1"}`))
+		case "/api/plugins/petasos/music/spotify/connect":
+			data, _ := io.ReadAll(r.Body)
+			connected = string(data)
+			w.Write([]byte(`{"account":"Kayla"}`))
+		case "/api/plugins/petasos/music/spotify/disconnect":
+			disconnected = r.Method
+			w.Write([]byte(`{"account":""}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldV := virtual
+	virtual = true
+	defer func() { virtual = oldV }()
+	here.mu.Lock()
+	oldH := here.h
+	here.h = &hermes{cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
+	here.mu.Unlock()
+	defer func() { here.mu.Lock(); here.h = oldH; here.mu.Unlock() }()
+	var opened string
+	oldOpen := openInBrowser
+	openInBrowser = func(page string) error { opened = page; return nil }
+	defer func() { openInBrowser = oldOpen }()
+
+	rec := httptest.NewRecorder()
+	appSpotify(rec, httptest.NewRequest("POST", "/app/spotify?start", nil))
+	if rec.Code != 200 || opened != "https://accounts.spotify.com/authorize?state=s1" {
+		t.Fatalf("%d %s, opened %q", rec.Code, rec.Body, opened)
+	}
+	rec = httptest.NewRecorder()
+	appSpotify(rec, httptest.NewRequest("GET", "/app/spotify?code=c1&state=s1", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Signed in to Spotify") || connected != `{"code":"c1","state":"s1"}` {
+		t.Fatalf("%d %s (sent %q)", rec.Code, rec.Body, connected)
+	}
+	rec = httptest.NewRecorder()
+	appSpotify(rec, httptest.NewRequest("GET", "/app/spotify?error=access_denied", nil))
+	if !strings.Contains(rec.Body.String(), "Couldn&#39;t sign in to Spotify") || !strings.Contains(rec.Body.String(), "access_denied") {
+		t.Fatalf("error page: %s", rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	appSpotify(rec, httptest.NewRequest("POST", "/app/spotify?disconnect", nil))
+	if rec.Code != 200 || disconnected != "POST" {
+		t.Fatalf("disconnect: %d %s", rec.Code, rec.Body)
 	}
 }

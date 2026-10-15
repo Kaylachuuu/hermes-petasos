@@ -11,7 +11,7 @@ import (
 // The Music tab of the Car Thing's settings (the fourth preset): the music sources on Hermes,
 // the same ones the apps' Settings and Hermes Desktop set (the plugin's music.json). Each value
 // is typed on the on-screen keyboard into a draft, which "Save and check" sends to Hermes. The
-// SoundCloud account sign-in needs a browser, so it is only shown here.
+// SoundCloud and Spotify account sign-ins need a browser, so they are only shown here.
 
 type musicSettings struct {
 	Navidrome struct {
@@ -25,6 +25,10 @@ type musicSettings struct {
 		HasSecret bool   `json:"has_secret"`
 		Account   string `json:"account"`
 	} `json:"soundcloud"`
+	Spotify struct {
+		ClientID string `json:"client_id"`
+		Account  string `json:"account"`
+	} `json:"spotify"`
 	FFmpeg bool `json:"ffmpeg"`
 }
 
@@ -37,6 +41,7 @@ type musicDraft struct {
 	folders  []string
 	scID     string
 	scSecret string // "" keeps the saved one
+	spID     string
 	changed  bool
 }
 
@@ -60,7 +65,8 @@ func (b *bluetooth) musicView() {
 		return
 	}
 	d := &musicDraft{saved: s, url: s.Navidrome.URL, username: s.Navidrome.Username,
-		folders: append([]string(nil), s.Folders...), scID: s.SoundCloud.ClientID}
+		folders: append([]string(nil), s.Folders...), scID: s.SoundCloud.ClientID,
+		spID: s.Spotify.ClientID}
 	b.mu.Lock()
 	b.music = d
 	b.mu.Unlock()
@@ -150,6 +156,14 @@ func (b *bluetooth) musicDraftView(sel int) {
 		account = "Signed in as " + d.saved.SoundCloud.Account
 	}
 	items = append(items, btItem{Kind: "note", Label: account})
+	items = append(items, btItem{Kind: "header", Label: "Spotify"},
+		btItem{Kind: "row", Icon: "device", Label: "Client ID", Value: truncate(orNone(d.spID, "Not used"), 24),
+			do: edit("Spotify client ID", "From the app you created at developer.spotify.com/dashboard. Empty to not use Spotify.", &d.spID, 200, len(items)+1)})
+	account = "Sign in from the Petasos app on a computer"
+	if d.saved.Spotify.Account != "" {
+		account = "Signed in as " + d.saved.Spotify.Account + ". Plays on your phone; needs Premium."
+	}
+	items = append(items, btItem{Kind: "note", Label: account})
 	save := "Check the music"
 	if d.changed {
 		save = "Save and check"
@@ -177,6 +191,7 @@ func (b *bluetooth) saveMusic() {
 			"navidrome":  map[string]string{"url": d.url, "username": d.username, "password": d.password},
 			"folders":    d.folders,
 			"soundcloud": map[string]string{"client_id": d.scID, "client_secret": d.scSecret},
+			"spotify":    map[string]string{"client_id": d.spID},
 		})
 		if _, err := h.exchange("PUT", "/api/plugins/petasos/music/settings", "application/json", body, slow, 1<<20); err != nil {
 			b.musicMessage("Couldn't save that", friendlyHermes(err))
@@ -194,6 +209,11 @@ func (b *bluetooth) saveMusic() {
 			FFmpeg  bool   `json:"ffmpeg"`
 			Problem string `json:"problem"`
 		} `json:"soundcloud"`
+		Spotify *struct {
+			OK      bool   `json:"ok"`
+			Account string `json:"account"`
+			Problem string `json:"problem"`
+		} `json:"spotify"`
 		Folders []struct {
 			Path    string `json:"path"`
 			OK      bool   `json:"ok"`
@@ -227,6 +247,13 @@ func (b *bluetooth) saveMusic() {
 			lines = append(lines, "SoundCloud works, but its songs need ffmpeg installed on Hermes.")
 		default:
 			lines = append(lines, "SoundCloud works.")
+		}
+	}
+	if c.Spotify != nil {
+		if c.Spotify.OK {
+			lines = append(lines, "Spotify works, signed in as "+c.Spotify.Account+".")
+		} else {
+			lines = append(lines, c.Spotify.Problem)
 		}
 	}
 	if len(lines) == 0 {

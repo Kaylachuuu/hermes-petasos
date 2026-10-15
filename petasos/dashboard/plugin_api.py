@@ -63,8 +63,12 @@ def input_event(body: dict) -> dict:
 
 @router.get("/mapping")
 def get_mapping() -> dict:
-    petasos = _core().shared()
-    return {"mapping": petasos.mapping.current(), "problems": list(petasos.mapping.problems),
+    core = _core()
+    petasos = core.shared()
+    mapping = petasos.mapping.current()
+    # As it is used: controls left as an older version set them up show today's defaults.
+    mapping["controls"] = core.controls_for(mapping, None)
+    return {"mapping": mapping, "problems": list(petasos.mapping.problems),
             "path": str(petasos.mapping.path)}
 
 
@@ -204,6 +208,58 @@ def soundcloud_disconnect() -> dict:
     except music.MusicError:
         pass
     return {"account": ""}
+
+
+@router.post("/music/spotify/authorize")
+def spotify_authorize(body: dict) -> dict:
+    """Starts signing in to your Spotify account: the page to send the browser to. The redirect
+    is the Petasos app's own, as registered with the Spotify app (Spotify takes no localhost)."""
+    music = _music()
+    redirect = body.get("redirect_uri") if isinstance(body, dict) else None
+    if not isinstance(redirect, str) or not redirect.startswith(("http://127.0.0.1:", "https://")):
+        raise HTTPException(status_code=400, detail="redirect_uri required")
+    try:
+        return {"url": music.spotify().authorize_url(redirect)}
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/music/spotify/connect")
+def spotify_connect(body: dict) -> dict:
+    """Finishes signing in, with the code Spotify sent back."""
+    music = _music()
+    code, state = (body.get("code"), body.get("state")) if isinstance(body, dict) else (None, None)
+    if not (isinstance(code, str) and isinstance(state, str)):
+        raise HTTPException(status_code=400, detail="code and state required")
+    try:
+        return {"account": music.spotify().connect(code, state)}
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/music/spotify/disconnect")
+def spotify_disconnect() -> dict:
+    music = _music()
+    try:
+        music.spotify().disconnect()
+    except music.MusicError:
+        pass
+    return {"account": ""}
+
+
+@router.post("/music/spotify/play")
+def spotify_play(body: dict) -> dict:
+    """Has the Spotify app on your phone (or wherever Spotify is playing) play these songs, from
+    the one at ``at``: the Car Thing hears it over Bluetooth."""
+    music = _music()
+    uris, at = (body.get("uris"), body.get("at", 0)) if isinstance(body, dict) else (None, 0)
+    if not (isinstance(uris, list) and uris and all(isinstance(u, str) for u in uris)) or not isinstance(at, int):
+        raise HTTPException(status_code=400, detail="uris (a list of Spotify URIs) and at required")
+    try:
+        music.spotify().play(uris, at)
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"ok": True}
 
 
 @router.get("/music/browse")

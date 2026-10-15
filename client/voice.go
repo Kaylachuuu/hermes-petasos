@@ -100,7 +100,8 @@ func (v *voice) carryOut(c map[string]any) {
 		go v.volume(intOf(c["delta"], 0))
 	case "mic":
 		muted, _ := c["muted"].(bool)
-		display.update(func(st *screenState) { st.Muted = muted })
+		display.update(func(st *screenState) { st.Muted = muted; st.MicNote++ })
+		backlight.wake()
 	case "notice":
 		if text, _ := c["text"].(string); text != "" {
 			display.notice(text)
@@ -109,7 +110,7 @@ func (v *voice) carryOut(c map[string]any) {
 		showScreenCommand(c)
 	case "page":
 		page, _ := c["page"].(string)
-		togglePage(page)
+		showPage(page)
 	case "music":
 		op, _ := c["op"].(string)
 		if raw, ok := c["tracks"]; ok && op == "play" { // a queue Athena chose from the library
@@ -148,6 +149,19 @@ func showScreenCommand(c map[string]any) {
 			labels[i], _ = raw[i].(string)
 		}
 		display.update(func(st *screenState) { st.Presets = labels })
+	}
+	if ms := intOf(c["hold_ms"], 0); ms > 0 {
+		tapLimit.Store(int64(ms))
+	}
+	if keys := intOf(c["keys"], 0); keys > 0 { // an older plugin has one set and no pages
+		var pages []string
+		if raw, ok := c["pages"].([]any); ok {
+			for _, p := range raw {
+				name, _ := p.(string)
+				pages = append(pages, name)
+			}
+		}
+		display.update(func(st *screenState) { st.Keys, st.KeySets, st.KeyPages = keys, intOf(c["key_sets"], 1), pages })
 	}
 	if name, _ := c["agent"].(string); name != "" {
 		display.update(func(st *screenState) { st.Agent = name })
@@ -540,7 +554,11 @@ func (v *voice) play(wav []byte) {
 	v.mu.Lock()
 	v.player = cmd
 	v.mu.Unlock()
+	if channels, rate, bits, pcm, err := parseWav(wav); err == nil && bits == 16 {
+		meter.feed(pcm, rate, channels, time.Now().Add(speakerLag))
+	}
 	err := cmd.Wait()
+	meter.clear()
 	v.mu.Lock()
 	stopped := v.player != cmd
 	if !stopped {
@@ -558,6 +576,10 @@ func (v *voice) play(wav []byte) {
 		time.Sleep(speakerTail)
 	}
 }
+
+// speakerLag is about how long after the sound is handed over the speaker plays it, for the
+// level shown on the screen: a Bluetooth speaker buffers a little.
+const speakerLag = 200 * time.Millisecond
 
 // speakerTail is how long a Bluetooth speaker goes on playing after the last of the audio was
 // handed to it.

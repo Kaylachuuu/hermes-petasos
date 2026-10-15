@@ -70,13 +70,16 @@ type presetGestures map[string]presetStep // press (or hold and tap) to a step
 type devicePresets struct {
 	Own      bool                      `json:"own"`
 	Name     string                    `json:"name"`
-	Presets  map[string]presetGestures `json:"presets"` // preset-1 .. preset-4
+	Presets  map[string]presetGestures `json:"presets"` // preset-1 .. preset-8
 	Shared   map[string]presetGestures `json:"shared"`  // the ones devices without their own use
 	Labels   []string                  `json:"labels"`
 	Commands []map[string]any          `json:"commands,omitempty"`
 }
 
-var presetNames = []string{"preset-1", "preset-2", "preset-3", "preset-4"}
+// presetNames are the soft keys: preset-1 .. preset-4 are the top buttons, and preset-5 ..
+// preset-8 the same buttons while the second set shows (after a press of the top-right one).
+var presetNames = []string{"preset-1", "preset-2", "preset-3", "preset-4",
+	"preset-5", "preset-6", "preset-7", "preset-8"}
 
 // softKeyActions are what a soft key can do, as its settings name them.
 var softKeyActions = []choiceOf{
@@ -88,9 +91,17 @@ var softKeyActions = []choiceOf{
 	{"music_next", "Next song"},
 	{"music_previous", "Previous song"},
 	{"music_stop", "Stop the music"},
-	{"music_page", "Music page"},
+	{"page_petasos", "Petasos page"},
+	{"page_soundcloud", "SoundCloud page"},
+	{"page_navidrome", "Navidrome page"},
+	{"page_spotify", "Spotify page"},
+	{"page_apple", "Apple Music page"},
 	{"none", "Nothing"},
 }
+
+// oldActionLabels name actions a soft key can no longer be given but an older mapping may
+// still give one, so its row reads well.
+var oldActionLabels = map[string]string{"music_page": "Music page", "soft_keys": "Other soft keys"}
 
 type choiceOf struct{ value, label string }
 
@@ -99,6 +110,9 @@ func actionLabel(action string) string {
 		if a.value == action {
 			return a.label
 		}
+	}
+	if label, ok := oldActionLabels[action]; ok {
+		return label
 	}
 	return action
 }
@@ -360,7 +374,6 @@ func (b *bluetooth) mineViewAt(sel int) {
 				}
 				b.mineViewAt(2)
 			}},
-		{Kind: "header", Label: "Soft keys"},
 	}
 	p, err := h.presets()
 	note := "Name is also what Bluetooth shows this Car Thing as."
@@ -368,10 +381,17 @@ func (b *bluetooth) mineViewAt(sel int) {
 		note = "The car's microphone is used while the car is connected, the Car Thing's own otherwise."
 	}
 	if err != nil {
-		items = append(items, btItem{Kind: "note", Label: "Can't reach " + display.agent() + " for the soft keys"})
+		items = append(items, btItem{Kind: "header", Label: "Soft keys"},
+			btItem{Kind: "note", Label: "Can't reach " + display.agent() + " for the soft keys"})
 	} else {
 		agent := display.agent()
 		for i, name := range presetNames {
+			switch i {
+			case 0:
+				items = append(items, btItem{Kind: "header", Label: "Soft keys"})
+			case 4:
+				items = append(items, btItem{Kind: "header", Label: "Second set, after the top-right button"})
+			}
 			i, step := i, p.Presets[name].press()
 			label := "—"
 			if i < len(p.Labels) && p.Labels[i] != "" {
@@ -471,7 +491,11 @@ func (b *bluetooth) softKeyViewAt(sel int, editing bool, problem string) {
 	if note == "" {
 		note = "Changes are saved as you make them, for this Car Thing only."
 	}
-	b.show(&btScreen{View: "softkey", Tab: "device", Title: fmt.Sprintf("Soft key %d", d.index+1), Note: note,
+	title := fmt.Sprintf("Soft key %d", d.index+1)
+	if d.index >= 4 {
+		title = fmt.Sprintf("Second set, key %d", d.index-3)
+	}
+	b.show(&btScreen{View: "softkey", Tab: "device", Title: title, Note: note,
 		Items: items, Sel: firstRow(items, sel), Editing: editing})
 }
 

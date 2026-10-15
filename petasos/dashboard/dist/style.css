@@ -19,3 +19,6 @@
   background: transparent; color: inherit; resize: vertical; }
 .petasos-checks { margin: 0; padding-left: 1.1rem; font-size: .85rem; display: flex; flex-direction: column; gap: .2rem; }
 .petasos-sub { font-size: .9rem; font-weight: 600; margin: .5rem 0 0; }
+/* A set of soft keys: its title, the screen's copy and its four presets. */
+.petasos-set { display: flex; flex-direction: column; gap: .75rem; }
+.petasos-set-title { font-size: 1rem; font-weight: 600; margin: .5rem 0 0; }

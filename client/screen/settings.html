@@ -88,7 +88,7 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
     <div class="row">
       <label for="keys-own">Soft keys</label>
       <select id="keys-own"><option value="shared">Shared with your other devices</option><option value="own">This computer's own</option></select>
-      <p class="hint" id="keys-hint">The four buttons along the top of the screen.</p>
+      <p class="hint" id="keys-hint">The buttons along the top of the screen: two sets of four, the second shown after a press of the top-right button.</p>
     </div>
     <div id="keys"></div>
 
@@ -178,6 +178,19 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
           <button type="button" id="sc-signout" hidden>Sign out</button></div>
         <p class="hint" id="sc-account-hint">For your likes and playlists. Register the SoundCloud app with the redirect URI http://127.0.0.1:8187/app/soundcloud, and save its ID and secret here first.</p>
       </div>
+      <h3>Spotify</h3>
+      <p class="hint sub">A remote for the Spotify app on your phone: the Car Thing's music page shows your saved songs and playlists, and the phone plays what you choose, heard on the Car Thing over Bluetooth. Choosing music needs Spotify Premium. Create an app at developer.spotify.com/dashboard with the redirect URI http://127.0.0.1:8187/app/spotify (and Web API ticked), and add your Spotify account under its User Management. Leave the client ID empty to not use it.</p>
+      <div class="row">
+        <label for="sp-id">Client ID</label>
+        <input type="text" id="sp-id" name="spotify-id" autocomplete="off" data-1p-ignore data-lpignore="true" spellcheck="false">
+      </div>
+      <div class="row" id="sp-account-row" hidden>
+        <label>Your account</label>
+        <div class="status"><span class="dot" id="sp-dot"></span><span id="sp-account"></span>
+          <button type="button" id="sp-signin">Sign in to Spotify…</button>
+          <button type="button" id="sp-signout" hidden>Sign out</button></div>
+        <p class="hint" id="sp-account-hint">Save the client ID here first, then sign in.</p>
+      </div>
       <div class="row">
         <span></span>
         <div class="status"><button type="button" id="music-save">Save and check</button><span id="music-status"></span></div>
@@ -199,8 +212,15 @@ const $ = (id) => document.getElementById(id);
 let current = null, newConfig = null, keys = null, keysSaved = "";
 const ACTIONS = [["prompt", "Ask a question"], ["conversation", "Start a conversation"], ["stop_speaking", "Stop speaking"],
                  ["mic_toggle", "Turn the mic on or off"], ["music_toggle", "Play or pause music"],
-                 ["music_next", "Next song"], ["music_previous", "Previous song"], ["music_stop", "Stop the music"], ["music_page", "Music page"], ["none", "Nothing"]];
-const PRESETS = ["preset-1", "preset-2", "preset-3", "preset-4"];
+                 ["music_next", "Next song"], ["music_previous", "Previous song"], ["music_stop", "Stop the music"],
+                 ["page_petasos", "Open the Petasos page"], ["page_soundcloud", "Open the SoundCloud page"],
+                 ["page_navidrome", "Open the Navidrome page"], ["page_spotify", "Open the Spotify page"],
+                 ["page_apple", "Open the Apple Music page"], ["none", "Nothing"]];
+// Actions a key can no longer be given but an older mapping may still give one, kept so it shows as it is.
+const OLD_ACTIONS = { music_page: "Music page" };
+// The two sets: preset-1..4 on the top buttons, preset-5..8 on them after a press of the top-right one.
+const PRESETS = ["preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8"];
+const SETS = { 0: "First set", 4: "Second set — shown after a press of the top-right button" };
 
 function deviceID(name) { // as appsettings.go makes it
   return name.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
@@ -251,7 +271,8 @@ function showMics() {
 function pressOf(gestures) {
   const g = gestures || {};
   const s = g.press || g.tap || g.hold || { action: "none" };
-  return { action: ACTIONS.some(([a]) => a === s.action) ? s.action : "none", text: s.text || "", label: s.label || "" };
+  const known = ACTIONS.some(([a]) => a === s.action) || OLD_ACTIONS[s.action];
+  return { action: known ? s.action : "none", text: s.text || "", label: s.label || "" };
 }
 
 function showKeys() {
@@ -262,10 +283,16 @@ function showKeys() {
   const list = own ? keys.own : keys.shared;
   $("keys").innerHTML = "";
   list.forEach((k, i) => {
+    if (SETS[i]) {
+      const title = document.createElement("h3");
+      title.textContent = SETS[i];
+      $("keys").append(title);
+    }
+    const actions = OLD_ACTIONS[k.action] ? [...ACTIONS.slice(0, -1), [k.action, OLD_ACTIONS[k.action]], ACTIONS.at(-1)] : ACTIONS;
     const row = document.createElement("div");
     row.className = "key";
-    row.innerHTML = `<b>Key ${i + 1}</b><div class="fields">
-      <select data-f="action">${ACTIONS.map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select>
+    row.innerHTML = `<b>Key ${i % 4 + 1}</b><div class="fields">
+      <select data-f="action">${actions.map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select>
       <input type="text" data-f="text" maxlength="200" placeholder="What to ask, such as What's next on my calendar?" autocomplete="off">
       <input type="text" data-f="label" maxlength="32" placeholder="Label on the screen (leave empty to make one up)" autocomplete="off"></div>`;
     for (const el of row.querySelectorAll("[data-f]")) {
@@ -335,6 +362,17 @@ function showMusic(s) {
   $("sc-account-hint").className = "hint";
   const problem = new URLSearchParams(location.search).get("soundcloud");
   if (problem) { $("sc-account-hint").textContent = problem; $("sc-account-hint").className = "hint error"; }
+  const sp = s.spotify || {};
+  $("sp-id").value = sp.client_id || "";
+  $("sp-account-row").hidden = !sp.client_id;
+  $("sp-dot").className = sp.account ? "dot on" : "dot";
+  $("sp-account").textContent = sp.account ? `Signed in as ${sp.account}` : "Not signed in";
+  $("sp-signin").hidden = !!sp.account;
+  $("sp-signout").hidden = !sp.account;
+  $("sp-account-hint").textContent = sp.account
+    ? "Choose songs from Spotify on the Car Thing's music page; they play on your phone. Every Petasos device uses this sign-in."
+    : "For your saved songs and playlists, and choosing what your phone plays. Needs Spotify Premium.";
+  $("sp-account-hint").className = "hint";
   if (!s.ffmpeg) $("folders-hint").textContent += " Only MP3 files play until ffmpeg is installed on it.";
 }
 
@@ -359,6 +397,7 @@ async function saveMusic() {
       navidrome: { url: $("nd-url").value.trim(), username: $("nd-user").value.trim(), password: $("nd-password").value },
       folders: $("folders").value.split("\n").map((f) => f.trim()).filter(Boolean),
       soundcloud: { client_id: $("sc-id").value.trim(), client_secret: $("sc-secret").value },
+      spotify: { client_id: $("sp-id").value.trim() },
     }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);
@@ -369,6 +408,8 @@ async function saveMusic() {
     if (body.check.navidrome) add(body.check.navidrome.ok ? "Navidrome answers." : body.check.navidrome.problem, body.check.navidrome.ok);
     const sc = body.check.soundcloud;
     if (sc) add(sc.ok ? (sc.ffmpeg ? "SoundCloud signs the app in." : "SoundCloud signs the app in, but its songs need ffmpeg installed on Hermes.") : sc.problem, sc.ok && sc.ffmpeg);
+    const sp = body.check.spotify;
+    if (sp) add(sp.ok ? `Spotify works, signed in as ${sp.account}.` : sp.problem, sp.ok);
     for (const f of body.check.folders) add(`${f.path}: ${f.ok ? `${f.songs} ${f.songs === 1 ? "song" : "songs"}` : f.problem}`, f.ok);
     list.hidden = !list.children.length;
     $("music-status").textContent = "Saved.";
@@ -466,7 +507,37 @@ $("sc-signout").addEventListener("click", async () => {
   await fetch("/app/soundcloud?disconnect", { method: "POST" });
   await loadMusic();
 });
-for (const id of ["nd-url", "nd-user", "nd-password", "sc-id", "sc-secret"]) // Enter saves the music, not the whole page
+// Spotify's sign-in likewise opens in your browser, and this page watches for it to land.
+let spWatch = null;
+$("sp-signin").addEventListener("click", async () => {
+  const hint = $("sp-account-hint");
+  try {
+    const res = await fetch("/app/spotify?start", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  } catch (err) {
+    hint.textContent = `Couldn't open Spotify's sign-in: ${err.message || err}`;
+    hint.className = "hint error";
+    return;
+  }
+  hint.textContent = "Finish signing in in your browser. This page updates once you have.";
+  hint.className = "hint";
+  clearInterval(spWatch);
+  const until = Date.now() + 10 * 60 * 1000;
+  spWatch = setInterval(async () => {
+    try {
+      const res = await fetch("/app/music", { cache: "no-store" });
+      const body = await res.json();
+      if (res.ok && body.spotify && body.spotify.account) { clearInterval(spWatch); showMusic(body); }
+    } catch (err) {}
+    if (Date.now() > until) clearInterval(spWatch);
+  }, 2000);
+});
+$("sp-signout").addEventListener("click", async () => {
+  await fetch("/app/spotify?disconnect", { method: "POST" });
+  await loadMusic();
+});
+for (const id of ["nd-url", "nd-user", "nd-password", "sc-id", "sc-secret", "sp-id"]) // Enter saves the music, not the whole page
   $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveMusic(); } });
 $("import").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", async () => {

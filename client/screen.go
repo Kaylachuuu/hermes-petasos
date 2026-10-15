@@ -37,17 +37,22 @@ type screenState struct {
 	Presets  []string    `json:"presets"`
 	Agent    string      `json:"agent"` // who the Car Thing talks to, from the plugin's agent_name
 	Links    links       `json:"links"`
-	BT       *btScreen   `json:"bt,omitempty"`       // the Bluetooth screens, when open
-	Virtual  bool        `json:"virtual,omitempty"`  // the virtual Petasos on a Mac: the page draws its own controls
-	PageMic  bool        `json:"page_mic,omitempty"` // the page itself records (pagemic.go)
-	MicOpen  bool        `json:"mic_open,omitempty"` // ...and should be recording now
-	MicID    int         `json:"mic_id,omitempty"`   // which recording, for its posts to /mic
-	MicName  string      `json:"mic_name,omitempty"` // the microphone chosen in settings, by name
-	OnTop    bool        `json:"on_top,omitempty"`   // the app keeps its window above others (the pin)
-	NoPin    bool        `json:"no_pin,omitempty"`   // ...which the Linux desktop app's window can't
-	Music    *nowPlaying `json:"music,omitempty"`    // what the phone plays through the Car Thing (music.go)
-	Page     string      `json:"page,omitempty"`     // "music" while the music page is open (musicpage.go)
-	Hold     *holdShown  `json:"hold,omitempty"`     // a control held down, and what letting go would do (gestures.go)
+	BT       *btScreen   `json:"bt,omitempty"`        // the Bluetooth screens, when open
+	Virtual  bool        `json:"virtual,omitempty"`   // the virtual Petasos on a Mac: the page draws its own controls
+	PageMic  bool        `json:"page_mic,omitempty"`  // the page itself records (pagemic.go)
+	MicOpen  bool        `json:"mic_open,omitempty"`  // ...and should be recording now
+	MicID    int         `json:"mic_id,omitempty"`    // which recording, for its posts to /mic
+	MicName  string      `json:"mic_name,omitempty"`  // the microphone chosen in settings, by name
+	OnTop    bool        `json:"on_top,omitempty"`    // the app keeps its window above others (the pin)
+	NoPin    bool        `json:"no_pin,omitempty"`    // ...which the Linux desktop app's window can't
+	Music    *nowPlaying `json:"music,omitempty"`     // what the phone plays through the Car Thing (music.go)
+	Page     string      `json:"page,omitempty"`      // the music page open (soundcloud, navidrome, spotify, apple), or "" for home (musicpage.go)
+	View     string      `json:"view,omitempty"`      // which of the music page's views shows: "now", or a list (the page says)
+	Keys     int         `json:"keys,omitempty"`      // which set of soft keys shows, 1 or 2
+	KeySets  int         `json:"key_sets,omitempty"`  // how many sets there are
+	KeyPages []string    `json:"key_pages,omitempty"` // the page each soft key shown opens, or ""
+	MicNote  int         `json:"mic_note,omitempty"`  // bumped when the mic is turned off or on, for a note on the screen
+	Hold     *holdShown  `json:"hold,omitempty"`      // a control held down, and what letting go would do (gestures.go)
 }
 
 type links struct {
@@ -110,7 +115,10 @@ func (s *screen) send(message any) {
 // micLevel sends the microphone's level (0 to 1) to every open page, for the bottom band while
 // listening. It isn't part of the state, so it stays out of what a page gets as it connects.
 func (s *screen) micLevel(level float64) {
-	raw := []byte(fmt.Sprintf(`{"mic":%.2f}`, level))
+	s.sendLevel([]byte(fmt.Sprintf(`{"mic":%.2f}`, level)))
+}
+
+func (s *screen) sendLevel(raw []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for ch := range s.subs {
@@ -174,11 +182,13 @@ func (s *screen) serve() {
 	mux.HandleFunc("/app/softkeys", appSoftKeys)
 	mux.HandleFunc("/app/music", appMusic)
 	mux.HandleFunc("/app/soundcloud", appSoundCloud)
+	mux.HandleFunc("/app/spotify", appSpotify)
 	mux.HandleFunc("/app/signin", appSignIn)
 	mux.HandleFunc("/music/browse", musicBrowse)
 	mux.HandleFunc("/music/play", musicPlay)
 	mux.HandleFunc("/music/control", musicControlPost)
 	mux.HandleFunc("/music/page", musicPagePost)
+	mux.HandleFunc("/music/view", musicViewPost)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {
 		log.Printf("can't serve the screen: %v", err)

@@ -38,6 +38,8 @@ func (f *fakePresets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shared := map[string]presetGestures{
 		"preset-1": {"press": {Action: "prompt", Text: "What's next on my calendar?", Label: "Calendar"}},
 		"preset-2": {"press": {Action: "none"}}, "preset-3": {"press": {Action: "none"}}, "preset-4": {"press": {Action: "none"}},
+		"preset-5": {"press": {Action: "page_petasos", Label: "Petasos"}}, "preset-6": {"press": {Action: "page_apple", Label: "Apple Music"}},
+		"preset-7": {"press": {Action: "page_navidrome", Label: "Navidrome"}}, "preset-8": {"press": {Action: "none"}},
 	}
 	p, own := f.own[device]
 	if !own {
@@ -106,6 +108,11 @@ func TestDeviceTabGivesTheCarThingItsOwnSoftKeysAndName(t *testing.T) {
 	v := waitFor("the Device tab", func(v btScreen) bool { return v.View == "mine" })
 	if v.Tab != "device" || v.Items[0].Value != "Car Thing" || v.Items[4].Label != "Calendar" {
 		t.Fatalf("Device tab: %+v", v)
+	}
+	// The second set follows the first under its own header, each key a row the knob reaches.
+	if v.Items[8].Kind != "header" || v.Items[9].Label != "Petasos" || v.Items[9].Detail != "Petasos page" ||
+		v.Items[10].Detail != "Apple Music page" || v.Items[12].Kind != "row" || v.Items[12].Label != "—" {
+		t.Fatalf("second set: %+v", v.Items)
 	}
 	// Soft key 3: turn it into a question. Its words are asked for before it is saved.
 	ev("knob", "turn", 1)

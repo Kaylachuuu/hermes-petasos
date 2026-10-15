@@ -63,7 +63,7 @@ func (w *wakeListener) quiet() bool {
 		return false
 	}
 	st := display.snapshot()
-	if st.Phase != "idle" || st.Muted {
+	if st.Phase != "idle" || st.Muted || st.Page != "" { // only on the home page: music sets it off
 		return false
 	}
 	w.v.mu.Lock()

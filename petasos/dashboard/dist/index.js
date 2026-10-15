@@ -1,6 +1,7 @@
 (function () {
   "use strict";
-  // Petasos settings: the agent's name and the Car Thing's four preset buttons (its soft keys).
+  // Petasos settings: the agent's name and the Car Thing's preset buttons (its soft keys): the
+  // four top buttons, and a second set of four they show after a press of the top-right button.
   // Reads and writes the button mapping through the plugin's own /mapping route, so the
   // checks and the file are the same ones the device and mapping.json use. Only each preset's
   // press is edited here; anything else in mapping.json is kept as it is.
@@ -24,8 +25,18 @@
     ["music_next", "Next song"],
     ["music_previous", "Previous song"],
     ["music_stop", "Stop the music"],
-    ["music_page", "Music page"],
+    ["page_petasos", "Open the Petasos page"],
+    ["page_soundcloud", "Open the SoundCloud page"],
+    ["page_navidrome", "Open the Navidrome page"],
+    ["page_spotify", "Open the Spotify page"],
+    ["page_apple", "Open the Apple Music page"],
     ["none", "Nothing"],
+  ];
+  // The two sets of soft keys: preset-1..4 on the top buttons, and preset-5..8 on the same
+  // buttons after a press of the top-right one.
+  const SETS = [
+    ["First set", 0],
+    ["Second set — shown after a press of the top-right button", 4],
   ];
 
   // What the screen shows for a preset when it has no label (petasos core.preset_labels).
@@ -43,7 +54,15 @@
   }
 
   // The screen's own names for these (petasos core._ACTION_LABELS).
-  const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause", music_stop: "Stop the music", music_page: "Music page" };
+  const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause", music_stop: "Stop the music", music_page: "Music page", soft_keys: "Other soft keys",
+    page_petasos: "Petasos", page_soundcloud: "SoundCloud", page_navidrome: "Navidrome", page_spotify: "Spotify", page_apple: "Apple Music" };
+
+  // The actions to pick from, with one an older mapping still gives a preset (such as the
+  // music page) kept at the end so it shows as it is.
+  function actionsFor(action) {
+    if (ACTIONS.some(([a]) => a === action)) return ACTIONS;
+    return ACTIONS.slice(0, -1).concat([[action, ACTION_LABELS[action]], ACTIONS[ACTIONS.length - 1]]);
+  }
 
   // Which devices have preset buttons of their own, for the note at the top.
   function ownedBy(mapping) {
@@ -53,11 +72,11 @@
 
   function presetsOf(mapping) {
     const out = [];
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 8; i++) {
       const gestures = (mapping.controls || {})["preset-" + i] || {};
       const step = gestures.press || {};
       out.push({
-        action: ACTIONS.some(([a]) => a === step.action) ? step.action : "none",
+        action: ACTIONS.some(([a]) => a === step.action) || ACTION_LABELS[step.action] ? step.action : "none",
         text: step.text || "",
         label: step.label || "",
         other: Object.keys(gestures).filter((g) => g !== "press"),
@@ -96,7 +115,7 @@
       h(C.CardContent, { className: "petasos-fields" },
         h(Field, { id: id + "-action", label: "When pressed" },
           h(C.Select, { id: id + "-action", value: preset.action, onValueChange: set("action") },
-            ACTIONS.map(([value, name]) => h(C.SelectOption, { key: value, value }, name)))),
+            actionsFor(preset.action).map(([value, name]) => h(C.SelectOption, { key: value, value }, name)))),
         preset.action === "prompt"
           ? h(Field, { id: id + "-text", label: "What to ask" },
               h(C.Input, { id: id + "-text", value: preset.text, placeholder: "What's next on my calendar?",
@@ -297,13 +316,16 @@
             h(C.Select, { id: "petasos-chats", value: chats, onValueChange: (v) => { setSaved(false); setChats(v); } },
               h(C.SelectOption, { value: "separate" }, "A chat for each device"),
               h(C.SelectOption, { value: "shared" }, "One chat for all devices"))))),
-      h("div", { className: "petasos-screen", "aria-label": "How the top of the screen will look" },
-        presets.map((p, i) => {
-          const label = shownLabel(p);
-          return h("span", { key: i, className: label ? "" : "off" }, label || "—");
-        })),
-      h("div", { className: "petasos-presets" },
-        presets.map((p, i) => h(PresetCard, { key: i, index: i, preset: p, onChange: edit(i) }))),
+      SETS.map(([title, first]) => h("section", { key: first, className: "petasos-set" },
+        h("h2", { className: "petasos-set-title" }, title),
+        h("div", { className: "petasos-screen", "aria-label": "How the top of the screen will look" },
+          presets.slice(first, first + 4).map((p, i) => {
+            const label = shownLabel(p);
+            return h("span", { key: i, className: label ? "" : "off" }, label || "—");
+          })),
+        h("div", { className: "petasos-presets" },
+          presets.slice(first, first + 4).map((p, i) =>
+            h(PresetCard, { key: first + i, index: first + i, preset: p, onChange: edit(first + i) }))))),
       h("div", { className: "petasos-actions" },
         h(C.Button, { onClick: save, disabled: saving || !agentOk }, saving ? "Saving…" : "Save"),
         saved ? h("span", { className: "petasos-hint" }, "Saved.") : null,

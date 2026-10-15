@@ -31,7 +31,8 @@ type nowPlaying struct {
 	Title   string `json:"title,omitempty"`
 	Artist  string `json:"artist,omitempty"`
 	Playing bool   `json:"playing"`
-	Source  string `json:"source"` // the phone's name
+	Source  string `json:"source"`            // the phone's name
+	Service string `json:"service,omitempty"` // whose music, for its colour: soundcloud, navidrome, spotify, apple
 
 	// The home library's (library.go) extras, for the music page.
 	Art      string  `json:"art,omitempty"`
@@ -152,6 +153,24 @@ func (m *phoneMusic) refresh() {
 			if v, ok := track["Artist"]; ok {
 				_ = v.Store(&np.Artist)
 			}
+			var name string
+			if v, ok := p["Name"]; ok {
+				_ = v.Store(&name)
+			}
+			np.Service = phoneService(name)
+			var duration, position uint32 // milliseconds
+			if v, ok := track["Duration"]; ok {
+				_ = v.Store(&duration)
+			}
+			if v, ok := p["Position"]; ok {
+				_ = v.Store(&position)
+			}
+			if duration > 0 {
+				np.Seconds = int(duration / 1000)
+				np.Position = float64(position) / 1000
+				np.At = time.Now().UnixMilli()
+				np.Moving = np.Playing
+			}
 		}
 	}
 
@@ -177,6 +196,20 @@ func (m *phoneMusic) refresh() {
 			st.Music = np
 		}
 	})
+}
+
+// phoneService is which app the phone's player is, from the name it gives over AVRCP: the
+// iPhone's own Music app calls itself "Music".
+func phoneService(name string) string {
+	switch n := strings.ToLower(name); {
+	case strings.Contains(n, "spotify"):
+		return "spotify"
+	case strings.Contains(n, "soundcloud"):
+		return "soundcloud"
+	case n == "music" || strings.Contains(n, "apple"):
+		return "apple"
+	}
+	return ""
 }
 
 func (m *phoneMusic) startRelay(phone, car string) {

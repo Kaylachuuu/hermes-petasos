@@ -7,6 +7,8 @@ without touching the device. The device gets back a short list of commands to ca
 
 Inputs (named in tools/list_inputs.sh and the README):
   preset-1 .. preset-4   the four top buttons, left to right
+  preset-5 .. preset-8   the same buttons while the second set of soft keys shows (the device
+                         reports preset-1 .. preset-4; the plugin knows which set it shows)
   mute                   the top-right button
   front                  the front button
   knob                   the knob: "press" when pushed, "turn" with a delta of +1 or -1 per click
@@ -31,11 +33,14 @@ from typing import Callable
 
 # The car-* inputs are a car's steering wheel media buttons, reaching the Car Thing over Bluetooth
 # (AVRCP) while it plays to the car.
-INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "mute", "front", "knob",
-          "car-play", "car-next", "car-previous")
+INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8",
+          "mute", "front", "knob", "car-play", "car-next", "car-previous")
 GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "turn")
+# The pages a soft key can open: page_petasos is the home screen, the others a music service's.
+PAGES = ("petasos", "soundcloud", "navidrome", "spotify", "apple")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
-           "music_toggle", "music_next", "music_previous", "music_stop", "music_page", "none")
+           "music_toggle", "music_next", "music_previous", "music_stop", "music_page", "soft_keys",
+           *("page_" + p for p in PAGES), "none")
 LONG_HOLD_MS = 3000  # a long hold with no ms of its own
 
 DEFAULT_MAPPING: dict = {
@@ -47,15 +52,21 @@ DEFAULT_MAPPING: dict = {
     "controls": {
         "front": {"hold": {"action": "push_to_talk"}, "tap": {"action": "conversation"}},
         # Tap: stop the agent speaking, or pause and resume the music when she isn't. Two taps
-        # skip ahead, three go back. Hold two seconds: stop the music; three: the music page.
+        # skip ahead, three go back. Hold a second: the mic off or on.
         "knob": {"tap": {"action": "stop_speaking"}, "double_tap": {"action": "music_next"},
-                 "triple_tap": {"action": "music_previous"}, "hold": {"action": "music_stop", "ms": 2000},
-                 "long_hold": {"action": "music_page", "ms": 3000}, "turn": {"action": "volume"}},
-        "mute": {"press": {"action": "mic_toggle"}},
+                 "triple_tap": {"action": "music_previous"}, "hold": {"action": "mic_toggle", "ms": 1000},
+                 "turn": {"action": "volume"}},
+        # A press shows the other set of soft keys (holding it two seconds opens the settings,
+        # on the device).
+        "mute": {"press": {"action": "soft_keys"}},
         "preset-1": {"press": {"action": "prompt", "text": "What's next on my calendar?", "label": "Calendar"}},
         "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
-        "preset-3": {"press": {"action": "none"}},
-        "preset-4": {"press": {"action": "none"}},
+        "preset-3": {"press": {"action": "page_soundcloud"}},
+        "preset-4": {"press": {"action": "page_spotify"}},
+        "preset-5": {"press": {"action": "page_petasos"}},
+        "preset-6": {"press": {"action": "page_apple"}},
+        "preset-7": {"press": {"action": "page_navidrome"}},
+        "preset-8": {"press": {"action": "none"}},
         "car-play": {"press": {"action": "conversation"}},
         "car-next": {"press": {"action": "music_next"}},
         "car-previous": {"press": {"action": "music_previous"}},
@@ -70,14 +81,25 @@ _OLD_CAR_DEFAULTS = {"car-next": {"press": {"action": "stop_speaking"}},
 
 # The knob as earlier versions set it up; a mapping still holding one unchanged gets today's.
 _OLD_KNOBS = ({"press": {"action": "stop_speaking"}, "turn": {"action": "volume"}},
-              {"tap": {"action": "stop_speaking"}, "hold": {"action": "music_stop"}, "turn": {"action": "volume"}})
+              {"tap": {"action": "stop_speaking"}, "hold": {"action": "music_stop"}, "turn": {"action": "volume"}},
+              {"tap": {"action": "stop_speaking"}, "double_tap": {"action": "music_next"},
+               "triple_tap": {"action": "music_previous"}, "hold": {"action": "music_stop", "ms": 2000},
+               "long_hold": {"action": "music_page", "ms": 3000}, "turn": {"action": "volume"}})
+
+# Controls as earlier versions set them up, unchanged: they get today's defaults. The mute button
+# turned the mic off before the knob's hold did; soft keys 3 and 4 did nothing before the music
+# pages; the second set didn't exist.
+_OLD_DEFAULTS = {"mute": ({"press": {"action": "mic_toggle"}},),
+                 "preset-3": ({"press": {"action": "none"}},), "preset-4": ({"press": {"action": "none"}},)}
 
 # The screen's name for an action with no label of its own, where its words alone read badly.
 _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "music_previous": "Previous song",
                   "music_stop": "Stop the music", "music_page": "Music page",
-                  "mic_toggle": "Mic on / off"}
+                  "mic_toggle": "Mic on / off", "soft_keys": "Other soft keys",
+                  "page_petasos": "Petasos", "page_soundcloud": "SoundCloud", "page_navidrome": "Navidrome",
+                  "page_spotify": "Spotify", "page_apple": "Apple Music"}
 
-LABEL_MAX = 32  # two lines on the screen
+LABEL_MAX = 32
 WAKE_IDLE_S = 8  # how long a conversation the wake word started waits for someone to speak
 AGENT_NAME_MAX = 24
 
@@ -88,8 +110,13 @@ def agent_name(mapping: dict) -> str:
     return name.strip() if isinstance(name, str) and name.strip() else DEFAULT_MAPPING["agent_name"]
 
 
-PRESETS = ("preset-1", "preset-2", "preset-3", "preset-4")
+PRESETS = ("preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8")
 DEVICE_ID_MAX = 64
+
+
+def _key_set(keys: int) -> tuple:
+    """The soft keys shown as set 1 or 2."""
+    return PRESETS[4:] if keys == 2 else PRESETS[:4]
 DEVICE_NAME_MAX = 48
 
 
@@ -97,20 +124,32 @@ def controls_for(mapping: dict, device: str | None) -> dict:
     """The controls a device uses: the mapping's, with the preset buttons the device has its own
     of (``devices.<id>.controls``, set from its settings) in place of the shared ones."""
     controls = dict(mapping.get("controls") or {})
+    for name, old in _OLD_DEFAULTS.items():
+        if controls.get(name) in old:
+            controls[name] = DEFAULT_MAPPING["controls"][name]
+    for name in PRESETS[4:]:  # a mapping from before the second set
+        controls.setdefault(name, DEFAULT_MAPPING["controls"][name])
+    if controls.get("knob") in _OLD_KNOBS:
+        controls["knob"] = DEFAULT_MAPPING["controls"]["knob"]
     own = ((mapping.get("devices") or {}).get(device or "") or {}).get("controls")
     if isinstance(own, dict):
         controls.update({name: own[name] for name in PRESETS if name in own})
     return controls
 
 
-def preset_labels(mapping: dict, device: str | None = None) -> list[str]:
+def _step_of(gestures) -> dict | None:
+    if not isinstance(gestures, dict):
+        return None
+    return next((s for s in gestures.values() if isinstance(s, dict) and s.get("action") not in (None, "none")), None)
+
+
+def preset_labels(mapping: dict, device: str | None = None, names: tuple = PRESETS) -> list[str]:
     """What the screen shows under each preset button: its label, else the start of its prompt,
     else "" for a button that does nothing."""
     labels = []
     controls = controls_for(mapping, device)
-    for name in PRESETS:
-        gestures = controls.get(name) or {}
-        step = next((s for s in gestures.values() if isinstance(s, dict) and s.get("action") not in (None, "none")), None)
+    for name in names:
+        step = _step_of(controls.get(name))
         label = ""
         if step:
             label = (step.get("label") or "").strip()
@@ -122,6 +161,20 @@ def preset_labels(mapping: dict, device: str | None = None) -> list[str]:
                 label = _ACTION_LABELS.get(step["action"]) or step["action"].replace("_", " ").capitalize()
         labels.append(label)
     return labels
+
+
+def preset_pages(mapping: dict, device: str | None, names: tuple) -> list[str]:
+    """Which page each of these soft keys opens, or "", so the screen can light the open one."""
+    controls = controls_for(mapping, device)
+    out = []
+    for name in names:
+        action = (_step_of(controls.get(name)) or {}).get("action", "")
+        out.append(action.removeprefix("page_") if action.startswith("page_") else "")
+    return out
+
+
+def has_second_set(mapping: dict, device: str | None) -> bool:
+    return any(preset_labels(mapping, device, PRESETS[4:]))
 
 
 def _hold_ms(controls: dict, gesture: str, mapping: dict) -> int:
@@ -157,8 +210,6 @@ def gesture_hints(mapping: dict, device: str | None = None) -> dict:
     would do, and from when)."""
     out = {}
     controls = controls_for(mapping, device)
-    if controls.get("knob") in _OLD_KNOBS:
-        controls["knob"] = DEFAULT_MAPPING["controls"]["knob"]
     for name, gestures in controls.items():
         if not isinstance(gestures, dict):
             continue
@@ -320,6 +371,7 @@ class DeviceState:
         self.down: dict[str, float] = {}     # input -> press time in ms, for hold/tap
         self.last_seen = 0.0
         self.labels_sent: dict | None = None  # the screen command the device last got
+        self.keys = 1  # which set of soft keys the screen shows
 
 
 class Petasos:
@@ -360,13 +412,13 @@ class Petasos:
                             c["idle_end_s"] = min(c["idle_end_s"], WAKE_IDLE_S)
                     return out
                 return []
+            if name in PRESETS[:4] and state.keys == 2:
+                name = PRESETS[PRESETS.index(name) + 4]
             controls = controls_for(mapping, device_id).get(name)
             if name.startswith("car-") and (controls is None or controls == _OLD_CAR_DEFAULTS.get(name)):
                 # A mapping written before the car buttons existed, or before they played
                 # music, gets their defaults.
                 controls = DEFAULT_MAPPING["controls"][name]
-            if name == "knob" and controls in _OLD_KNOBS:
-                controls = DEFAULT_MAPPING["controls"]["knob"]
             controls = controls or {}
             if action == "press":
                 out = self._press(state, mapping, name, controls, now_ms)
@@ -385,11 +437,20 @@ class Petasos:
             return changed + out
 
     @staticmethod
-    def _screen(state, mapping, device_id) -> list[dict]:
-        """The preset labels and agent name for the device's screen: on hello, then whenever they
-        change."""
-        screen = {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping),
-                  "gestures": gesture_hints(mapping, device_id)}
+    def _screen_command(mapping, device_id, keys: int = 1) -> dict:
+        """The soft keys' labels (of the set shown), the pages they open, the agent's name and
+        the gesture hints, for the device's screen."""
+        shown = _key_set(keys)
+        return {"do": "screen", "presets": preset_labels(mapping, device_id, shown), "agent": agent_name(mapping),
+                "gestures": gesture_hints(mapping, device_id), "pages": preset_pages(mapping, device_id, shown),
+                "keys": keys, "key_sets": 2 if has_second_set(mapping, device_id) else 1,
+                "hold_ms": mapping["hold_ms"]}
+
+    def _screen(self, state, mapping, device_id) -> list[dict]:
+        """The screen command: on hello, then whenever it changes."""
+        if state.keys == 2 and not has_second_set(mapping, device_id):
+            state.keys = 1
+        screen = self._screen_command(mapping, device_id, state.keys)
         if screen == state.labels_sent:
             return []
         state.labels_sent = screen
@@ -402,7 +463,7 @@ class Petasos:
         are its own, and the shared ones it would go back to."""
         mapping = self.mapping.current()
         own = (mapping.get("devices") or {}).get(device_id)
-        shared = {name: mapping["controls"].get(name) or {"press": {"action": "none"}} for name in PRESETS}
+        shared = {name: controls_for(mapping, None).get(name) or {"press": {"action": "none"}} for name in PRESETS}
         used = controls_for(mapping, device_id)
         return {"device": device_id, "own": own is not None,
                 "name": (own or {}).get("name", ""),
@@ -436,9 +497,7 @@ class Petasos:
         mapping = self.mapping.replace(mapping)
         with self._lock:
             state = self._devices.get(device_id)
-            screen = self._screen(state, mapping, device_id) if state else [
-                {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping),
-                 "gestures": gesture_hints(mapping, device_id)}]
+            screen = self._screen(state, mapping, device_id) if state else [self._screen_command(mapping, device_id)]
         return self.presets(device_id), screen
 
     def status(self) -> dict:
@@ -491,6 +550,11 @@ class Petasos:
             return [{"do": "stop_speaking"}]
         if action == "music_page":
             return [{"do": "page", "page": "music"}]
+        if action.startswith("page_"):
+            return [{"do": "page", "page": action.removeprefix("page_")}]
+        if action == "soft_keys":
+            state.keys = 2 if state.keys == 1 else 1  # _screen sends the other set (or keeps set 1)
+            return []
         if action.startswith("music_"):  # the phone's music, through the Car Thing (client music.go)
             return [{"do": "music", "op": action.removeprefix("music_")}]
         if action == "volume":
