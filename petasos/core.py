@@ -63,12 +63,28 @@ def agent_name(mapping: dict) -> str:
     return name.strip() if isinstance(name, str) and name.strip() else DEFAULT_MAPPING["agent_name"]
 
 
-def preset_labels(mapping: dict) -> list[str]:
+PRESETS = ("preset-1", "preset-2", "preset-3", "preset-4")
+DEVICE_ID_MAX = 64
+DEVICE_NAME_MAX = 48
+
+
+def controls_for(mapping: dict, device: str | None) -> dict:
+    """The controls a device uses: the mapping's, with the preset buttons the device has its own
+    of (``devices.<id>.controls``, set from its settings) in place of the shared ones."""
+    controls = dict(mapping.get("controls") or {})
+    own = ((mapping.get("devices") or {}).get(device or "") or {}).get("controls")
+    if isinstance(own, dict):
+        controls.update({name: own[name] for name in PRESETS if name in own})
+    return controls
+
+
+def preset_labels(mapping: dict, device: str | None = None) -> list[str]:
     """What the screen shows under each preset button: its label, else the start of its prompt,
     else "" for a button that does nothing."""
     labels = []
-    for i in range(1, 5):
-        gestures = mapping.get("controls", {}).get(f"preset-{i}") or {}
+    controls = controls_for(mapping, device)
+    for name in PRESETS:
+        gestures = controls.get(name) or {}
         step = next((s for s in gestures.values() if isinstance(s, dict) and s.get("action") not in (None, "none")), None)
         label = ""
         if step:
@@ -112,19 +128,45 @@ def validate(mapping: dict) -> list[str]:
     controls = mapping.get("controls")
     if not isinstance(controls, dict):
         return problems + ["controls must be an object keyed by input name."]
+    problems += _control_problems(controls, INPUTS, "")
+    devices = mapping.get("devices")
+    if devices is None:
+        return problems
+    if not isinstance(devices, dict):
+        return problems + ["devices must be an object keyed by device id."]
+    for device, own in devices.items():
+        where = f"devices.{device}"
+        if not (isinstance(device, str) and 0 < len(device) <= DEVICE_ID_MAX):
+            problems.append(f"A device id is 1 to {DEVICE_ID_MAX} characters.")
+            continue
+        if not isinstance(own, dict):
+            problems.append(f"{where} must be an object.")
+            continue
+        name = own.get("name")
+        if name is not None and not (isinstance(name, str) and len(name.strip()) <= DEVICE_NAME_MAX):
+            problems.append(f"{where}.name is the device's name, at most {DEVICE_NAME_MAX} characters.")
+        if not isinstance(own.get("controls", {}), dict):
+            problems.append(f"{where}.controls must be an object keyed by preset button.")
+            continue
+        problems += _control_problems(own.get("controls", {}), PRESETS, f"{where}.controls.")
+    return problems
+
+
+def _control_problems(controls: dict, inputs: tuple, prefix: str) -> list[str]:
+    problems: list[str] = []
     for name, gestures in controls.items():
-        if name not in INPUTS:
-            problems.append(f"Unknown input {name!r}; inputs are {', '.join(INPUTS)}.")
+        if name not in inputs:
+            problems.append(f"Unknown input {prefix}{name!r}; inputs are {', '.join(inputs)}.")
             continue
         if not isinstance(gestures, dict):
-            problems.append(f"{name} must be an object keyed by gesture.")
+            problems.append(f"{prefix}{name} must be an object keyed by gesture.")
             continue
         if "press" in gestures and ("hold" in gestures or "tap" in gestures):
-            problems.append(f"{name} cannot have press together with hold or tap; press fires first.")
+            problems.append(f"{prefix}{name} cannot have press together with hold or tap; press fires first.")
         if "turn" in gestures and name != "knob":
-            problems.append(f"Only the knob can turn, not {name}.")
+            problems.append(f"Only the knob can turn, not {prefix}{name}.")
         for gesture, step in gestures.items():
-            where = f"{name}.{gesture}"
+            where = f"{prefix}{name}.{gesture}"
             if gesture not in GESTURES:
                 problems.append(f"Unknown gesture {where}; gestures are {', '.join(GESTURES)}.")
                 continue
@@ -231,11 +273,11 @@ class Petasos:
                 if action == "hello":  # the client (re)started: forget mic, listening and held buttons
                     self._devices[device_id] = DeviceState()
                     self._devices[device_id].last_seen = state.last_seen
-                    return self._screen(self._devices[device_id], mapping)
+                    return self._screen(self._devices[device_id], mapping, device_id)
                 if action == "conversation_ended" and state.listening == "conversation":
                     state.listening = None
                 return []
-            controls = mapping["controls"].get(name)
+            controls = controls_for(mapping, device_id).get(name)
             if controls is None and name.startswith("car-"):
                 # A mapping written before the car buttons existed gets their defaults.
                 controls = DEFAULT_MAPPING["controls"][name]
@@ -251,18 +293,63 @@ class Petasos:
                 out = self._run(state, mapping, controls.get("turn"), delta=delta)
             else:
                 raise MappingError(f"Unknown action {action!r}; actions are press, release and turn.")
-            changed = self._screen(state, mapping) if state.labels_sent is not None else []
+            changed = self._screen(state, mapping, device_id) if state.labels_sent is not None else []
             return changed + out
 
     @staticmethod
-    def _screen(state, mapping) -> list[dict]:
+    def _screen(state, mapping, device_id) -> list[dict]:
         """The preset labels and agent name for the device's screen: on hello, then whenever they
         change."""
-        screen = {"do": "screen", "presets": preset_labels(mapping), "agent": agent_name(mapping)}
+        screen = {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping)}
         if screen == state.labels_sent:
             return []
         state.labels_sent = screen
         return [screen]
+
+    # --- a device's own preset buttons --------------------------------------------------------
+
+    def presets(self, device_id: str) -> dict:
+        """A device's preset buttons as its settings show them: the ones it uses, whether they
+        are its own, and the shared ones it would go back to."""
+        mapping = self.mapping.current()
+        own = (mapping.get("devices") or {}).get(device_id)
+        shared = {name: mapping["controls"].get(name) or {"press": {"action": "none"}} for name in PRESETS}
+        used = controls_for(mapping, device_id)
+        return {"device": device_id, "own": own is not None,
+                "name": (own or {}).get("name", ""),
+                "presets": {name: used.get(name) or {"press": {"action": "none"}} for name in PRESETS},
+                "shared": shared, "labels": preset_labels(mapping, device_id)}
+
+    def set_presets(self, device_id: str, presets: dict | None, name: str | None = None) -> tuple[dict, list[dict]]:
+        """Gives a device its own preset buttons, or (presets None) puts it back on the shared
+        ones. Returns its presets and the screen command for its new labels."""
+        if not (isinstance(device_id, str) and 0 < len(device_id) <= DEVICE_ID_MAX):
+            raise MappingError(f"A device id is 1 to {DEVICE_ID_MAX} characters.")
+        mapping = self.mapping.current()
+        devices = dict(mapping.get("devices") or {})
+        if presets is None:
+            devices.pop(device_id, None)
+        else:
+            if not isinstance(presets, dict):
+                raise MappingError("presets must be an object keyed by preset button.")
+            own = {"controls": {k: presets[k] for k in PRESETS if k in presets}}
+            unknown = [k for k in presets if k not in PRESETS]
+            if unknown:
+                raise MappingError(f"Only the preset buttons can be a device's own, not {', '.join(unknown)}.")
+            label = name if isinstance(name, str) else (devices.get(device_id) or {}).get("name")
+            if label:
+                own["name"] = label.strip()
+            devices[device_id] = own
+        if devices:
+            mapping["devices"] = devices
+        else:
+            mapping.pop("devices", None)
+        mapping = self.mapping.replace(mapping)
+        with self._lock:
+            state = self._devices.get(device_id)
+            screen = self._screen(state, mapping, device_id) if state else [
+                {"do": "screen", "presets": preset_labels(mapping, device_id), "agent": agent_name(mapping)}]
+        return self.presets(device_id), screen
 
     def status(self) -> dict:
         now = self.clock()

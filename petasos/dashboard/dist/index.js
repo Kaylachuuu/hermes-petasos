@@ -36,6 +36,12 @@
     return words.charAt(0).toUpperCase() + words.slice(1);
   }
 
+  // Which devices have preset buttons of their own, for the note at the top.
+  function ownedBy(mapping) {
+    const names = Object.entries(mapping.devices || {}).map(([id, d]) => (d && d.name) || id);
+    return names.length ? " (now: " + names.join(", ") + ")" : "";
+  }
+
   function presetsOf(mapping) {
     const out = [];
     for (let i = 1; i <= 4; i++) {
@@ -155,7 +161,7 @@
       h("header", { className: "petasos-head" },
         h("h1", null, "Petasos"),
         h("p", { className: "petasos-hint" },
-          "The preset buttons, who Petasos talks to, and its chats. The Car Thing picks up changes the next time a button is pressed. Saved to " + loaded.path + ".")),
+          "Who Petasos talks to, its chats, and the shared preset buttons, which every device without its own uses. A Car Thing gets its own in its Device settings, an app in its Settings" + ownedBy(loaded.mapping) + ". Devices pick up changes the next time a button is pressed. Saved to " + loaded.path + ".")),
       loaded.problems && loaded.problems.length
         ? h("p", { className: "petasos-error" },
             "mapping.json has problems, so the Car Thing is using the last good mapping: " + loaded.problems.join(" "))

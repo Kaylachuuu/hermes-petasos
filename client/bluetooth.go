@@ -38,6 +38,12 @@ type btScreen struct {
 	Sel     int      `json:"sel"`            // index into Items of the highlighted row
 	Code    string   `json:"code,omitempty"` // the pairing code, in the pair view
 	Asking  bool     `json:"asking"`         // the pair view waits for the knob
+
+	// The keyboard view (device.go): the text being edited, how long it may be, and which
+	// keyboard this is, so the page starts afresh for each.
+	Text     string `json:"text,omitempty"`
+	Max      int    `json:"max,omitempty"`
+	Keyboard int    `json:"keyboard,omitempty"`
 }
 
 type btItem struct {
@@ -71,6 +77,12 @@ type bluetooth struct {
 	stop    chan struct{}   // ends the scan view's refreshing
 	confirm chan bool       // the knob's answer to a pairing code
 	tab     string          // the settings tab last shown, opened again next time
+	name    string          // what other devices see the Car Thing as: its name (device.go)
+
+	draft     *softKeyDraft // the soft key being edited
+	kbID      int           // the latest on-screen keyboard
+	typed     func(string)  // gets the keyboard's text
+	typedBack func()        // runs when the keyboard is cancelled
 }
 
 var bt = &bluetooth{}
@@ -95,6 +107,7 @@ func (b *bluetooth) start() {
 			b.mu.Unlock()
 			log.Printf("Bluetooth pairing agent ready")
 			b.nameAdapter()
+			routeSCOOverHCI()
 			go b.watchLinks()
 			return
 		}
@@ -103,15 +116,16 @@ func (b *bluetooth) start() {
 	}
 }
 
-// btName is what other devices (a phone, a car) see the Car Thing as.
-const btName = "Petasos"
-
-// nameAdapter makes sure the Car Thing shows up as Petasos. BlueZ keeps the adapter's name in
-// /var/lib/bluetooth, where an earlier system (Nocturne) may have left its own.
+// nameAdapter makes sure other devices (a phone, a car) see the Car Thing by its name. BlueZ
+// keeps the adapter's name in /var/lib/bluetooth, where an earlier system (Nocturne) may have
+// left its own.
 func (b *bluetooth) nameAdapter() {
 	b.mu.Lock()
-	conn := b.conn
+	conn, btName := b.conn, b.name
 	b.mu.Unlock()
+	if btName == "" {
+		btName = "Car Thing"
+	}
 	obj := conn.Object("org.bluez", adapterPath)
 	v, err := obj.GetProperty("org.bluez.Adapter1.Alias")
 	if err == nil && v.Value() == btName {
@@ -234,6 +248,10 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 	}
 	name, _ := ev["input"].(string)
 	action, _ := ev["action"].(string)
+	if view.View == "keyboard" {
+		b.keyboardInput(name, action, intOf(ev["delta"], 0))
+		return true
+	}
 	if view.Editing {
 		switch {
 		case name == "knob" && action == "turn":
@@ -250,6 +268,9 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 	case name == "preset-2" && action == "press" && view.View != "pair":
 		b.stopScan()
 		b.screenView()
+	case name == "preset-3" && action == "press" && view.View != "pair":
+		b.stopScan()
+		go b.mineView() // asks Hermes for the soft keys
 	case name == "knob" && action == "turn":
 		b.move(intOf(ev["delta"], 0))
 	case name == "knob" && action == "press":
@@ -302,9 +323,12 @@ func (b *bluetooth) openScreens() {
 	tab := b.tab
 	b.mu.Unlock()
 	log.Printf("settings open")
-	if tab == "screen" {
+	switch tab {
+	case "screen":
 		b.screenView()
-	} else {
+	case "device":
+		b.mineView()
+	default:
 		b.listView()
 	}
 }
@@ -357,12 +381,18 @@ func (b *bluetooth) back() {
 		return
 	}
 	switch v.View {
-	case "list", "screen":
+	case "list", "screen", "mine":
 		b.close()
+	case "softkey":
+		go b.mineView()
 	case "scan":
 		b.stopScan()
 		b.listView()
 	default:
+		if v.Tab == "device" {
+			go b.mineView()
+			return
+		}
 		b.listView()
 	}
 }
@@ -536,7 +566,13 @@ func (b *bluetooth) isOpen() bool {
 }
 
 func (b *bluetooth) message(title, note string) {
-	b.show(&btScreen{View: "message", Title: title, Note: note})
+	b.mu.Lock()
+	tab := b.tab
+	b.mu.Unlock()
+	if tab != "device" {
+		tab = "bluetooth"
+	}
+	b.show(&btScreen{View: "message", Tab: tab, Title: title, Note: note})
 }
 
 func friendly(err error) string {

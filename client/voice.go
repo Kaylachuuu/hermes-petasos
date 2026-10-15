@@ -54,6 +54,9 @@ type voice struct {
 func newVoice(h *hermes, presses chan<- map[string]any) *voice {
 	v := &voice{h: h, mic: h.cfg.Mic, speaker: h.cfg.Speaker, presses: presses,
 		slow: &http.Client{Transport: h.http.Transport, Timeout: 4 * time.Minute}}
+	if v.mic == "car" { // the car's, chosen in the Device tab (device.go)
+		v.mic = ""
+	}
 	if v.mic == "" {
 		v.mic = "hw:0,0" // the Car Thing's microphones (yocto-superbird routes them to both capture devices)
 	}
@@ -99,16 +102,24 @@ func (v *voice) carryOut(c map[string]any) {
 			display.notice(text)
 		}
 	case "screen":
-		if raw, ok := c["presets"].([]any); ok {
-			labels := make([]string, 4)
-			for i := 0; i < 4 && i < len(raw); i++ {
-				labels[i], _ = raw[i].(string)
-			}
-			display.update(func(st *screenState) { st.Presets = labels })
+		showScreenCommand(c)
+	}
+}
+
+// showScreenCommand shows the preset labels and agent name the plugin sent.
+func showScreenCommand(c map[string]any) {
+	if c["do"] != "screen" {
+		return
+	}
+	if raw, ok := c["presets"].([]any); ok {
+		labels := make([]string, 4)
+		for i := 0; i < 4 && i < len(raw); i++ {
+			labels[i], _ = raw[i].(string)
 		}
-		if name, _ := c["agent"].(string); name != "" {
-			display.update(func(st *screenState) { st.Agent = name })
-		}
+		display.update(func(st *screenState) { st.Presets = labels })
+	}
+	if name, _ := c["agent"].(string); name != "" {
+		display.update(func(st *screenState) { st.Agent = name })
 	}
 }
 

@@ -214,3 +214,34 @@ def test_car_buttons_work_with_a_mapping_written_before_them(setup):
     assert petasos.handle(ev("car-play", "release")) == []
     assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "listen_stop"}
     assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "stop_speaking"}
+
+
+def test_a_device_can_have_its_own_presets(setup):
+    petasos, _ = setup
+    petasos.handle(ev("device", "hello", device="kitchen"))
+    own = {"preset-1": {"press": {"action": "prompt", "text": "What's for dinner?", "label": "Dinner"}}}
+    presets, screen = petasos.set_presets("kitchen", own, "Kitchen")
+    assert presets["own"] and presets["name"] == "Kitchen"
+    assert presets["presets"]["preset-1"] == own["preset-1"]
+    assert presets["presets"]["preset-2"]["press"]["label"] == "Last message"  # still the shared one
+    assert screen == [{"do": "screen", "presets": ["Dinner", "Last message", "", ""], "agent": "Hermes"}]
+    assert petasos.handle(ev("preset-1", "press", device="kitchen")) == [{"do": "prompt", "text": "What's for dinner?"}]
+    # Other devices keep the shared ones.
+    assert petasos.handle(ev("preset-1", "press")) == [{"do": "prompt", "text": "What's next on my calendar?"}]
+    assert core.validate(json.loads(petasos.mapping.path.read_text())) == []
+
+    presets, screen = petasos.set_presets("kitchen", None)
+    assert not presets["own"]
+    assert screen == [{"do": "screen", "presets": ["Calendar", "Last message", "", ""], "agent": "Hermes"}]
+    assert "devices" not in petasos.mapping.current()
+
+
+def test_a_device_can_only_own_good_presets(setup):
+    petasos, _ = setup
+    with pytest.raises(core.MappingError, match="Only the preset buttons"):
+        petasos.set_presets("kitchen", {"front": {"press": {"action": "none"}}})
+    with pytest.raises(core.MappingError, match="needs some text"):
+        petasos.set_presets("kitchen", {"preset-1": {"press": {"action": "prompt", "text": ""}}})
+    mapping = copy.deepcopy(core.DEFAULT_MAPPING)
+    mapping["devices"] = {"kitchen": {"controls": {"mute": {"press": {"action": "none"}}}}}
+    assert any("devices.kitchen.controls." in p for p in core.validate(mapping))

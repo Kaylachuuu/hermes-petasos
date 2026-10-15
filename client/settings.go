@@ -2,7 +2,8 @@ package main
 
 // The settings on the Car Thing itself. Holding the mic button opens them. The preset buttons
 // become tabs while they are open: the first for Bluetooth (the screens in bluetooth.go), the
-// second for Screen, the light's brightness, dimming and time-out; the other two are spare.
+// second for Screen, the light's brightness, dimming and time-out; the third for this Car Thing
+// itself, its name, microphone and soft keys (device.go); the fourth is spare.
 // A Screen row is changed by pressing the knob, turning it, and pressing again.
 
 type choice struct {
@@ -122,6 +123,10 @@ func (b *bluetooth) adjust(delta int) {
 		step = -1
 	}
 	v.Items[v.Sel].turn(step)
+	if v.View == "softkey" {
+		b.softKeyViewAt(v.Sel, true, "")
+		return
+	}
 	b.screenViewAt(v.Sel, true)
 }
 
@@ -130,7 +135,11 @@ func (b *bluetooth) doneEditing() {
 	b.mu.Lock()
 	v := b.view
 	b.mu.Unlock()
-	if v != nil {
+	switch {
+	case v == nil:
+	case v.View == "softkey":
+		go b.saveSoftKey(v.Sel)
+	default:
 		b.screenViewAt(v.Sel, false)
 	}
 }

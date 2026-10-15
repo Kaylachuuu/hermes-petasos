@@ -117,6 +117,8 @@ turn Petasos on. Repeat after an update that changes `plugin.js`.
 
 The easiest way is the **Petasos** tab in the Hermes dashboard: the agent's name, and for each preset button what it does when pressed, what it asks and its label on the screen, with a preview of the top of the Car Thing's screen. It saves to the same file described below, with the same checks, and the Car Thing picks the change up on its next button press.
 
+The preset buttons set there are the shared ones. Any device can have its own instead: a Car Thing in the Device tab of its settings, an app in its Settings page. Those are kept in the same file under `devices`, by device id (`GET`/`PUT /devices/<id>/presets`), and only the four presets can differ; renaming a device carries its own presets to the new name.
+
 The first button press creates `petasos/mapping.json` in the Hermes folder, holding the layout above. Edit it and the change applies on the next press; no restart needed. A file with a mistake is reported by `/petasos` and the last good layout stays in use. `/petasos` in any chat shows the current layout.
 
 Each control (`preset-1` to `preset-4`, `mute`, `front`, `knob`) takes gestures: `press`, or `hold` and `tap` (told apart by `hold_ms`), and `turn` for the knob. Actions are `push_to_talk` (hold only), `conversation`, `stop_speaking`, `volume` (turn only), `mic_toggle`, `prompt` (with `"text"`) and `none`. For example, to make preset 3 ask about the weather:
@@ -195,7 +197,7 @@ cd ~/Projects/yocto-superbird
 KAS_CONTAINER_ENGINE=podman kas-container build ~/Projects/hermes-petasos/image/kas/petasos.yml
 ```
 
-The result is `build/tmp/deploy/images/superbird/petasos-image-superbird-flashthing.zip`. Copy it to the Mac, hold buttons 1 and 4 while plugging the Car Thing in, and run `flashthing-cli` on it (install with rustup and `cargo install flashthing-cli`; Homebrew's Rust builds LLVM from source). Then run the installer as in step 4. On the USB cable the Car Thing is `petasos.local`; use `ssh -4`.
+The result is `build/tmp/deploy/images/superbird/petasos-image-superbird-flashthing.zip`. Copy it to the Mac, hold buttons 1 and 4 while plugging the Car Thing in, and run `flashthing-cli` on it (install with rustup and `cargo install flashthing-cli`; Homebrew's Rust builds LLVM from source). Then run the installer as in step 4. On the USB cable the Car Thing is `petasos.local`; use `ssh -4`. The image's Bluetooth audio also answers a car's hands-free connection (for the car's microphone, in the Device tab), so pair the car again after flashing for it to see that.
 
 ### Online through the phone
 
@@ -242,8 +244,9 @@ tts:
 The Car Thing's screen shows what's going on: the preset labels under their buttons, the phone, home, speaker and mic links in the top-right corner, and in the middle, the Petasos title with a line that follows Athena: "Getting ready…" from the press until the mic is really recording, then "Athena is listening", "Athena is thinking…" under what she heard, and her reply while she speaks (a long one scrolls). Turning the knob lights the top Greek key band up to the volume. When a link drops, the warning emblem appears on the left and the line says what to do.
 
 - **Served by petasos** (`client/screen.go`, `client/screen/`): the page and its fonts are built into the program and served on `127.0.0.1:8187`; the state reaches the page as server-sent events from `/events`. The image's kiosk browser is pointed at it over its DevTools port, 9223 (`client/kiosk.go`), so the screen arrives with petasos's own updates and works on an image built before it existed.
-- **Settings** (`client/settings.go`): hold the mic button for two seconds. While they're open the preset buttons are tabs: the first for Bluetooth, the second for Screen (the other two are spare). The knob moves and chooses, and the front button closes them. A short press of the mic button still mutes, on release.
+- **Settings** (`client/settings.go`): hold the mic button for two seconds. While they're open the preset buttons are tabs: the first for Bluetooth, the second for Screen, the third for Device (the fourth is spare). The knob moves and chooses, and the front button closes them. A short press of the mic button still mutes, on release.
 - **Screen tab** (`client/backlight.go`): brightness (Auto, from the ambient light sensor, or 10–100%, lit along a Greek key band at the bottom the way the volume is), how long until the screen dims (Off, 15, 30, 45 or 60 seconds) and how far, and how long until it turns off (the same choices). The Greek key band sits under the tabs, where it is on the main screen, and lights up to the level while Brightness or Dim to is highlighted. Press the knob on a row, turn to change it (the screen follows as you turn), press again. Any button, the knob or a touch on the screen wakes it, and a voice turn, notice or volume change keeps it awake; a preset pressed while the screen is off only wakes it, since its label can't be seen. Kept in `screen.json` next to `config.json`.
+- **Device tab** (`client/device.go`): this Car Thing's name, its microphone and its own soft keys. The name is what Bluetooth shows it as and names its chat ("Petasos · Kayla's Kia"); renaming it starts a new chat and restarts petasos. Text is typed on an on-screen keyboard, by touch or by turning the knob to a key and pressing it; Done saves, the front button cancels. The microphone is the Car Thing's own or the car's: with the car's chosen, petasos records over the car's hands-free link (BlueALSA's HFP audio gateway, `bluealsa:PROFILE=sco`) while the car is connected, and from its own microphones otherwise. Soft keys start as the shared ones; changing one gives this Car Thing its own set, and "Use the shared soft keys" goes back. The name and microphone are kept in `device.json`, which the installer leaves alone.
 - **Bluetooth tab** (`client/bluetooth.go`): lists the paired phones and computers it can get online through (one marked first) and the speakers, connects, disconnect and forget them, and pair new ones: "Pair a new device" looks for speakers in pairing mode and makes the Car Thing visible as Petasos to a phone's Bluetooth settings. Pairing codes show on the screen, confirmed with the knob.
 - Fonts: Caladea (Apache 2.0) and Source Sans 3 (OFL 1.1); see `client/screen/fonts/README`.
 
@@ -308,6 +311,8 @@ the petasos program, so a Windows app will share it.
 
 - **Name**: this computer's name. Its chat with the agent is "Petasos · <name>" unless the
   dashboard's Petasos tab has all devices share one chat, "Petasos".
+- **Soft keys**: the shared ones, or this computer's own: for each of the four, what it does,
+  what it asks and its label.
 - **Microphone**: which one Petasos records from. By default the one the computer's sound
   settings use; choosing one here leaves those alone. AirPods and other Bluetooth headsets drop
   to call quality while their microphone is on, so choosing the Mac's own keeps them sounding

@@ -86,6 +86,23 @@ func (s *screen) update(change func(*screenState)) {
 	}
 }
 
+// send sends a message that isn't part of the state to every open page, such as the knob
+// turning while the on-screen keyboard is up.
+func (s *screen) send(message any) {
+	raw, err := json.Marshal(message)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for ch := range s.subs {
+		select {
+		case ch <- raw:
+		default:
+		}
+	}
+}
+
 // micLevel sends the microphone's level (0 to 1) to every open page, for the bottom band while
 // listening. It isn't part of the state, so it stays out of what a page gets as it connects.
 func (s *screen) micLevel(level float64) {
@@ -145,8 +162,10 @@ func (s *screen) serve() {
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/input", s.pagePress)
 	mux.HandleFunc("/mic", pagePost)
+	mux.HandleFunc("/settings/text", typedText)
 	mux.HandleFunc("/app/window", appWindow)
 	mux.HandleFunc("/app/settings", appSettings)
+	mux.HandleFunc("/app/softkeys", appSoftKeys)
 	mux.HandleFunc("/app/signin", appSignIn)
 	l, err := net.Listen("tcp", screenAddr)
 	if err != nil {

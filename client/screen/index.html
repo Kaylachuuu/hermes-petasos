@@ -74,6 +74,24 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
 .pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
 .pair .note { max-width: 70cqw; font-size: 2.5cqw; }
+/* The on-screen keyboard, for typing a name or a soft key's question with a finger or the knob. */
+.kb { flex: 1; display: flex; flex-direction: column; gap: .7cqw; touch-action: none; user-select: none; }
+.kb .field { display: flex; align-items: baseline; gap: 1.6cqw; border-bottom: .15cqw solid var(--dust); padding: 0 .6cqw .5cqw; }
+.kb .field span { font-family: var(--display); font-size: 2.3cqw; letter-spacing: .2em; text-transform: uppercase; color: var(--dust); flex: none; }
+.kb .text { flex: 1; font-size: 3cqw; white-space: pre; overflow: hidden; direction: rtl; text-align: left; }
+.kb .text bdi::after { content: ""; display: inline-block; width: .25cqw; height: 3cqw; margin-left: .2cqw; vertical-align: -.4cqw;
+                       background: var(--ember); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.kb .count { font-size: 1.8cqw; color: #6b5f50; flex: none; }
+.kb .krow { display: flex; gap: .7cqw; justify-content: center; flex: 1; }
+.kb .k { flex: 1; max-width: 7.6cqw; display: flex; align-items: center; justify-content: center; font-size: 2.7cqw;
+         border: .15cqw solid var(--rule); border-radius: .7cqw; background: #261d15; color: var(--bronze); }
+.kb .k.wide { max-width: 12cqw; font-size: 2.1cqw; letter-spacing: .06em; }
+.kb .k.space { max-width: 34cqw; }
+.kb .k.done { color: var(--ember); border-color: var(--ember); }
+.kb .k.sel { border-color: var(--ember); background: var(--row); }
+.kb .k.down { background: var(--ember); color: var(--night); }
+.kb .k.on { color: var(--ember); }
 .keys { position: absolute; left: 0; right: 0; bottom: 0; height: 8cqw; display: flex; justify-content: center; align-items: center;
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
@@ -140,6 +158,7 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M7.2 6.5a7.5 7.5 0 1 0 9.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-forget" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-device" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
     <symbol id="emblem" viewBox="0 0 200 190">
       <g mask="url(#fade)" filter="url(#soft)">
@@ -239,7 +258,7 @@ function warning(s) {
 }
 
 // In the settings the preset buttons are its tabs.
-const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["", ""], ["", ""]];
+const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["device", "Device"], ["", ""]];
 
 function drawTop(s) {
   s.presets.forEach((label, i) => {
@@ -342,6 +361,9 @@ function drawBT(b) {
                  scan: [["Knob", "choose"], ["Press", "pair"], ["Front button", "back"]],
                  pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
                  screen: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 mine: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 softkey: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "back"]],
+                 keyboard: [["Touch or knob", "type"], ["Done", "save"], ["Front button", "cancel"]],
                  message: [] }[b.view] || [];
   $("bt-keys").innerHTML = keys.map(([k, v]) => `<span><b>${k}</b> ${v}</span>`).join("");
   const body = $("bt-body");
@@ -351,6 +373,8 @@ function drawBT(b) {
   const w = 8 * Math.max(0, Math.min(100, b.meter || 0));
   $("bt-band-cover").setAttribute("width", w);
   $("bt-band-keys").setAttribute("width", w);
+  if (b.view === "keyboard") { drawKeyboard(b); return; }
+  kb = null;
   if (b.view === "pair" || b.view === "message") {
     body.innerHTML = `<div class="pair">${b.view === "pair" ? `<p class="note" style="margin:0">Pair with</p>` : ""}
       <h2>${esc(b.title)}</h2>${b.code ? `<div class="code">${esc(b.code)}</div>` : ""}
@@ -368,6 +392,85 @@ function drawBT(b) {
     `<div class="list">${rows}</div>`;
   const sel = $("sel");
   if (sel) sel.scrollIntoView({ block: "nearest" });
+}
+
+// --- the on-screen keyboard ---------------------------------------------------------------------
+
+// The keyboard lives in the page: keys typed by touch, or by turning the knob to one and
+// pressing it (petasos passes the knob along as {"kb": ...}). Done sends the text to petasos.
+const LAYOUTS = {
+  abc: ["q w e r t y u i o p", "a s d f g h j k l '", "⇧ z x c v b n m ⌫", "123 , space . Done"],
+  123: ["1 2 3 4 5 6 7 8 9 0", "- / : ; ( ) $ & @ \"", "# % + = ? ! * ⌫", "ABC , space . Done"],
+};
+let kb = null; // { id, text, max, layout, shift, sel }
+
+function kbKeys() {
+  return LAYOUTS[kb.layout].map((row) => row.split(" "));
+}
+
+function drawKeyboard(b) {
+  if (!kb || kb.id !== b.keyboard) {
+    kb = { id: b.keyboard, text: b.text || "", max: b.max || 48, layout: "abc", shift: !b.text, sel: 0, sent: false };
+    $("bt-body").innerHTML = `<div class="kb" id="kb"></div>`;
+    $("kb").addEventListener("pointerdown", (e) => {
+      const el = e.target.closest(".k");
+      if (!el) return;
+      e.preventDefault();
+      el.classList.add("down");
+      setTimeout(() => el.classList.remove("down"), 120);
+      kb.sel = +el.dataset.i;
+      kbType(el.dataset.k);
+    });
+  }
+  kb.title = b.title;
+  renderKeyboard();
+}
+
+function renderKeyboard() {
+  const el = $("kb");
+  if (!el || !kb) return;
+  let i = 0;
+  const rows = kbKeys().map((row) => `<div class="krow">${row.map((k) => {
+    const n = i++;
+    let face = k, cls = "k";
+    if (k.length === 1 && kb.shift) face = k.toUpperCase();
+    if (k === "space") { face = ""; cls += " space"; }
+    if (k === "⇧") cls += kb.shift ? " wide on" : " wide";
+    if (k === "⌫" || k === "123" || k === "ABC") cls += " wide";
+    if (k === "Done") cls += " wide done";
+    if (n === kb.sel) cls += " sel";
+    return `<div class="${cls}" data-k="${esc(k)}" data-i="${n}">${esc(face)}</div>`;
+  }).join("")}</div>`).join("");
+  el.innerHTML = `<div class="field"><span>${esc(kb.title)}</span><div class="text"><bdi>${esc(kb.text)}</bdi></div>
+    <span class="count">${[...kb.text].length}/${kb.max}</span></div>${rows}`;
+}
+
+function kbType(k) {
+  if (!kb || kb.sent) return;
+  const chars = [...kb.text];
+  if (k === "⌫") chars.pop();
+  else if (k === "⇧") { kb.shift = !kb.shift; renderKeyboard(); return; }
+  else if (k === "123" || k === "ABC") { kb.layout = k === "123" ? "123" : "abc"; kb.sel = Math.min(kb.sel, kbKeys().flat().length - 1); renderKeyboard(); return; }
+  else if (k === "Done") {
+    kb.sent = true;
+    fetch("/settings/text", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ keyboard: kb.id, text: kb.text }) })
+      .catch(() => { if (kb) kb.sent = false; });
+    return;
+  } else if (chars.length < kb.max) {
+    chars.push(k === "space" ? " " : kb.shift ? k.toUpperCase() : k);
+    kb.shift = false;
+  }
+  kb.text = chars.join("");
+  renderKeyboard();
+}
+
+function kbKnob(m) {
+  if (!kb) return;
+  if (m === "press") { kbType(kbKeys().flat()[kb.sel]); return; }
+  const n = kbKeys().flat().length;
+  kb.sel = Math.max(0, Math.min(n - 1, kb.sel + (m.turn > 0 ? 1 : -1)));
+  renderKeyboard();
 }
 
 function draw(s) {
@@ -490,6 +593,7 @@ function connect() {
   const events = new EventSource("/events");
   events.onmessage = (e) => {
     const message = JSON.parse(e.data);
+    if ("kb" in message) { kbKnob(message.kb); return; }
     if ("mic" in message) { // the microphone's level, many times a second while listening
       if (state && state.phase === "listening") { micTarget = message.mic; if (!micFrame) micFrame = requestAnimationFrame(stepMic); }
       return;

@@ -60,6 +60,20 @@ def test_mapping_can_be_read_and_replaced(hermes):
     assert client.put("/api/plugins/petasos/mapping", json={"controls": {}}).status_code == 400
 
 
+def test_a_device_keeps_its_own_presets(hermes):
+    client, _ = hermes
+    url = "/api/plugins/petasos/devices/kitchen/presets"
+    assert client.get(url).json()["own"] is False
+    own = {"preset-2": {"press": {"action": "prompt", "text": "Any packages today?", "label": "Packages"}}}
+    body = client.put(url, json={"presets": own, "name": "Kitchen"}).json()
+    assert body["own"] and body["labels"][1] == "Packages"
+    assert body["commands"][0]["presets"][1] == "Packages"
+    r = client.post("/api/plugins/petasos/input", json={"input": "preset-2", "action": "press", "device": "kitchen"})
+    assert r.json() == {"commands": [{"do": "prompt", "text": "Any packages today?"}]}
+    assert client.put(url, json={"presets": {"knob": {}}}).status_code == 400
+    assert client.put(url, json={"presets": None}).json()["own"] is False
+
+
 def test_slash_command_shows_the_layout(hermes):
     from hermes_cli.plugins import get_plugin_command_handler
     text = get_plugin_command_handler("petasos")("")

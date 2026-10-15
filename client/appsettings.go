@@ -174,6 +174,9 @@ func (h *hermes) saveAppSettings(c appSettingsChange) string {
 			return "Couldn't save the microphone: " + err.Error()
 		}
 	}
+	if err := h.carryPresets(h.cfg.Device, device, name); err != nil {
+		log.Printf("renaming: %v", err) // the soft keys stay under the old name; the rename goes ahead
+	}
 	cfg := h.cfg
 	cfg.Name, cfg.Device = name, device
 	if err := writeJSON(filepath.Join(h.dir, "config.json"), cfg, 0o644); err != nil {

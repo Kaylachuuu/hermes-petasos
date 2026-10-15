@@ -42,7 +42,11 @@ func (v *voice) recordCommand() *exec.Cmd {
 		}
 		return exec.Command(audioHelper, args...)
 	}
-	return exec.Command("arecord", "-q", "-D", v.mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
+	mic := v.mic
+	if carMic.Load() && display.snapshot().Links.Speaker {
+		mic = carMicDevice
+	}
+	return exec.Command("arecord", "-q", "-D", mic, "-f", "S32_LE", "-r", fmt.Sprint(sampleRate),
 		"-c", "1", "-t", "raw")
 }
 

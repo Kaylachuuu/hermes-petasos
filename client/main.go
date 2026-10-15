@@ -46,7 +46,7 @@ type config struct {
 	Username string `json:"username,omitempty"` // who the app signed in as, to fill in its sign-in page
 	Grab     *bool  `json:"grab,omitempty"`     // take the buttons from Nocturne's own screen; default true
 	Phone    string `json:"phone,omitempty"`    // Bluetooth address of the phone to tether to; default any paired one
-	Mic      string `json:"mic,omitempty"`      // ALSA device to record from (32-bit samples); default hw:0,0
+	Mic      string `json:"mic,omitempty"`      // ALSA device to record from (32-bit samples); default hw:0,0; "car" for the car's (device.go)
 	Speaker  string `json:"speaker,omitempty"`  // ALSA device to play on; default bluealsa (the connected Bluetooth speaker)
 }
 
@@ -152,6 +152,7 @@ func load(dir string) (*hermes, error) {
 	if err := readJSON(filepath.Join(dir, "config.json"), &h.cfg); err != nil {
 		return nil, fmt.Errorf("reading config.json: %w", err)
 	}
+	h.cfg.applyOwnSettings(dir)
 	h.cfg.Server = strings.TrimRight(h.cfg.Server, "/")
 	if h.cfg.Server == "" {
 		return nil, errors.New("config.json has no server address")
@@ -454,6 +455,9 @@ func (h *hermes) run(eventsFile string) {
 	presses := make(chan map[string]any, 64)
 	raw := make(chan map[string]any, 64)
 	grab := h.cfg.Grab == nil || *h.cfg.Grab
+	h.servesDevice()
+	bt.name = h.shownName()
+	carMic.Store(h.cfg.Mic == "car")
 	go display.serve()
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)

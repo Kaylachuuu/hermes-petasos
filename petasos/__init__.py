@@ -59,6 +59,10 @@ def _slash(_args: str = "") -> str:
         gestures = gestures or {}
         parts = [f"{g} = {_describe(s, agent)}" for g, s in gestures.items()] or ["nothing"]
         lines.append(f"- {_LABELS[name]}: {'; '.join(parts)}")
+    for device, own in (mapping.get("devices") or {}).items():
+        for name, gestures in (own.get("controls") or {}).items():
+            parts = [f"{g} = {_describe(s, agent)}" for g, s in gestures.items()] or ["nothing"]
+            lines.append(f"- {_LABELS[name]} on {own.get('name') or device}: {'; '.join(parts)}")
     lines.append(f"Edit {petasos.mapping.path} to change it; edits apply on the next button press.")
     if petasos.mapping.problems:
         lines.append("That file has problems, so the last good layout is still in use:")

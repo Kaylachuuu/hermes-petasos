@@ -49,6 +49,13 @@ export function shownLabel(p) {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
+// Which devices have preset buttons of their own, for the note at the top.
+export function ownedBy(mapping) {
+  const names = Object.entries(mapping.devices || {}).map(([id, d]) => d?.name || id)
+
+  return names.length ? ` (now: ${names.join(', ')})` : ''
+}
+
 export function presetsOf(mapping) {
   const out = []
 
@@ -197,7 +204,7 @@ function Settings({ ctx }) {
     children: [
       jsx('span', {
         className: HINT,
-        children: `The preset buttons, who Petasos talks to, and its chats, for the Car Thing and the Petasos apps. They pick up changes the next time a button is pressed. Saved on Hermes to ${loaded.path}.`
+        children: `Who Petasos talks to, its chats, and the shared preset buttons, which every device without its own uses. A Car Thing gets its own in its Device settings, a Petasos app in its Settings${ownedBy(loaded.mapping)}. Devices pick up changes the next time a button is pressed. Saved on Hermes to ${loaded.path}.`
       }),
       loaded.problems?.length
         ? jsx('span', { className: ERROR, children: `mapping.json has problems, so Petasos is using the last good mapping: ${loaded.problems.join(' ')}` })

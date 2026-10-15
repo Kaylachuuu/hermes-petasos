@@ -26,7 +26,11 @@ func TestComputerNamesBecomeDeviceIDs(t *testing.T) {
 
 func TestAppSettingsAreCheckedAndSaved(t *testing.T) {
 	dir := t.TempDir()
-	h := &hermes{dir: dir, cfg: config{Server: "http://10.0.0.20:9119", Device: "mac"}}
+	plugin := &fakePresets{own: map[string]map[string]presetGestures{
+		"mac": {"preset-1": {"press": {Action: "stop_speaking"}}}}}
+	srv := httptest.NewServer(plugin)
+	defer srv.Close()
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
 	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true}); !strings.Contains(p, "Import") {
 		t.Fatalf("VPN without a config: %q", p)
 	}
@@ -51,6 +55,9 @@ func TestAppSettingsAreCheckedAndSaved(t *testing.T) {
 		err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("saved %+v %+v %v %v", cfg, set, info, err)
 	}
+	if _, old := plugin.own["mac"]; old || plugin.own["office-mac"]["preset-1"]["press"].Action != "stop_speaking" {
+		t.Fatalf("the soft keys didn't follow the new name: %+v", plugin.own)
+	}
 }
 
 // The microphone choice is saved, listed from the helper, and passed to the recorder.
@@ -63,7 +70,9 @@ func TestMicrophoneChoice(t *testing.T) {
 	oldA, oldM, oldV := audioHelper, micChoice, virtual
 	audioHelper, virtual = helper, true
 	defer func() { audioHelper, micChoice, virtual = oldA, oldM, oldV }()
-	h := &hermes{dir: dir, cfg: config{Device: "mac"}}
+	srv := httptest.NewServer(&fakePresets{own: map[string]map[string]presetGestures{}})
+	defer srv.Close()
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
 	mic := "BuiltInMicrophoneDevice"
 	if p := h.saveAppSettings(appSettingsChange{Name: "Mac", Mic: &mic, MicName: "MacBook Pro Microphone"}); p != "" {
 		t.Fatal(p)

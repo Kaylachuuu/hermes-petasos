@@ -73,6 +73,24 @@ def put_mapping(body: dict) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
+@router.get("/devices/{device}/presets")
+def get_device_presets(device: str) -> dict:
+    """A device's preset buttons, for its own settings: its own, or the shared ones it uses."""
+    return _core().shared().presets(device[:64])
+
+
+@router.put("/devices/{device}/presets")
+def put_device_presets(device: str, body: dict) -> dict:
+    """Gives a device its own preset buttons ({"presets": {...}, "name": ...}), or puts it back
+    on the shared ones ({"presets": null}). The screen command for its labels comes back too."""
+    core = _core()
+    try:
+        presets, screen = core.shared().set_presets(device, body.get("presets"), body.get("name"))
+    except core.MappingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {**presets, "commands": screen}
+
+
 # --- voice --------------------------------------------------------------------------------------
 
 MAX_SPEECH_BYTES = 10 * 1024 * 1024  # about five minutes of 16 kHz mono WAV
