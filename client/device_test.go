@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -162,5 +164,21 @@ func TestBluetoothNameIsTheDeviceName(t *testing.T) {
 	}
 	if n := (&hermes{cfg: config{Device: "kaylas-kia", Name: "Kayla's Kia"}}).shownName(); n != "Kayla's Kia" {
 		t.Fatal(n)
+	}
+}
+
+func TestImageVersionComesFromOsRelease(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "os-release")
+	os.WriteFile(path, []byte("ID=petasos\nVERSION_ID=\"0.2.0\"\nBUILD_ID=\"20261015\"\n"), 0o644)
+	if got := imageVersion(path); got != "0.2.0, built 2026-10-15" {
+		t.Fatal(got)
+	}
+	os.WriteFile(path, []byte("VERSION_ID=0.1.0\n"), 0o644)
+	if got := imageVersion(path); got != "0.1.0" {
+		t.Fatal(got)
+	}
+	items := versionItems(versions{Image: "0.2.0", Program: "0.17.2", Latest: "0.17.3", Plugin: "0.11.1"})
+	if len(items) != 4 || items[2].Detail != "Updating to 0.17.3" || items[3].Value != "0.11.1" {
+		t.Fatalf("%+v", items)
 	}
 }

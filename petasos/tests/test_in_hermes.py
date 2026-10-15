@@ -100,6 +100,7 @@ def test_app_programs_are_served(hermes):
                                ("windows", "amd64", "petasos-windows-amd64.exe")):
         info = client.get(f"/api/plugins/petasos/client?os={system}&arch={arch}").json()
         assert info["os"] == system
+        assert info["plugin"] and info["plugin"][0].isdigit()
         resp = client.get(f"/api/plugins/petasos/client/download?os={system}&arch={arch}")
         assert name in resp.headers["content-disposition"]
         assert hashlib.sha256(resp.content).hexdigest() == info["sha256"]

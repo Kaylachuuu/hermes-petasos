@@ -45,6 +45,7 @@ type appSettingsView struct {
 	MicName   string    `json:"mic_name"` // the chosen one's name
 	Mics      []micInfo `json:"mics"`     // the microphones connected now
 	MicsError string    `json:"mics_error,omitempty"`
+	Versions  versions  `json:"versions"`
 }
 
 type appSettingsChange struct {
@@ -121,6 +122,7 @@ func (h *hermes) appSettingsView() appSettingsView {
 	v.Mic, v.MicName = a.Mic, a.MicName
 	mics, err := listMics()
 	v.Mics = mics
+	v.Versions = h.versions()
 	if err != nil {
 		v.Mics = []micInfo{}
 		v.MicsError = err.Error()

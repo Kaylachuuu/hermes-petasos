@@ -139,6 +139,10 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14p
       <span id="server"></span>
       <div class="hint"><button type="button" id="signin">Sign in again…</button></div>
     </div>
+    <div class="row">
+      <label>Versions</label>
+      <span id="versions"></span>
+    </div>
 
     <div class="actions">
       <button type="submit" class="primary" id="save">Save</button>
@@ -323,6 +327,9 @@ async function load() {
   current = await res.json();
   $("name").value = current.name;
   $("server").textContent = current.server || "";
+  const v = current.versions || {};
+  $("versions").textContent = `Petasos ${v.program || "?"}` + (v.latest && v.latest !== v.program ? ` (updating to ${v.latest})` : "") +
+    ` · plugin on Hermes ${v.plugin || "unknown"}`;
   $("vpn").value = current.vpn ? "wireguard" : "off";
   $("when").value = current.when;
   $("loading").hidden = true;

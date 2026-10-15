@@ -364,6 +364,7 @@ type clientInfo struct {
 	OS      string `json:"os"` // which system the build is for; older plugins only had Linux
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
+	Plugin  string `json:"plugin"` // the plugin's own version; older plugins leave it out
 }
 
 // update replaces this program with the server's version when they differ, then restarts in

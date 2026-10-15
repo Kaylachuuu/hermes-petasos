@@ -225,7 +225,18 @@ def client_info(arch: str = "arm64", os: str = "linux") -> dict:
     if key not in _digests:
         _digests[key] = hashlib.sha256(path.read_bytes()).hexdigest()
     version = (_CLIENT / "VERSION").read_text(encoding="utf-8").strip()
-    return {"version": version, "os": os, "sha256": _digests[key], "size": stat.st_size}
+    return {"version": version, "os": os, "sha256": _digests[key], "size": stat.st_size, "plugin": _plugin_version()}
+
+
+def _plugin_version() -> str:
+    """This plugin's own version, from plugin.yaml, for the devices to show."""
+    try:
+        for line in (Path(__file__).parent.parent / "plugin.yaml").read_text(encoding="utf-8").splitlines():
+            if line.startswith("version:"):
+                return line.split(":", 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    return ""
 
 
 @router.get("/client/download")

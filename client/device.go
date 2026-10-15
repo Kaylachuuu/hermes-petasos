@@ -361,6 +361,7 @@ func (b *bluetooth) mineViewAt(sel int) {
 			items = append(items, btItem{Kind: "note", Label: "Shared with your other devices until you change one"})
 		}
 	}
+	items = append(items, versionItems(h.versions())...)
 	items = append(items, btItem{Kind: "row", Icon: "close", Label: "Close", do: b.close})
 	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})
 }
@@ -584,4 +585,23 @@ func typedText(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 	go done(text)
+}
+
+// versionItems lists the image, this program and the plugin, at the foot of the Device tab.
+func versionItems(v versions) []btItem {
+	unknown := func(s string) string {
+		if s == "" {
+			return "Unknown"
+		}
+		return s
+	}
+	items := []btItem{{Kind: "header", Label: "Versions"}}
+	if !virtual {
+		items = append(items, btItem{Kind: "row", Icon: "device", Label: "System image", Value: unknown(v.Image)})
+	}
+	program := btItem{Kind: "row", Icon: "device", Label: "Petasos", Value: v.Program}
+	if v.Latest != "" && v.Latest != v.Program {
+		program.Detail = "Updating to " + v.Latest
+	}
+	return append(items, program, btItem{Kind: "row", Icon: "device", Label: "Plugin on Hermes", Value: unknown(v.Plugin)})
 }
