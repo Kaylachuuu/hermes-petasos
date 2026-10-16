@@ -406,7 +406,7 @@ func (h *hermes) update() error {
 		}
 	}
 	log.Printf("updating from %s to %s", version, latest.Version)
-	stopMusicForUpdate()
+	stopMusicForUpdate(h.dir)
 	req, err := http.NewRequest("GET", h.cfg.Server+"/api/plugins/petasos/client/download?"+build, nil)
 	if err != nil {
 		return err
@@ -490,9 +490,11 @@ func (u *updateProgress) Write(p []byte) (int, error) {
 
 // stopMusicForUpdate stops the music before an update: petasos restarts to install it, which
 // would cut the library's song off mid-play, and the phone's would carry on with nothing showing.
-func stopMusicForUpdate() {
+// The library's is paused and kept, to be there again, paused, after the restart.
+func stopMusicForUpdate(dir string) {
 	if library.active() {
-		library.control("stop")
+		library.control("pause")
+		library.saveState(dir)
 	}
 	music.mu.Lock()
 	phonePlaying := music.player != "" && music.status == "playing"
@@ -566,6 +568,8 @@ func (h *hermes) run(eventsFile string) {
 
 	v := newVoice(h, presses)
 	library.attach(h, v)
+	library.restore(h.dir)
+	go library.keepState(h.dir)
 	go h.pollCommands(v)
 	wake.start(v)
 	if !virtual {
