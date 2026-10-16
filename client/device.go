@@ -302,6 +302,25 @@ type ownSettings struct {
 	Device string `json:"device,omitempty"`
 	Mic    string `json:"mic,omitempty"`
 	Wake   *bool  `json:"wake,omitempty"` // listen for the wake word; on unless turned off
+	VPN    *bool  `json:"vpn,omitempty"`  // the tunnel home (wireguard.conf); on unless turned off
+}
+
+// vpnSetting is whether to bring up the tunnel home, when there is one: on unless turned off in
+// the Device tab (on a network that reaches Hermes directly, such as an Android phone sharing
+// the home Wi-Fi, it isn't needed).
+func vpnSetting(dir string) bool {
+	o := loadOwnSettings(dir)
+	return o.VPN == nil || *o.VPN
+}
+
+func (h *hermes) setVPN(on bool) error {
+	own := loadOwnSettings(h.dir)
+	own.VPN = &on
+	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	go setUpTunnel(h.dir)
+	return nil
 }
 
 // wakeSetting is whether to listen for the wake word: the Car Thing does unless it was turned
@@ -373,6 +392,16 @@ func (b *bluetooth) mineViewAt(sel int) {
 				}
 				b.mineViewAt(2)
 			}},
+	}
+	if hasTunnel(h.dir) {
+		items = append(items, btItem{Kind: "row", Icon: "device", Label: "VPN tunnel home",
+			Value: map[bool]string{true: "On", false: "Off"}[vpnSetting(h.dir)], do: func() {
+				if err := h.setVPN(!vpnSetting(h.dir)); err != nil {
+					b.message("Couldn't save that", err.Error())
+					return
+				}
+				b.mineViewAt(3)
+			}})
 	}
 	p, err := h.presets()
 	note := "Name is also what Bluetooth shows this Car Thing as."

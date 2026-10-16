@@ -41,6 +41,10 @@ type wgConfig struct {
 // setUpTunnel brings up the tunnel when <dir>/wireguard.conf exists. Problems are logged and
 // leave the Car Thing without a tunnel rather than stopping the program.
 func setUpTunnel(dir string) {
+	if !vpnSetting(dir) {
+		tearDownTunnel()
+		return
+	}
 	raw, err := os.ReadFile(filepath.Join(dir, "wireguard.conf"))
 	if os.IsNotExist(err) {
 		log.Printf("no wireguard.conf, so no tunnel home; the installer's --wireguard option adds one")
@@ -83,6 +87,30 @@ func setUpTunnel(dir string) {
 		return
 	}
 	log.Printf("tunnel home set up (%s, %s)", wgName, strings.Join(cfg.Addresses, ", "))
+}
+
+// hasTunnel is whether a tunnel home is set up to use (the installer's --wireguard).
+func hasTunnel(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "wireguard.conf"))
+	return err == nil
+}
+
+// tearDownTunnel takes the tunnel home down, turned off in the Device tab.
+func tearDownTunnel() {
+	removed := false
+	for _, f := range []string{wgNetDev, wgNetwork} {
+		if os.Remove(f) == nil {
+			removed = true
+		}
+	}
+	if !removed {
+		return
+	}
+	if out, err := exec.Command("networkctl", "reload").CombinedOutput(); err != nil {
+		log.Printf("networkctl reload failed: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	_ = exec.Command("networkctl", "delete", wgName).Run() // reload leaves an existing link up
+	log.Printf("tunnel home turned off")
 }
 
 // parseWireGuard reads a wg-quick style config: [Interface] with PrivateKey and Address, then one
