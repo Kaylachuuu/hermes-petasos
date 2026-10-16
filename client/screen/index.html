@@ -75,6 +75,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row svg { width: 3cqw; height: 3cqw; }
 .row em { font-style: normal; font-size: 2cqw; color: var(--dust); }
 .row.hot em { color: var(--ember); }
+.row em.sub { display: block; margin-top: .2cqw; } /* a row with a value says what pressing it does under its name */
 .row.sel { border-color: var(--ember); background: var(--row); }
 .row b { font-weight: 400; font-size: 2.4cqw; color: var(--bronze); white-space: nowrap; }
 .row.edit b { color: var(--ember); }
@@ -654,7 +655,7 @@ function drawBT(b) {
     if (it.kind === "note") return `<div class="empty">${esc(it.label)}</div>`;
     const sel = i === b.sel;
     return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}" id="${sel ? "sel" : ""}">
-      ${icon(it.icon || "device")}<span>${esc(it.label)}</span>${it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
+      ${icon(it.icon || "device")}<span>${esc(it.label)}${it.value && it.detail ? `<em class="sub">${esc(it.detail)}</em>` : ""}</span>${it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
   }).join("");
   body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
     `<div class="list">${rows}</div>`;
