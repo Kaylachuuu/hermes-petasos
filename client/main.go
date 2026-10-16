@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -407,7 +408,13 @@ func (h *hermes) update() error {
 	}
 	log.Printf("updating from %s to %s", version, latest.Version)
 	stopMusicForUpdate(h.dir)
-	req, err := http.NewRequest("GET", h.cfg.Server+"/api/plugins/petasos/client/download?"+build, nil)
+	// A download that stops coming in (the phone changing networks) gives up after updateStall,
+	// rather than holding the screen at its progress for the whole timeout.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stall := time.AfterFunc(updateStall, cancel)
+	defer stall.Stop()
+	req, err := http.NewRequestWithContext(ctx, "GET", h.cfg.Server+"/api/plugins/petasos/client/download?"+build, nil)
 	if err != nil {
 		return err
 	}
@@ -432,7 +439,7 @@ func (h *hermes) update() error {
 	shown := &updateProgress{version: latest.Version, size: latest.Size}
 	shown.show(0)
 	defer shown.done()
-	n, err := io.Copy(io.MultiWriter(f, sum, shown), io.LimitReader(resp.Body, 64<<20))
+	n, err := io.Copy(io.MultiWriter(f, sum, shown), io.LimitReader(&stallReader{resp.Body, stall}, 64<<20))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -448,6 +455,9 @@ func (h *hermes) update() error {
 	}
 	if err != nil {
 		os.Remove(staged)
+		if ctx.Err() != nil {
+			err = errors.New("the download stalled; it will try again")
+		}
 		return err
 	}
 	log.Printf("updated to %s; restarting", latest.Version)
@@ -455,6 +465,23 @@ func (h *hermes) update() error {
 }
 
 var updating sync.Mutex
+
+// updateStall is how long an update's download may go without any data before it gives up.
+var updateStall = 30 * time.Second
+
+// stallReader puts off the stall timer each time data comes in.
+type stallReader struct {
+	r     io.Reader
+	timer *time.Timer
+}
+
+func (s *stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(updateStall)
+	}
+	return n, err
+}
 
 // checkNow is the settings asking for an update now: true when there was nothing newer. An
 // update restarts petasos instead of returning.
