@@ -708,10 +708,11 @@ func (b *bluetooth) scanList(sel int) {
 		return
 	}
 	// Devices nearby that aren't paired yet, strongest signal first; ones with no name are
-	// usually not something to pair with.
+	// usually not something to pair with. Phones are left out: a phone has to start the pairing
+	// from its own Bluetooth settings, or an iPhone never offers the Car Thing as a speaker.
 	var found []btDev
 	for _, d := range devs {
-		if !d.Paired && d.HasRSSI && d.Name != d.Address {
+		if !d.Paired && d.HasRSSI && d.Name != d.Address && !strings.HasPrefix(d.Icon, "phone") {
 			found = append(found, d)
 		}
 	}
@@ -736,9 +737,19 @@ func (b *bluetooth) scanList(sel int) {
 	b.mu.Unlock()
 	if still {
 		b.show(&btScreen{View: "scan", Title: "Looking for devices",
-			Note:  "Put a speaker in pairing mode, or pick Petasos in a phone's Bluetooth settings.",
+			Note:  "Pair a phone from its own Bluetooth settings: pick " + b.adapterName() + " there. Put a speaker in pairing mode to see it here.",
 			Items: items, Sel: firstRow(items, sel)})
 	}
+}
+
+// adapterName is what phones see the Car Thing as.
+func (b *bluetooth) adapterName() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.name == "" {
+		return "Car Thing"
+	}
+	return b.name
 }
 
 func (b *bluetooth) stopScan() {
