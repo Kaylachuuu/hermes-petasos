@@ -26,6 +26,7 @@ import (
 const (
 	napUUID       = "00001116-0000-1000-8000-00805f9b34fb" // a phone's hotspot
 	audioSinkUUID = "0000110b-0000-1000-8000-00805f9b34fb" // a speaker, headphones or car stereo
+	audioSrcUUID  = "0000110a-0000-1000-8000-00805f9b34fb" // a phone's music, played to a speaker
 )
 
 type btDevice struct {
@@ -83,11 +84,26 @@ func keepTethered(pinned string) {
 			lastProblem = msg
 		}
 	}
+	audioAsked := false // the phone's music was asked for since the link came up
 	for ; ; time.Sleep(15 * time.Second) {
 		if tethered() {
 			lastProblem = ""
+			if !audioAsked { // online already when petasos started (after an update, say)
+				audioAsked = true
+				if out, err := busctl(10*time.Second, "--json=short", "call", "org.bluez", "/",
+					"org.freedesktop.DBus.ObjectManager", "GetManagedObjects"); err == nil {
+					phones, _ := pairedOffering(out, napUUID, pinned)
+					for _, p := range phones {
+						if p.Connected {
+							go connectPhoneAudio(p)
+							break
+						}
+					}
+				}
+			}
 			continue
 		}
+		audioAsked = false
 		if _, err := busctl(10*time.Second, "set-property", "org.bluez", "/org/bluez/hci0",
 			"org.bluez.Adapter1", "Powered", "b", "true"); err != nil {
 			problem("Bluetooth isn't ready: %v", err)
@@ -120,6 +136,8 @@ func keepTethered(pinned string) {
 			}
 			log.Printf("online through %s over Bluetooth", p.Name)
 			lastProblem = ""
+			audioAsked = true
+			go connectPhoneAudio(p)
 			break
 		}
 		if len(failures) == len(phones) {
@@ -127,6 +145,19 @@ func keepTethered(pinned string) {
 				strings.Join(failures, "; "))
 		}
 	}
+}
+
+// connectPhoneAudio connects the phone's music (A2DP) to the Car Thing as well, as a car stereo
+// does when it comes on. An iPhone only lists a Bluetooth speaker as somewhere to play once that
+// link is up, and it doesn't make the link itself when it is the Car Thing that connected (for the
+// hotspot). The phone may then play its music here, as it does to a car.
+func connectPhoneAudio(p btDevice) {
+	if _, err := busctl(30*time.Second, "call", "org.bluez", p.Path, "org.bluez.Device1",
+		"ConnectProfile", "s", audioSrcUUID); err != nil {
+		log.Printf("can't connect %s's music: %v", p.Name, err)
+		return
+	}
+	log.Printf("%s's music connected", p.Name)
 }
 
 // firstOf moves the device with the given address to the front.
