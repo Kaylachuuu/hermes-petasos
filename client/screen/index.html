@@ -501,11 +501,13 @@ function drawBands() {
   if (!s) return;
   const page = shownPage(s), onMusic = page !== "petasos";
   const vol = s.volume >= 0 ? s.volume / 100 : null;
+  const sounding = lvlTarget > 0 || lvlShown > 0.01;
   let top;
   if (s.bt) top = { theme: "petasos", lit: (s.bt.meter || 0) / 100 };
-  else if (Date.now() < volumeUntil && vol != null) top = { theme: page, dim: onMusic, lit: vol };
+  // While sound plays, turning the volume just moves the mark over the running level.
+  else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
-  else if (lvlTarget > 0 || lvlShown > 0.01) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol };
+  else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol };
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
