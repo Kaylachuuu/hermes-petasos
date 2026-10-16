@@ -40,6 +40,14 @@ from typing import Iterator
 AUDIO_SUFFIXES = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".alac"}
 MAX_QUEUE = 200
 BIT_RATE = 192
+# The streaming quality chosen in the settings (music.json's "quality"): the MP3 bit rate the
+# device is sent. Lower ones stutter less over a slow link (a phone's hotspot and the VPN).
+QUALITIES = {"high": 192, "normal": 128, "low": 96, "lowest": 64}
+
+
+def bit_rate() -> int:
+    """The bit rate to stream at, in kbps."""
+    return QUALITIES.get(config().get("quality"), BIT_RATE)
 INDEX_MAX_AGE_S = 30 * 60
 LAST_TURN_S = 15 * 60  # a play_music call within this of a device's turn is for that device
 
@@ -228,7 +236,7 @@ class Navidrome:
         return "", []
 
     def stream_url(self, ident: str) -> str:
-        return self.url_for("stream", id=ident, format="mp3", maxBitRate=BIT_RATE)
+        return self.url_for("stream", id=ident, format="mp3", maxBitRate=bit_rate())
 
     # The music page's lists.
     def playlists(self) -> list[dict]:
@@ -671,7 +679,7 @@ class SoundCloud:
         ffmpeg = shutil.which("ffmpeg")
         if hls and ffmpeg:
             proc = subprocess.Popen([ffmpeg, "-v", "error", "-headers", f"Authorization: OAuth {self.token()}\r\n",
-                                     "-i", hls, "-vn", "-ac", "2", "-ar", "48000", "-b:a", f"{BIT_RATE}k",
+                                     "-i", hls, "-vn", "-ac", "2", "-ar", "48000", "-b:a", f"{bit_rate()}k",
                                      "-f", "mp3", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             return _pieces(proc.stdout, proc)
         if urls.get("http_mp3_128_url"):  # older, plain MP3; SoundCloud is retiring it
@@ -1053,6 +1061,7 @@ def settings() -> dict:
             "soundcloud": {"client_id": sc.get("client_id", ""), "has_secret": bool(sc.get("client_secret")),
                            "account": _soundcloud_account(sc)},
             "spotify": {"client_id": sp.get("client_id", ""), "account": _spotify_account(sp)},
+            "quality": cfg.get("quality") if cfg.get("quality") in QUALITIES else "high",
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "path": str(petasos_dir() / "music.json")}
 
@@ -1127,6 +1136,10 @@ def save_settings(body: dict) -> dict:
             cfg["spotify"] = {"client_id": client_id}
         else:
             cfg.pop("spotify", None)
+    if "quality" in body:  # left out by older settings pages: keep what's saved
+        if body["quality"] not in QUALITIES:
+            raise MusicError("quality is one of " + ", ".join(QUALITIES))
+        cfg["quality"] = body["quality"]
     _write_json(petasos_dir() / "music.json", cfg)
     try:
         os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
@@ -1187,13 +1200,13 @@ def stream(source: str, ident: str) -> Iterator[bytes]:
         path = Folders(cfg.get("folders") or []).path(ident)
         if not path:
             raise MusicError("no such track")
-        if path.lower().endswith(".mp3"):
+        if path.lower().endswith(".mp3") and bit_rate() >= BIT_RATE:  # lower qualities convert MP3s too
             return _pieces(open(path, "rb"))
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             raise MusicError("ffmpeg isn't installed to convert this track")
         proc = subprocess.Popen([ffmpeg, "-v", "error", "-i", path, "-vn", "-ac", "2", "-ar", "48000",
-                                 "-b:a", f"{BIT_RATE}k", "-f", "mp3", "pipe:1"],
+                                 "-b:a", f"{bit_rate()}k", "-f", "mp3", "pipe:1"],
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         return _pieces(proc.stdout, proc)
     if source == "soundcloud":

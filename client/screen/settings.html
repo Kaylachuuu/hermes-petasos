@@ -138,6 +138,15 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
     <section data-tab="music" hidden>
     <p class="hint" id="music-hint" style="margin-top:0">What your agent can play when you ask (“play Rumours”), on any of your devices. Kept on Hermes.</p>
     <div id="music">
+      <div id="quality-part" hidden>
+      <h3>Streaming</h3>
+      <div class="row">
+        <label for="quality">Quality</label>
+        <select id="quality"><option value="high">High, 192 kbps</option><option value="normal">Normal, 128 kbps</option>
+          <option value="low">Low, 96 kbps</option><option value="lowest">Lowest, 64 kbps</option></select>
+        <p class="hint">What Hermes sends your devices. Lower stutters less on a slow connection, like a phone's hotspot.</p>
+      </div>
+      </div>
       <h3>Navidrome</h3>
       <p class="hint sub">Your Navidrome server and your Navidrome account (not your Hermes sign-in). Leave the address empty to not use it.</p>
       <div class="row">
@@ -362,6 +371,8 @@ function showMusic(s) {
   $("sc-account-hint").className = "hint";
   const problem = new URLSearchParams(location.search).get("soundcloud");
   if (problem) { $("sc-account-hint").textContent = problem; $("sc-account-hint").className = "hint error"; }
+  $("quality-part").hidden = !s.quality; // an older plugin has no qualities
+  if (s.quality) $("quality").value = s.quality;
   const sp = s.spotify || {};
   $("sp-id").value = sp.client_id || "";
   $("sp-account-row").hidden = !sp.client_id;
@@ -398,6 +409,7 @@ async function saveMusic() {
       folders: $("folders").value.split("\n").map((f) => f.trim()).filter(Boolean),
       soundcloud: { client_id: $("sc-id").value.trim(), client_secret: $("sc-secret").value },
       spotify: { client_id: $("sp-id").value.trim() },
+      ...($("quality-part").hidden ? {} : { quality: $("quality").value }),
     }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);

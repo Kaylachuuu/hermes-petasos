@@ -29,7 +29,8 @@ type musicSettings struct {
 		ClientID string `json:"client_id"`
 		Account  string `json:"account"`
 	} `json:"spotify"`
-	FFmpeg bool `json:"ffmpeg"`
+	Quality string `json:"quality"` // high, normal, low or lowest; empty from an older plugin
+	FFmpeg  bool   `json:"ffmpeg"`
 }
 
 // musicDraft is the tab's unsaved edits on top of what Hermes has.
@@ -42,8 +43,14 @@ type musicDraft struct {
 	scID     string
 	scSecret string // "" keeps the saved one
 	spID     string
+	quality  string
 	changed  bool
 }
+
+// qualities are the streaming qualities, in the order a press steps through them, with what the
+// row shows for each.
+var qualities = []struct{ name, shown string }{
+	{"high", "High, 192 kbps"}, {"normal", "Normal, 128 kbps"}, {"low", "Low, 96 kbps"}, {"lowest", "Lowest, 64 kbps"}}
 
 func (h *hermes) musicSettings() (musicSettings, error) {
 	var s musicSettings
@@ -65,7 +72,7 @@ func (b *bluetooth) musicView() {
 	}
 	d := &musicDraft{saved: s, url: s.Navidrome.URL, username: s.Navidrome.Username,
 		folders: append([]string(nil), s.Folders...), scID: s.SoundCloud.ClientID,
-		spID: s.Spotify.ClientID}
+		spID: s.Spotify.ClientID, quality: s.Quality}
 	b.mu.Lock()
 	b.music = d
 	b.mu.Unlock()
@@ -111,7 +118,22 @@ func (b *bluetooth) musicDraftView(sel int) {
 		}
 		return "None"
 	}
-	items := []btItem{{Kind: "header", Label: "Navidrome"}}
+	var items []btItem
+	if d.quality != "" { // an older plugin has no qualities
+		shown, next := d.quality, qualities[0].name
+		for i, q := range qualities {
+			if q.name == d.quality {
+				shown, next = q.shown, qualities[(i+1)%len(qualities)].name
+			}
+		}
+		items = append(items, btItem{Kind: "header", Label: "Streaming"},
+			btItem{Kind: "row", Icon: "music", Label: "Quality", Value: shown, do: func() {
+				d.quality, d.changed = next, true
+				b.musicDraftView(1)
+			}},
+			btItem{Kind: "note", Label: "Lower stutters less on a slow connection"})
+	}
+	items = append(items, btItem{Kind: "header", Label: "Navidrome"})
 	items = append(items,
 		btItem{Kind: "row", Icon: "device", Label: "Address", Value: truncate(orNone(d.url, "Not used"), 28),
 			do: edit("Navidrome address", "As Hermes reaches it, like http://localhost:4533. Empty to not use Navidrome.", &d.url, 200, len(items))},
@@ -185,12 +207,16 @@ func (b *bluetooth) saveMusic() {
 	b.show(&btScreen{View: "message", Tab: "music", Title: "Checking the music", Note: "This can take a while the first time a big folder is read."})
 	slow := &http.Client{Transport: h.http.Transport, Timeout: 10 * time.Minute}
 	if d.changed {
-		body, _ := json.Marshal(map[string]any{
+		settings := map[string]any{
 			"navidrome":  map[string]string{"url": d.url, "username": d.username, "password": d.password},
 			"folders":    d.folders,
 			"soundcloud": map[string]string{"client_id": d.scID, "client_secret": d.scSecret},
 			"spotify":    map[string]string{"client_id": d.spID},
-		})
+		}
+		if d.quality != "" {
+			settings["quality"] = d.quality
+		}
+		body, _ := json.Marshal(settings)
 		if _, err := h.exchange("PUT", "/api/plugins/petasos/music/settings", "application/json", body, slow, 1<<20); err != nil {
 			b.musicMessage("Couldn't save that", friendlyHermes(err))
 			return

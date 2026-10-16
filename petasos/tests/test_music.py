@@ -574,3 +574,15 @@ def test_likes_come_from_the_source_asked_for(home, soundcloud, navidrome):
     assert {t["source"] for t in found["tracks"]} == {"navidrome", "folder"}
     found = music.browse("search", "folder", query="dreams")
     assert {t["source"] for t in found["tracks"]} == {"folder"}
+
+
+def test_the_streaming_quality_sets_the_bit_rate(home, navidrome):
+    configure(home, {"navidrome": {"url": navidrome, "username": "kayla", "password": "secret"}})
+    assert music.settings()["quality"] == "high" and music.bit_rate() == 192
+    shown = music.save_settings({"folders": [], "navidrome": {"url": navidrome, "username": "kayla"}, "quality": "low"})
+    assert shown["quality"] == "low" and music.bit_rate() == 96
+    assert "maxBitRate=96" in music.Navidrome(music.config()["navidrome"]).stream_url("1")
+    music.save_settings({"folders": [], "navidrome": {"url": navidrome, "username": "kayla"}})  # older pages keep it
+    assert music.config()["quality"] == "low"
+    with pytest.raises(music.MusicError):
+        music.save_settings({"folders": [], "quality": "best"})
