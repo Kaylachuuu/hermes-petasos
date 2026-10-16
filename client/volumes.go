@@ -55,13 +55,12 @@ func (m *volumeMemory) level(control string) (int, bool) {
 func (v *voice) keepVolumes() {
 	present := map[string]bool{}
 	for ; ; time.Sleep(3 * time.Second) {
-		out, err := exec.Command("amixer", "-D", v.speaker, "scontrols").Output()
+		out, err := exec.Command("amixer", "-D", v.speaker, "scontents").Output()
 		if err != nil {
 			out = nil // no speaker connected: they all count as new when they come back
 		}
 		now := map[string]bool{}
-		for _, m := range a2dpControl.FindAllSubmatch(out, -1) {
-			control := string(m[1])
+		for _, control := range speakerControls(out) {
 			now[control] = true
 			if present[control] {
 				continue

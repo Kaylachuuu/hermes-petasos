@@ -607,7 +607,21 @@ func (v *voice) stopSpeaking() {
 }
 
 // volume nudges the speaker's own volume through BlueALSA's mixer control for it.
-var a2dpControl = regexp.MustCompile(`Simple mixer control '([^']*A2DP[^']*)'`)
+var a2dpControl = regexp.MustCompile(`Simple mixer control '(.*A2DP.*)',\d+`) // a name may hold an apostrophe
+
+// speakerControls are BlueALSA's A2DP mixer controls that set what we play, from amixer's
+// scontents: those with a playback volume. With the phone's music coming in over A2DP too, its
+// link has a control of its own (a capture volume), and turning that did nothing to the speaker.
+func speakerControls(scontents []byte) []string {
+	var out []string
+	for _, block := range strings.Split(string(scontents), "Simple mixer control ")[1:] {
+		m := a2dpControl.FindStringSubmatch("Simple mixer control " + block)
+		if m != nil && strings.Contains(block, "pvolume") {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
 
 var mixerLevel = regexp.MustCompile(`\[(\d+)%\]`)
 
@@ -619,9 +633,9 @@ func (v *voice) volume(delta int) {
 		macVolume(delta)
 		return
 	}
-	out, err := exec.Command("amixer", "-D", v.speaker, "scontrols").Output()
-	m := a2dpControl.FindSubmatch(out)
-	if err != nil || m == nil {
+	out, err := exec.Command("amixer", "-D", v.speaker, "scontents").Output()
+	controls := speakerControls(out)
+	if err != nil || len(controls) == 0 {
 		log.Printf("no speaker volume to change (is the speaker connected?)")
 		display.notice("No speaker connected.")
 		return
@@ -630,7 +644,7 @@ func (v *voice) volume(delta int) {
 	if delta < 0 {
 		step = fmt.Sprintf("%d%%-", -delta)
 	}
-	out, err = exec.Command("amixer", "-D", v.speaker, "sset", string(m[1]), step).CombinedOutput()
+	out, err = exec.Command("amixer", "-D", v.speaker, "sset", controls[0], step).CombinedOutput()
 	if err != nil {
 		log.Printf("changing the volume failed: %v %s", err, strings.TrimSpace(string(out)))
 		return
@@ -639,7 +653,7 @@ func (v *voice) volume(delta int) {
 		var n int
 		fmt.Sscan(string(level[1]), &n)
 		display.update(func(st *screenState) { st.Volume = n; st.VolumeID++ })
-		volumes.remember(string(m[1]), n)
+		volumes.remember(controls[0], n)
 	}
 }
 

@@ -20,3 +20,19 @@ func TestVolumeIsRememberedPerSpeaker(t *testing.T) {
 		t.Fatal("a speaker never set has no level")
 	}
 }
+
+// With the phone's music coming in, its A2DP link has a capture control; the volume is the
+// speaker's playback one.
+func TestTheVolumeIsTheSpeakersNotThePhones(t *testing.T) {
+	out := []byte(`Simple mixer control 'Kayla's iPhone A2DP',0
+  Capabilities: cvolume cswitch
+  Capture channels: Front Left - Front Right
+Simple mixer control 'Kayla's Kia A2DP',0
+  Capabilities: pvolume pswitch
+  Playback channels: Front Left - Front Right
+  Front Left: Playback 96 [76%] [on]
+`)
+	if got := speakerControls(out); len(got) != 1 || got[0] != "Kayla's Kia A2DP" {
+		t.Fatalf("got %q", got)
+	}
+}
