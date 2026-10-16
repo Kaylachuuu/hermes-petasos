@@ -91,7 +91,6 @@ var softKeyActions = []choiceOf{
 	{"music_next", "Next song"},
 	{"music_previous", "Previous song"},
 	{"music_stop", "Stop the music"},
-	{"page_petasos", "Petasos page"},
 	{"page_soundcloud", "SoundCloud page"},
 	{"page_navidrome", "Navidrome page"},
 	{"page_spotify", "Spotify page"},
@@ -413,7 +412,6 @@ func (b *bluetooth) mineViewAt(sel int) {
 		}
 	}
 	items = append(items, versionItems(h.versions(), func() { b.checkForUpdate(h) })...)
-	items = append(items, btItem{Kind: "row", Icon: "close", Label: "Close", do: b.close})
 	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})
 }
 
@@ -677,8 +675,13 @@ func versionItems(v versions, check func()) []btItem {
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "System image", Value: unknown(v.Image)})
 	}
 	program := btItem{Kind: "row", Icon: "device", Label: "Petasos", Value: v.Program, do: check}
-	if v.Latest != "" && v.Latest != v.Program {
+	switch {
+	case v.Latest != "" && v.Latest != v.Program:
 		program.Detail = "Updating to " + v.Latest
+	case virtual:
+		program.Detail = "Click to check for an update"
+	default:
+		program.Detail = "Press the knob to check for an update"
 	}
 	return append(items, program, btItem{Kind: "row", Icon: "device", Label: "Plugin on Hermes", Value: unknown(v.Plugin)})
 }

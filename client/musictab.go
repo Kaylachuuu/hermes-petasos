@@ -60,8 +60,7 @@ func (b *bluetooth) musicView() {
 	}
 	s, err := h.musicSettings()
 	if err != nil {
-		b.show(&btScreen{View: "music", Tab: "music", Note: "Can't reach " + display.agent() + " for the music settings (its Petasos plugin may need updating).",
-			Items: []btItem{{Kind: "row", Icon: "close", Label: "Close", do: b.close}}})
+		b.show(&btScreen{View: "music", Tab: "music", Note: "Can't reach " + display.agent() + " for the music settings (its Petasos plugin may need updating)."})
 		return
 	}
 	d := &musicDraft{saved: s, url: s.Navidrome.URL, username: s.Navidrome.Username,
@@ -169,8 +168,7 @@ func (b *bluetooth) musicDraftView(sel int) {
 		save = "Save and check"
 	}
 	items = append(items,
-		btItem{Kind: "row", Icon: "music", Label: save, do: b.saveMusic},
-		btItem{Kind: "row", Icon: "close", Label: "Close", do: b.close})
+		btItem{Kind: "row", Icon: "music", Label: save, do: b.saveMusic})
 	note := "What " + display.agent() + " can play when you ask. Kept on Hermes, shared with your other devices."
 	if d.changed {
 		note = "Not saved yet: choose Save and check."

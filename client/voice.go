@@ -63,6 +63,7 @@ func newVoice(h *hermes, presses chan<- map[string]any) *voice {
 	if v.speaker == "" {
 		v.speaker = "bluealsa"
 	}
+	localVolume = func(delta int) { go v.volume(delta) }
 	return v
 }
 
@@ -168,7 +169,8 @@ func showScreenCommand(c map[string]any) {
 	if name, _ := c["agent"].(string); name != "" {
 		display.update(func(st *screenState) { st.Agent = name })
 	}
-	if raw, ok := c["gestures"]; ok { // an older plugin sends none: every tap goes at once
+	knobVolume.Store(int64(intOf(c["knob_volume"], 0))) // an older plugin sends none: the knob's turns go to it
+	if raw, ok := c["gestures"]; ok {                   // an older plugin sends none: every tap goes at once
 		var g map[string]gestureHint
 		data, _ := json.Marshal(raw)
 		if json.Unmarshal(data, &g) == nil {

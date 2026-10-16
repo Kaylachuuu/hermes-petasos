@@ -105,18 +105,11 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
         gap: 4cqw; border-top: .15cqw solid var(--rule); font-size: 2cqw; color: var(--dust); }
 .keys b { color: var(--bronze); font-weight: 600; }
 
-/* The music pages: one view at a time between the meanders, chosen on the row at the top: what's
+/* The music pages: one view at a time between the meanders, chosen with the soft keys: what's
    playing, with big controls, or one of the lists. The page's colour is --a. */
 .page { position: absolute; left: 8cqw; right: 3cqw; top: 14cqw; height: 39.25cqw; display: flex; flex-direction: column; }
 .page button { font: inherit; color: var(--bronze); background: transparent; border: 0; padding: 0; display: flex;
                align-items: center; justify-content: center; touch-action: manipulation; }
-.views { display: flex; gap: 1cqw; margin: 0 0 1cqw; flex: none; }
-.views button { gap: .75cqw; font-size: 2.1cqw; letter-spacing: .06em; padding: .6cqw 2cqw; border-radius: 2.5cqw;
-                border: .19cqw solid var(--rule); color: var(--dust); }
-.views button svg { width: 1.75cqw; height: 1.75cqw; }
-.views button.now { margin-right: 1.25cqw; }
-.views button.on { border-color: var(--a); color: var(--a); background: var(--row); }
-.views button.sel { outline: .2cqw solid var(--a); outline-offset: .2cqw; }
 .npv { flex: 1; display: grid; grid-template-columns: 24.5cqw 1fr; gap: 3.5cqw; align-items: center; padding: 0 1.5cqw; min-height: 0; }
 .npv .art { width: 24.5cqw; height: 24.5cqw; border-radius: 1.25cqw; background: var(--row) center / cover no-repeat;
             display: flex; align-items: center; justify-content: center; }
@@ -336,7 +329,6 @@ body.virtual .topbar > span:hover { background: var(--row); }
 
   <div id="mpage" hidden>
     <div class="page">
-      <div class="views" id="mp-views"></div>
       <div class="npv" id="mp-now">
         <div class="art" id="mp-art"></div>
         <div class="meta">
@@ -422,12 +414,22 @@ const THEMES = {
 
 // The page showing: a music page's name, or "petasos" for home (also while Athena is busy, when
 // the music page steps aside) and the settings.
+// pageMusic is the music a page shows: only its own service's (a phone's music of no app we know
+// goes to Apple Music's), so a page doesn't show another service's song in its colours.
+function pageMusic(s, page) {
+  const m = s.music;
+  if (!m || page === "petasos") return m;
+  return m.service === page || (!m.service && !m.library && page === "apple") ? m : null;
+}
+
 function shownPage(s) {
   return s.page && !s.bt && !s.update && s.phase === "idle" && THEMES[s.page] ? s.page : "petasos";
 }
 
 function drawTop(s) {
-  const page = shownPage(s);
+  const page = shownPage(s), music = !s.bt && page !== "petasos";
+  // On a music page the soft keys are its own: what's playing and its lists (none on Apple Music's).
+  const views = music ? [["now", "Now Playing"], ...PAGES[page].tabs] : [];
   s.presets.forEach((label, i) => {
     const el = $("p" + i);
     if (s.bt) {
@@ -436,11 +438,17 @@ function drawTop(s) {
       el.className = !name ? "off" : tab === s.bt.tab ? "tab" : "";
       return;
     }
+    if (music) {
+      const [view, name] = page === "apple" ? [] : views[i] || [];
+      el.textContent = name || "—";
+      el.className = !name ? "off" : view === (s.view || "now") ? "on" : "";
+      return;
+    }
     el.textContent = label || "—";
     el.className = !label ? "off" : (s.key_pages || [])[i] === page ? "on" : "";
   });
   const sets = $("sets");
-  sets.hidden = !!s.bt || !(s.key_sets > 1);
+  sets.hidden = !!s.bt || music || !(s.key_sets > 1);
   [...sets.children].forEach((dot, i) => dot.classList.toggle("on", i + 1 === (s.keys || 1)));
   const l = s.links, checked = l.checked;
   $("l-phone").classList.toggle("lost", checked && !l.phone);
@@ -500,7 +508,7 @@ function drawBands() {
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
-  const m = s.music, service = m && THEMES[m.service] ? m.service : onMusic ? page : "";
+  const m = pageMusic(s, page), service = m && THEMES[m.service] ? m.service : onMusic ? page : "";
   $("bottom-band").style.display = s.bt ? "none" : "";
   if (s.update) { setBand("bottom-band", { theme: "petasos", dim: true, lit: s.update.size ? s.update.got / s.update.size : 0 }); return; }
   setBand("bottom-band", m && service ? { theme: service, dim: true, lit: musicProgress(m) }
@@ -536,7 +544,7 @@ function drawVolume(s) {
 let progressTimer = 0;
 function stepProgress() {
   clearTimeout(progressTimer);
-  const m = state && state.music;
+  const m = state && pageMusic(state, shownPage(state));
   drawBands();
   if (!$("mpage").hidden) {
     const len = m && m.seconds || 0;
@@ -787,7 +795,7 @@ function pageState(name) {
 const clock = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
 const artStyle = (url) => url ? `background-image:url('${String(url).replace(/['\\()]/g, encodeURIComponent)}')` : "";
 const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).catch(() => {});
-const viewList = () => [["now", "Now playing"], ...PAGES[mpName].tabs];
+const viewList = () => [["now", "Now Playing"], ...PAGES[mpName].tabs];
 
 let mpReady = false;
 function setUpMusicPage() {
@@ -799,10 +807,6 @@ function setUpMusicPage() {
     post("/music/control", { op: !r ? "repeat_all" : r === "all" ? "repeat_one" : "repeat_off" });
   });
   $("mp-shuffle").addEventListener("click", () => post("/music/control", { op: state && state.music && state.music.shuffle ? "shuffle_off" : "shuffle_on" }));
-  $("mp-views").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-view]");
-    if (b) pickView(b.dataset.view);
-  });
   $("mp-list").addEventListener("click", (e) => {
     const row = e.target.closest("[data-i], [data-p], [data-back], [data-find]");
     if (row) pickRow(row);
@@ -815,25 +819,25 @@ function pickView(view) {
   const again = mp.view === view;
   if (view === "playlists" && again) mp.open = null;
   setView(view);
-  if (view === "search" && !mp.found) openMusicKeyboard();
+  if (view === "search" && (again || !mp.found)) openMusicKeyboard();
   if (again && view !== "search") loadTab(true);
 }
 
 function setView(view) {
   if (view !== "now") { mp.lastTab = view; loadTab(false); }
   mp.view = view;
-  mp.sel = viewList().length; // the first row
+  mp.sel = 0; // the first row
   renderMusic();
   post("/music/view", { view });
 }
 
 function pickRow(row) {
   if (row.dataset.find) { openMusicKeyboard(); return; }
-  if (row.dataset.back) { mp.open = null; mp.sel = viewList().length; renderMusic(); return; }
+  if (row.dataset.back) { mp.open = null; mp.sel = 0; renderMusic(); return; }
   if (row.dataset.p) {
     const p = (mp.lists.playlists || {}).playlists[+row.dataset.p], page = mp;
     page.open = { title: p.title, loading: true };
-    page.sel = viewList().length;
+    page.sel = 0;
     renderMusic();
     browse({ what: "playlist", source: p.source, id: p.id }).then((got) => {
       if (page.open && page.open.title === p.title) { page.open = { ...got, title: p.title }; if (page === mp) renderMusic(); }
@@ -849,8 +853,9 @@ function pickRow(row) {
   setView("now");
 }
 
-// musicNav is the knob and the front button on a music page, from petasos (pagecontrols.go):
-// a turn, "press", "back", or "swap" (the page's own soft key again).
+// musicNav is the knob, the soft keys and the front button on a music page, from petasos
+// (pagecontrols.go): a turn, "press", "key1" to "key4", "back", or "swap" (the page's own soft
+// key on the home screen's set, pressed again).
 function musicNav(n) {
   if (!mp || $("mpage").hidden) return;
   if (!$("mp-kb").hidden && kb) {
@@ -861,19 +866,19 @@ function musicNav(n) {
   }
   const views = viewList();
   if (n === "swap") { if (views.length > 1) setView(mp.view === "now" ? mp.lastTab : "now"); return; }
-  if (n === "back") {
-    if (mp.view === "playlists" && mp.open) { mp.open = null; mp.sel = views.length; renderMusic(); }
-    else setView("now");
+  if (typeof n === "string" && n.startsWith("key")) { // a soft key: its view
+    const v = views[+n.slice(3) - 1];
+    if (v && mp.name !== "apple") pickView(v[0]);
     return;
   }
+  if (n === "back") { setView("now"); return; } // a list, back to what's playing
   const rows = [...$("mp-list").querySelectorAll("[data-i], [data-p], [data-back], [data-find]")];
   if (n === "press") {
-    if (mp.sel < views.length) pickView(views[mp.sel][0]);
-    else if (rows[mp.sel - views.length]) pickRow(rows[mp.sel - views.length]);
+    if (rows[mp.sel]) pickRow(rows[mp.sel]);
     return;
   }
   if (typeof n === "number") {
-    mp.sel = Math.max(0, Math.min(views.length + rows.length - 1, mp.sel + Math.sign(n)));
+    mp.sel = Math.max(0, Math.min(rows.length - 1, mp.sel + Math.sign(n)));
     renderMusic();
   }
 }
@@ -928,9 +933,7 @@ function listHTML() {
 }
 
 function renderMusic() {
-  const views = viewList(), listing = mp.view !== "now";
-  $("mp-views").hidden = views.length < 2;
-  $("mp-views").innerHTML = views.map(([v, name], i) => `<button data-view="${v}" class="${v === "now" ? "now" : ""}${v === mp.view ? " on" : ""}${listing && i === mp.sel ? " sel" : ""}">${v === "now" ? icon("play") : ""}${esc(name)}</button>`).join("");
+  const listing = mp.view !== "now";
   $("mp-now").hidden = listing;
   $("mp-lib").hidden = !listing;
   const apple = mp.name === "apple";
@@ -940,8 +943,8 @@ function renderMusic() {
   const html = listHTML();
   if (html !== mpShown) { $("mp-list").innerHTML = html; mpShown = html; }
   const rows = $("mp-list").querySelectorAll("[data-i], [data-p], [data-back], [data-find]");
-  rows.forEach((r, i) => r.classList.toggle("sel", i === mp.sel - views.length));
-  const sel = rows[mp.sel - views.length];
+  rows.forEach((r, i) => r.classList.toggle("sel", i === mp.sel));
+  const sel = rows[mp.sel];
   if (sel) sel.scrollIntoView({ block: "nearest" });
 }
 
@@ -953,8 +956,7 @@ function drawMusicPage(s) {
   }
   if (mpName !== s.page) { mpName = s.page; mpShown = ""; }
   mp = pageState(s.page);
-  // Apple Music's and Spotify's pages show the phone's music, not the library's paused song.
-  const m = s.music && !(s.music.library && (s.page === "apple" || s.page === "spotify")) ? s.music : null;
+  const m = pageMusic(s, s.page);
   const t = THEMES[m && m.service] || THEMES[s.page];
   $("mp-art").style.cssText = m && m.art ? artStyle(m.art) : "";
   $("mp-art").innerHTML = m && m.art ? "" : icon("music");

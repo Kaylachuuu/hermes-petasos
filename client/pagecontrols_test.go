@@ -92,6 +92,44 @@ func TestTheFrontButtonGoesHomeFromWhatsPlayingAndHoldingTalks(t *testing.T) {
 	}
 }
 
+// With the knob set to the volume, its turns change it here, without the plugin.
+func TestTheKnobTurnsTheVolumeItself(t *testing.T) {
+	var turned []int
+	was := localVolume
+	localVolume = func(d int) { turned = append(turned, d) }
+	knobVolume.Store(5)
+	t.Cleanup(func() { localVolume = was; knobVolume.Store(0) })
+	in, out, _ := pageRig(t, func(st *screenState) { st.Page, st.View, st.Phase, st.BT = "", "", "idle", nil })
+	in <- map[string]any{"input": "knob", "action": "turn", "delta": -1}
+	in <- map[string]any{"input": "knob", "action": "press", "t": int64(0)}
+	if ev := next(t, out); ev["action"] != "press" {
+		t.Fatalf("the plugin got %v", ev)
+	}
+	if len(turned) != 1 || turned[0] != -5 {
+		t.Fatalf("turned %v", turned)
+	}
+}
+
+// On a music page the soft keys open its views, and the plugin never hears them.
+func TestSoftKeysOpenAPagesViews(t *testing.T) {
+	in, out, page := pageRig(t, func(st *screenState) { st.Page, st.View, st.Phase, st.BT = "navidrome", "now", "idle", nil })
+	in <- map[string]any{"input": "preset-3", "action": "press", "t": int64(0)}
+	in <- map[string]any{"input": "preset-3", "action": "release", "t": int64(80)}
+	if n := navSent(t, page); n != "key3" {
+		t.Fatalf("got %v", n)
+	}
+	select {
+	case ev := <-out:
+		t.Fatalf("the plugin got %v", ev)
+	case <-time.After(100 * time.Millisecond):
+	}
+	display.update(func(st *screenState) { st.Page = "" }) // home: the soft keys are the plugin's
+	in <- map[string]any{"input": "preset-3", "action": "press", "t": int64(200)}
+	if ev := next(t, out); ev["input"] != "preset-3" {
+		t.Fatalf("got %v", ev)
+	}
+}
+
 func TestAPagesOwnSoftKeySwapsItsViews(t *testing.T) {
 	_, _, page := pageRig(t, func(st *screenState) { st.Page, st.View, st.Phase, st.BT = "", "", "idle", nil })
 	showPage("navidrome")

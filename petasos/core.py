@@ -36,7 +36,9 @@ from typing import Callable
 INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8",
           "mute", "front", "knob", "car-play", "car-next", "car-previous")
 GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "turn")
-# The pages a soft key can open: page_petasos is the home screen, the others a music service's.
+# The pages a soft key can open: page_petasos is the home screen (no longer offered: the front
+# button's tap goes home from a music page; a key still holding it does nothing), the others a
+# music service's.
 PAGES = ("petasos", "soundcloud", "navidrome", "spotify", "apple")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
            "music_toggle", "music_next", "music_previous", "music_stop", "music_page", "soft_keys",
@@ -63,9 +65,9 @@ DEFAULT_MAPPING: dict = {
         "preset-2": {"press": {"action": "prompt", "text": "Read me my last message.", "label": "Last message"}},
         "preset-3": {"press": {"action": "page_soundcloud"}},
         "preset-4": {"press": {"action": "page_spotify"}},
-        "preset-5": {"press": {"action": "page_petasos"}},
-        "preset-6": {"press": {"action": "page_apple"}},
-        "preset-7": {"press": {"action": "page_navidrome"}},
+        "preset-5": {"press": {"action": "page_apple"}},
+        "preset-6": {"press": {"action": "page_navidrome"}},
+        "preset-7": {"press": {"action": "none"}},
         "preset-8": {"press": {"action": "none"}},
         "car-play": {"press": {"action": "conversation"}},
         "car-next": {"press": {"action": "music_next"}},
@@ -91,6 +93,9 @@ _OLD_KNOBS = ({"press": {"action": "stop_speaking"}, "turn": {"action": "volume"
 # pages; the second set didn't exist.
 _OLD_DEFAULTS = {"mute": ({"press": {"action": "mic_toggle"}},),
                  "preset-3": ({"press": {"action": "none"}},), "preset-4": ({"press": {"action": "none"}},)}
+
+# The second set as it first came, unchanged: it gets today's, without the Petasos page.
+_OLD_SECOND_SET = ("page_petasos", "page_apple", "page_navidrome", "none")
 
 # The screen's name for an action with no label of its own, where its words alone read badly.
 _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "music_previous": "Previous song",
@@ -134,7 +139,27 @@ def controls_for(mapping: dict, device: str | None) -> dict:
     own = ((mapping.get("devices") or {}).get(device or "") or {}).get("controls")
     if isinstance(own, dict):
         controls.update({name: own[name] for name in PRESETS if name in own})
+    second = PRESETS[4:]
+    if tuple(_press_action(controls.get(n)) for n in second) == _OLD_SECOND_SET:
+        controls.update({n: DEFAULT_MAPPING["controls"][n] for n in second})
+    for name in PRESETS:
+        if _press_action(controls.get(name)) == "page_petasos":
+            controls[name] = {"press": {"action": "none"}}
     return controls
+
+
+def knob_volume(mapping: dict, device: str | None) -> int:
+    """How far one click of the knob turns the volume, when turning it is the volume: the device
+    then does it itself, without waiting on the plugin (a slow link made the knob lag). 0 when
+    the knob's turn does something else."""
+    turn = (controls_for(mapping, device).get("knob") or {}).get("turn")
+    return mapping["volume_step"] if isinstance(turn, dict) and turn.get("action") == "volume" else 0
+
+
+def _press_action(gestures) -> str | None:
+    """The action a control's press does, if it has one."""
+    press = gestures.get("press") if isinstance(gestures, dict) else None
+    return press.get("action") if isinstance(press, dict) else None
 
 
 def _step_of(gestures) -> dict | None:
@@ -444,7 +469,7 @@ class Petasos:
         return {"do": "screen", "presets": preset_labels(mapping, device_id, shown), "agent": agent_name(mapping),
                 "gestures": gesture_hints(mapping, device_id), "pages": preset_pages(mapping, device_id, shown),
                 "keys": keys, "key_sets": 2 if has_second_set(mapping, device_id) else 1,
-                "hold_ms": mapping["hold_ms"]}
+                "hold_ms": mapping["hold_ms"], "knob_volume": knob_volume(mapping, device_id)}
 
     def _screen(self, state, mapping, device_id) -> list[dict]:
         """The screen command: on hello, then whenever it changes."""

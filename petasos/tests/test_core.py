@@ -23,7 +23,7 @@ def setup(tmp_path):
 
 def screen(presets, agent="Hermes", pages=("", "", "soundcloud", "spotify"), keys=1, key_sets=2):
     return {"do": "screen", "presets": list(presets), "agent": agent, "gestures": core.gesture_hints(core.DEFAULT_MAPPING),
-            "pages": list(pages), "keys": keys, "key_sets": key_sets, "hold_ms": 350}
+            "pages": list(pages), "keys": keys, "key_sets": key_sets, "hold_ms": 350, "knob_volume": 5}
 
 
 DEFAULT_LABELS = ["Calendar", "Last message", "SoundCloud", "Spotify"]
@@ -134,9 +134,9 @@ def test_soft_keys_open_pages_and_the_mute_button_shows_the_second_set(setup):
     assert petasos.handle(ev("device", "hello")) == [screen(DEFAULT_LABELS)]
     assert petasos.handle(ev("preset-3", "press")) == [{"do": "page", "page": "soundcloud"}]
     assert petasos.handle(ev("mute", "press")) == [
-        screen(["Petasos", "Apple Music", "Navidrome", ""], pages=("petasos", "apple", "navidrome", ""), keys=2)]
-    assert petasos.handle(ev("preset-1", "press")) == [{"do": "page", "page": "petasos"}]
-    assert petasos.handle(ev("preset-2", "press")) == [{"do": "page", "page": "apple"}]
+        screen(["Apple Music", "Navidrome", "", ""], pages=("apple", "navidrome", "", ""), keys=2)]
+    assert petasos.handle(ev("preset-1", "press")) == [{"do": "page", "page": "apple"}]
+    assert petasos.handle(ev("preset-2", "press")) == [{"do": "page", "page": "navidrome"}]
     assert petasos.handle(ev("mute", "press")) == [screen(DEFAULT_LABELS)]
     assert petasos.handle(ev("preset-1", "press")) == [{"do": "prompt", "text": "What's next on my calendar?"}]
     # With nothing in the second set, the mute button keeps the first.
@@ -162,6 +162,30 @@ def test_a_mapping_from_before_the_pages_gets_them(setup):
     mapping["controls"]["preset-3"] = {"press": {"action": "music_toggle"}}
     petasos.mapping.path.write_text(json.dumps(mapping))
     assert core.preset_labels(petasos.mapping.current(), None, core.PRESETS[:4])[2] == "Play / pause"
+
+
+def test_the_device_turns_the_volume_itself_when_the_knob_is_the_volume(setup):
+    petasos, _ = setup
+    mapping = petasos.mapping.current()
+    assert core.knob_volume(mapping, None) == 5
+    mapping["controls"]["knob"]["turn"] = {"action": "none"}
+    assert core.knob_volume(mapping, None) == 0
+
+
+def test_the_petasos_page_is_no_longer_a_soft_key(setup):
+    petasos, _ = setup
+    mapping = petasos.mapping.current()
+    old = ("page_petasos", "page_apple", "page_navidrome", "none")
+    for name, action in zip(core.PRESETS[4:], old):
+        mapping["controls"][name] = {"press": {"action": action}}
+    petasos.mapping.path.write_text(json.dumps(mapping))
+    # The second set as it first came gets today's.
+    assert core.preset_labels(petasos.mapping.current(), None, core.PRESETS[4:]) == ["Apple Music", "Navidrome", "", ""]
+    # One someone put there themselves does nothing now.
+    mapping["controls"]["preset-2"] = {"press": {"action": "page_petasos"}}
+    petasos.mapping.path.write_text(json.dumps(mapping))
+    assert core.preset_labels(petasos.mapping.current(), None, core.PRESETS[:4])[1] == ""
+    assert petasos.handle(ev("preset-2", "press")) == []
 
 
 def test_the_knobs_hold_closes_the_mic_and_blocks_talking(setup):

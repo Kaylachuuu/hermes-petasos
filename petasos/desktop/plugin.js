@@ -37,7 +37,6 @@ const ACTIONS = [
   ['music_next', 'Next song'],
   ['music_previous', 'Previous song'],
   ['music_stop', 'Stop the music'],
-  ['page_petasos', 'Open the Petasos page'],
   ['page_soundcloud', 'Open the SoundCloud page'],
   ['page_navidrome', 'Open the Navidrome page'],
   ['page_spotify', 'Open the Spotify page'],

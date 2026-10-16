@@ -487,8 +487,7 @@ func (b *bluetooth) listViewAt(sel int) {
 		items = append(items, btItem{Kind: "note", Label: "No speaker paired yet"})
 	}
 	items = append(items,
-		btItem{Kind: "row", Icon: "plus", Label: "Pair a new device", do: b.scanView},
-		btItem{Kind: "row", Icon: "close", Label: "Close", do: b.close})
+		btItem{Kind: "row", Icon: "plus", Label: "Pair a new device", do: b.scanView})
 	b.show(&btScreen{View: "list", Items: items, Sel: firstRow(items, sel)})
 }
 
