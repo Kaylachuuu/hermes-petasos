@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // versions are the three that make up a Petasos: the system image flashed onto the Car Thing,
@@ -18,11 +19,20 @@ type versions struct {
 // osRelease is where the image keeps its version (VERSION_ID) and build day (BUILD_ID).
 var osRelease = "/etc/os-release"
 
-func (h *hermes) versions() versions {
+// hermesWait is how long a settings tab waits on Hermes before showing what it has.
+var hermesWait = 3 * time.Second
+
+// localVersions are the versions known without asking Hermes.
+func (h *hermes) localVersions() versions {
 	v := versions{Program: version}
 	if !virtual {
 		v.Image = imageVersion(osRelease)
 	}
+	return v
+}
+
+func (h *hermes) versions() versions {
+	v := h.localVersions()
 	var latest clientInfo
 	if h.call("GET", "/api/plugins/petasos/client?os="+runtime.GOOS+"&arch="+runtime.GOARCH, nil, &latest) == nil {
 		v.Latest, v.Plugin = latest.Version, latest.Plugin

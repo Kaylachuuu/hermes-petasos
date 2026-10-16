@@ -189,3 +189,37 @@ func TestImageVersionComesFromOsRelease(t *testing.T) {
 		t.Fatalf("%+v", items)
 	}
 }
+
+// With Hermes not answering, the Device tab still opens, soon, with the VPN switch to bring the
+// tunnel home back.
+func TestDeviceTabOpensWithoutHermes(t *testing.T) {
+	stuck := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-stuck }))
+	defer srv.Close()
+	defer close(stuck)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "wireguard.conf"), []byte("[Interface]\n"), 0o600)
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "car-thing"}, http: srv.Client()}
+	h.servesDevice()
+	defer func() { here.h = nil }()
+	saved, wait := bt, hermesWait
+	hermesWait = 200 * time.Millisecond
+	defer func() { bt, hermesWait = saved, wait }()
+	bt = &bluetooth{open: true}
+	defer display.update(func(st *screenState) { st.BT = nil })
+	began := time.Now()
+	bt.mineView()
+	if time.Since(began) > 2*time.Second {
+		t.Fatalf("took %v", time.Since(began))
+	}
+	bt.mu.Lock()
+	v := *bt.view
+	bt.mu.Unlock()
+	found := false
+	for _, it := range v.Items {
+		found = found || it.Label == "VPN tunnel home"
+	}
+	if v.View != "mine" || !found {
+		t.Fatalf("got %+v", v)
+	}
+}

@@ -403,7 +403,29 @@ func (b *bluetooth) mineViewAt(sel int) {
 				b.mineViewAt(3)
 			}})
 	}
-	p, err := h.presets()
+	// What comes from Hermes is asked for together and waited on briefly, so the tab opens even
+	// when Hermes can't be reached (the tunnel home turned off, say) and its own settings, the VPN
+	// among them, can still be changed.
+	type got struct {
+		p   devicePresets
+		err error
+	}
+	presetsCh, versionsCh := make(chan got, 1), make(chan versions, 1)
+	go func() { p, err := h.presets(); presetsCh <- got{p, err} }()
+	go func() { versionsCh <- h.versions() }()
+	until := time.Now().Add(hermesWait)
+	var p devicePresets
+	err := errors.New("Hermes didn't answer in time")
+	select {
+	case g := <-presetsCh:
+		p, err = g.p, g.err
+	case <-time.After(time.Until(until)):
+	}
+	v := h.localVersions()
+	select {
+	case v = <-versionsCh:
+	case <-time.After(time.Until(until)):
+	}
 	note := "Name is also what Bluetooth shows this Car Thing as."
 	if carMic.Load() {
 		note = "The car's microphone is used while the car is connected, the Car Thing's own otherwise."
@@ -440,7 +462,7 @@ func (b *bluetooth) mineViewAt(sel int) {
 			items = append(items, btItem{Kind: "note", Label: "Shared with your other devices until you change one"})
 		}
 	}
-	items = append(items, versionItems(h.versions(), func() { b.checkForUpdate(h) })...)
+	items = append(items, versionItems(v, func() { b.checkForUpdate(h) })...)
 	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})
 }
 
