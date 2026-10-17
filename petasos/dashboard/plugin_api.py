@@ -167,6 +167,16 @@ def put_music_settings(body: dict) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
+@router.put("/music/quality")
+def put_music_quality(body: dict) -> dict:
+    """The streaming quality alone, saved as soon as it's chosen on the Car Thing."""
+    music = _music()
+    try:
+        return music.save_quality(body.get("quality"))
+    except music.MusicError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
 @router.post("/music/check")
 def music_check() -> dict:
     """Tries each source; a folder's first check reads its files' tags, so it can take a while."""

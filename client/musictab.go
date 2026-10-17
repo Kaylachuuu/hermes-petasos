@@ -128,7 +128,15 @@ func (b *bluetooth) musicDraftView(sel int) {
 		}
 		items = append(items, btItem{Kind: "header", Label: "Streaming"},
 			btItem{Kind: "row", Icon: "music", Label: "Quality", Value: shown, do: func() {
-				d.quality, d.changed = next, true
+				// Saved at once, apart from the rest of the draft.
+				body, _ := json.Marshal(map[string]string{"quality": next})
+				if h := hereNow(); h != nil {
+					if _, err := h.exchange("PUT", "/api/plugins/petasos/music/quality", "application/json", body, h.http, 1<<20); err != nil {
+						b.musicMessage("Couldn't save that", friendlyHermes(err))
+						return
+					}
+				}
+				d.quality, d.saved.Quality = next, next
 				b.musicDraftView(1)
 			}},
 			btItem{Kind: "note", Label: "Lower stutters less on a slow connection"})
@@ -212,9 +220,6 @@ func (b *bluetooth) saveMusic() {
 			"folders":    d.folders,
 			"soundcloud": map[string]string{"client_id": d.scID, "client_secret": d.scSecret},
 			"spotify":    map[string]string{"client_id": d.spID},
-		}
-		if d.quality != "" {
-			settings["quality"] = d.quality
 		}
 		body, _ := json.Marshal(settings)
 		if _, err := h.exchange("PUT", "/api/plugins/petasos/music/settings", "application/json", body, slow, 1<<20); err != nil {

@@ -586,3 +586,13 @@ def test_the_streaming_quality_sets_the_bit_rate(home, navidrome):
     assert music.config()["quality"] == "low"
     with pytest.raises(music.MusicError):
         music.save_settings({"folders": [], "quality": "best"})
+
+
+def test_quality_is_saved_alone(tmp_path, monkeypatch):
+    monkeypatch.setattr(music, "petasos_dir", lambda: tmp_path)
+    music.save_settings({"folders": [str(tmp_path)], "soundcloud": {"client_id": "cid", "client_secret": "sec"}})
+    assert music.save_quality("low")["quality"] == "low"
+    cfg = json.loads((tmp_path / "music.json").read_text())
+    assert cfg["quality"] == "low" and cfg["folders"] == [str(tmp_path)] and cfg["soundcloud"]["client_secret"] == "sec"
+    with pytest.raises(music.MusicError):
+        music.save_quality("loud")

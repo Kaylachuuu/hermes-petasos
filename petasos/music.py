@@ -1096,6 +1096,20 @@ def spotify() -> "Spotify":
     return Spotify(cfg["spotify"])
 
 
+def save_quality(quality) -> dict:
+    """Saves the streaming quality alone, leaving the rest of music.json as it is."""
+    if quality not in QUALITIES:
+        raise MusicError("quality is one of " + ", ".join(QUALITIES))
+    cfg = config()
+    cfg["quality"] = quality
+    _write_json(petasos_dir() / "music.json", cfg)
+    try:
+        os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
+    except OSError:
+        pass
+    return settings()
+
+
 def save_settings(body: dict) -> dict:
     """Saves the dashboard's changes; an empty password keeps the saved one."""
     if not isinstance(body, dict):
