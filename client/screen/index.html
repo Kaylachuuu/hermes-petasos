@@ -289,12 +289,14 @@ body.virtual .topbar > span:hover { background: var(--row); }
 
   <div id="bands">
   <svg class="band top" id="top-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
+    <clipPath id="top-band-parts"><path class="parts" d=""/></clipPath>
     <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
     <rect class="cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
     <rect class="lit" x="0" y="0" width="0" height="60" fill="url(#l-petasos)" transform="translate(2 0)"/>
     <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
     <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
     <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
+    <path class="marks" d="" fill="#e8823a"/>
   </svg>
   <svg class="band bottom" id="bottom-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
     <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
@@ -467,10 +469,11 @@ function drawTop(s) {
 // --- the meanders ---------------------------------------------------------------------------------
 
 // The top one shows the volume as it changes, then the sound: your voice while Athena listens,
-// and her voice or the music as it plays, under a mark at the volume. A music page keeps the
-// volume lit when there's no sound to show. The bottom one is the song's progress, in its
-// service's colour.
+// and her voice or the music as it plays, in bands of pitch, each under a mark at the volume. A
+// music page keeps the volume lit when there's no sound to show. The bottom one is the song's
+// progress, in its service's colour.
 let volumeSeen = null, volumeUntil = 0, micTarget = 0, micShown = 0, lvlTarget = 0, lvlShown = 0, bandFrame = 0;
+let partsTarget = null, partsShown = null; // the sound in bands of pitch (spectrum.go)
 const bandsDrawn = {};
 
 function setBand(id, b) {
@@ -488,6 +491,33 @@ function setBand(id, b) {
   part("litrule").setAttribute("stroke", t.lit);
   part("mark").setAttribute("x", b.mark == null ? -10 : (1000 * b.mark - 4).toFixed(1));
   part("mark").setAttribute("fill", t.lit);
+  if (part("parts")) setParts(el, b, t);
+}
+
+// setParts splits a band into the sound's bands of pitch, bass to treble, each lit from its
+// own start and with its own mark at the volume.
+const PART_GAP = 14;
+function setParts(el, b, t) {
+  const part = (c) => el.querySelector("." + c), parts = b.parts || [];
+  const width = (1000 - PART_GAP * (parts.length - 1)) / (parts.length || 1);
+  let clip = "", rules = "", marks = "";
+  parts.forEach((level, i) => {
+    const x = i * (width + PART_GAP), w = width * Math.max(0, Math.min(1, level));
+    clip += `M${x.toFixed(1)} 0h${w.toFixed(1)}v60h${(-w).toFixed(1)}Z`;
+    if (w > 0) rules += `M${x.toFixed(1)} 2h${w.toFixed(1)}M${x.toFixed(1)} 58h${w.toFixed(1)}`;
+    if (b.mark != null) marks += `M${(x + width * b.mark - 4).toFixed(1)} 0h8v60h-8Z`;
+  });
+  const clipped = parts.length ? `url(#${el.id}-parts)` : null;
+  part("parts").setAttribute("d", clip);
+  for (const c of ["cover", "lit"]) {
+    if (clipped) { part(c).setAttribute("width", 1000); part(c).setAttribute("clip-path", clipped); }
+    else part(c).removeAttribute("clip-path");
+  }
+  if (!clipped) return part("marks").setAttribute("d", "");
+  part("litrule").setAttribute("d", b.dim ? rules || "M0 2 H0" : "M0 2 H0");
+  part("mark").setAttribute("x", -10);
+  part("marks").setAttribute("d", marks);
+  part("marks").setAttribute("fill", t.lit);
 }
 
 function musicProgress(m) {
@@ -507,7 +537,8 @@ function drawBands() {
   // While sound plays, turning the volume just moves the mark over the running level.
   else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
-  else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol };
+  else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol,
+                              parts: partsShown && partsShown.map((l) => l * (vol ?? 1)) };
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
@@ -518,17 +549,27 @@ function drawBands() {
                                       : { theme: onMusic ? page : "petasos", dim: onMusic, lit: m ? musicProgress(m) : 0 });
 }
 
+// How much of the way down the sound's levels fall each frame, as the Device tab sets it.
+const FALLS = { quick: 0.15, gentle: 0.06, slow: 0.03 };
+
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
 function stepBands() {
   bandFrame = 0;
-  const ease = (shown, target) => {
-    shown += (target - shown) * (target > shown ? 0.5 : 0.15);
+  const ease = (shown, target, fall = 0.15) => {
+    shown += (target - shown) * (target > shown ? 0.5 : fall);
     return Math.abs(target - shown) < 0.005 ? target : shown;
   };
+  const fall = FALLS[state && state.fall] || FALLS.gentle;
   micShown = ease(micShown, state && state.phase === "listening" ? micTarget : 0);
-  lvlShown = ease(lvlShown, lvlTarget);
+  lvlShown = ease(lvlShown, lvlTarget, fall);
+  let partsMoving = false;
+  if (partsTarget) {
+    if (partsShown && partsShown.length !== partsTarget.length) partsShown = null; // the bands were changed
+    partsShown = partsTarget.map((target, i) => ease(partsShown ? partsShown[i] : 0, target, fall));
+    partsMoving = partsShown.some((l, i) => l !== partsTarget[i]);
+  }
   drawBands();
-  if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget) bandFrame = requestAnimationFrame(stepBands);
+  if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget || partsMoving) bandFrame = requestAnimationFrame(stepBands);
 }
 
 function moveBands() {
@@ -1162,7 +1203,13 @@ function connect() {
       if (state && state.phase === "listening") { micTarget = message.mic; moveBands(); }
       return;
     }
-    if ("lvl" in message) { lvlTarget = message.lvl; moveBands(); return; } // the sound's level (audiometer.go)
+    if ("lvl" in message) { // the sound's level (audiometer.go)
+      lvlTarget = message.lvl;
+      partsTarget = message.bands || null;
+      if (!partsTarget) partsShown = null; // one level alone
+      moveBands();
+      return;
+    }
     if ("nav" in message) { musicNav(message.nav); return; } // the knob or front button on a music page
     state = message;
     if (pageVersion === null) pageVersion = state.version;

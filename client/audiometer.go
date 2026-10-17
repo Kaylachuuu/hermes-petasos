@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// The sound's level, for the top meander: what Athena says and the library's music, as they
+// The sound's level, overall and in bands of pitch (spectrum.go), for the top meander: what Athena says and the library's music, as they
 // are heard. Petasos plays both itself, so it knows each piece of the sound and when the speaker
 // will play it; the levels are worked out as the sound is handed over and sent to the page when
 // their time comes. The phone's music passes through BlueALSA without petasos seeing it, so it
@@ -19,6 +20,7 @@ const meterStep = 50 * time.Millisecond
 type timedLevel struct {
 	at    time.Time
 	level float64
+	bands []float64
 }
 
 type audioMeter struct {
@@ -41,10 +43,11 @@ func (m *audioMeter) feed(pcm []byte, rate, channels int, at time.Time) {
 		return
 	}
 	var levels []timedLevel
+	count := int(meterBands.Load())
 	for i := 0; i+frame <= len(pcm); i += step {
 		end := min(i+step, len(pcm))
 		levels = append(levels, timedLevel{at: at.Add(time.Duration(i/frame) * time.Second / time.Duration(rate)),
-			level: pcmLevel(pcm[i:end])})
+			level: pcmLevel(pcm[i:end]), bands: pcmBands(pcm[i:end], rate, channels, count)})
 	}
 	m.mu.Lock()
 	m.queue = append(m.queue, levels...)
@@ -74,11 +77,11 @@ func (m *audioMeter) run() {
 			}
 			due = i
 		}
-		var level float64
+		var level timedLevel
 		send := false
 		switch {
 		case due >= 0:
-			level, send = m.queue[due].level, true
+			level, send = m.queue[due], true
 			m.queue = m.queue[due+1:]
 			m.sending = true
 		case m.sending && (len(m.queue) == 0 || m.queue[0].at.Sub(now) > 4*meterStep):
@@ -86,7 +89,7 @@ func (m *audioMeter) run() {
 		}
 		m.mu.Unlock()
 		if send {
-			display.audioLevel(level)
+			display.audioLevel(level.level, level.bands)
 		}
 	}
 }
@@ -110,7 +113,22 @@ func pcmLevel(pcm []byte) float64 {
 	return math.Max(0, math.Min(1, (20*math.Log10(rms)+50)/50))
 }
 
-// audioLevel sends the sound's level (0 to 1) to every open page, like micLevel.
-func (s *screen) audioLevel(level float64) {
-	s.sendLevel([]byte(fmt.Sprintf(`{"lvl":%.2f}`, level)))
+// audioLevel sends the sound's level and its bands' (0 to 1) to every open page, like micLevel.
+func (s *screen) audioLevel(level float64, bands []float64) {
+	b := []byte(fmt.Sprintf(`{"lvl":%.2f`, level))
+	if len(bands) > 0 {
+		b = append(b, `,"bands":[`...)
+		for i, l := range bands {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = fmt.Appendf(b, "%.2f", l)
+		}
+		b = append(b, ']')
+	}
+	s.sendLevel(append(b, '}'))
 }
+
+// meterBands is how many bands of pitch the top meander shows the sound in (1: its level alone),
+// as the Device tab sets it.
+var meterBands atomic.Int32

@@ -68,6 +68,13 @@ type libraryPlayer struct {
 	cacheData []byte
 }
 
+// A stream starts once streamCushion bytes are in (about 4 seconds at 192 kbps), and pauses to
+// build that up again when it falls under streamLow.
+const (
+	streamCushion = 96 << 10
+	streamLow     = 8 << 10
+)
+
 // libraryCacheMax is the most kept of one track: about 20 minutes at 192 kbps.
 const libraryCacheMax = 32 << 20
 
@@ -386,6 +393,7 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 		return from, fmt.Errorf("not connected")
 	}
 	var src io.Reader
+	var ahead *readAhead // a stream's download, not a track kept in memory
 	if data := l.cached(t); data != nil {
 		src = bytes.NewReader(data)
 	} else {
@@ -395,29 +403,16 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 			return from, err
 		}
 		got := &capture{}
-		tee := io.TeeReader(body, got)
-		src = tee
-		finished := make(chan bool, 1) // true: the whole track was read
-		defer func() {
-			select {
-			case whole := <-finished:
-				body.Close()
-				if whole && !got.over {
-					l.keep(t, got.buf.Bytes())
-				}
-			default:
-				// Stopped partway (Athena, say): fetch the rest meanwhile, so carrying on, or the
-				// track coming round again, plays from memory.
-				go func() {
-					_, err := io.Copy(io.Discard, tee)
-					body.Close()
-					if err == nil && !got.over {
-						l.keep(t, got.buf.Bytes())
-					}
-				}()
+		ahead = newReadAhead(io.TeeReader(body, got), func(err error) {
+			body.Close()
+			if err == io.EOF && !got.over {
+				// The whole track: carrying on, or it coming round again, plays from memory.
+				l.keep(t, got.buf.Bytes())
 			}
-		}()
-		src = &endWatch{r: tee, done: finished}
+		})
+		defer ahead.abandon()
+		ahead.fill(streamCushion, 10*time.Second)
+		src = ahead
 	}
 	dec, err := mp3.NewDecoder(src)
 	if err != nil {
@@ -451,6 +446,15 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 			_ = cmd.Wait()
 			return frame, nil
 		default:
+		}
+		if ahead != nil && ahead.low(streamLow) {
+			// The download fell behind: let the speaker pause until there's a cushion again,
+			// rather than stuttering through each piece as it comes.
+			waited := time.Now()
+			ahead.fill(streamCushion, 15*time.Second)
+			if time.Since(waited) > 300*time.Millisecond { // the speaker ran dry meanwhile
+				heard = time.Now().Add(speakerLag).Add(-time.Duration(frame-from) * time.Second / libraryRate)
+			}
 		}
 		n, readErr := io.ReadFull(pcm, buf)
 		n -= n % 4
@@ -801,20 +805,4 @@ func firstErr(errs ...error) error {
 		}
 	}
 	return nil
-}
-
-// endWatch says when its reader reaches the end, so the whole of a track can be kept.
-type endWatch struct {
-	r    io.Reader
-	done chan bool
-	sent bool
-}
-
-func (e *endWatch) Read(p []byte) (int, error) {
-	n, err := e.r.Read(p)
-	if err != nil && !e.sent {
-		e.sent = true
-		e.done <- err == io.EOF
-	}
-	return n, err
 }

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -301,8 +302,52 @@ type ownSettings struct {
 	Name   string `json:"name,omitempty"`
 	Device string `json:"device,omitempty"`
 	Mic    string `json:"mic,omitempty"`
-	Wake   *bool  `json:"wake,omitempty"` // listen for the wake word; on unless turned off
-	VPN    *bool  `json:"vpn,omitempty"`  // the tunnel home (wireguard.conf); on unless turned off
+	Wake   *bool  `json:"wake,omitempty"`  // listen for the wake word; on unless turned off
+	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home (wireguard.conf); on unless turned off
+	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 4 if not set
+	Fall   string `json:"fall,omitempty"`  // how quickly the meander's sound falls back (meterFalls), "gentle" if not set
+}
+
+// The choices for the top meander's sound, in the order the Device tab steps through them.
+var (
+	meterBandChoices = []int{1, 3, 4, 5}
+	meterFalls       = []string{"quick", "gentle", "slow"}
+)
+
+// meterSetting is the top meander's bands and fall-off, as set in the Device tab.
+func meterSetting(dir string) (int, string) {
+	o := loadOwnSettings(dir)
+	bands, fall := 4, "gentle"
+	if slices.Contains(meterBandChoices, o.Bands) {
+		bands = o.Bands
+	}
+	if slices.Contains(meterFalls, o.Fall) {
+		fall = o.Fall
+	}
+	return bands, fall
+}
+
+// applyMeter passes the meander's settings on to the audio meter and the screen.
+func applyMeter(dir string) {
+	bands, fall := meterSetting(dir)
+	meterBands.Store(int32(bands))
+	display.update(func(s *screenState) { s.Fall = fall })
+}
+
+// setMeter steps the bands (or, with fall, the fall-off) on to the next choice.
+func (h *hermes) setMeter(fall bool) error {
+	own := loadOwnSettings(h.dir)
+	bands, f := meterSetting(h.dir)
+	if fall {
+		own.Fall = meterFalls[(slices.Index(meterFalls, f)+1)%len(meterFalls)]
+	} else {
+		own.Bands = meterBandChoices[(slices.Index(meterBandChoices, bands)+1)%len(meterBandChoices)]
+	}
+	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	applyMeter(h.dir)
+	return nil
 }
 
 // vpnSetting is whether to bring up the tunnel home, when there is one: on unless turned off in
@@ -461,6 +506,24 @@ func (b *bluetooth) mineViewAt(sel int) {
 		} else {
 			items = append(items, btItem{Kind: "note", Label: "Shared with your other devices until you change one"})
 		}
+	}
+	bands, fall := meterSetting(h.dir)
+	items = append(items, btItem{Kind: "header", Label: "Sound on the screen"})
+	at := len(items)
+	for i, row := range []struct {
+		label, value string
+		fall         bool
+	}{
+		{"Bands", fmt.Sprint(bands), false},
+		{"Fall-off", strings.ToUpper(fall[:1]) + fall[1:], true},
+	} {
+		items = append(items, btItem{Kind: "row", Icon: "speaker", Label: row.label, Value: row.value, do: func() {
+			if err := h.setMeter(row.fall); err != nil {
+				b.message("Couldn't save that", err.Error())
+				return
+			}
+			b.mineViewAt(at + i)
+		}})
 	}
 	items = append(items, versionItems(v, func() { b.checkForUpdate(h) })...)
 	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})

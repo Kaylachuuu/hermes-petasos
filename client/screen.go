@@ -54,6 +54,7 @@ type screenState struct {
 	MicNote  int          `json:"mic_note,omitempty"`
 	Update   *updateShown `json:"update,omitempty"` // a new petasos downloading (main.go's update)  // bumped when the mic is turned off or on, for a note on the screen
 	Hold     *holdShown   `json:"hold,omitempty"`   // a control held down, and what letting go would do (gestures.go)
+	Fall     string       `json:"fall,omitempty"`   // how quickly the top meander's sound falls back (device.go's meterFalls)
 }
 
 type links struct {
