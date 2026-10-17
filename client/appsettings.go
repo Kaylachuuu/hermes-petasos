@@ -14,10 +14,12 @@ import (
 	"unicode"
 )
 
-// The app's own settings (the Mac and Windows apps alike), on the page at /settings.html: this
-// computer's name, which tells its chat apart from the Car Thing's and other computers', the
-// VPN, and the microphone (mics.go). Saving restarts the program, which the app then starts again, so a change takes
-// effect the same way a fresh start would.
+// The app's own settings (the Mac, Windows and Linux apps alike), on the page at /settings.html,
+// in the Car Thing's tabs less what a computer does itself (Bluetooth, the screen's light). Here
+// are those saved with a restart: this computer's name, which tells its chat apart from the Car
+// Thing's and other computers', the microphone (mics.go), the wake word and the VPN. Saving
+// restarts the program, which the app then starts again, so a change takes effect the same way a
+// fresh start would. appvpn.go has the rest.
 
 // appDir is the app's folder (config.json, tokens.json and the rest); signInNeeded is set while
 // it has no sign-in yet, when the program serves only the sign-in page.
@@ -36,11 +38,11 @@ type appSettingsView struct {
 	Name      string    `json:"name"`
 	Device    string    `json:"device"`
 	Server    string    `json:"server"`
+	Username  string    `json:"username"`
 	VPN       bool      `json:"vpn"`
 	When      string    `json:"when"`
-	HasConfig bool      `json:"has_config"`
-	Endpoint  string    `json:"endpoint,omitempty"`
-	Address   string    `json:"address,omitempty"`
+	Config    string    `json:"config"` // the VPN configuration used
+	Configs   []appVPN  `json:"configs"`
 	Route     string    `json:"route"` // "direct" or "vpn"
 	VPNError  string    `json:"vpn_error,omitempty"`
 	Mic       string    `json:"mic"`      // "" for the computer's own choice
@@ -52,13 +54,13 @@ type appSettingsView struct {
 }
 
 type appSettingsChange struct {
-	Name      string  `json:"name"`
-	VPN       bool    `json:"vpn"`
-	When      string  `json:"when"`
-	WireGuard *string `json:"wireguard,omitempty"` // a new config's text; absent keeps the old one
-	Mic       *string `json:"mic,omitempty"`       // absent keeps the microphone as it is
-	MicName   string  `json:"mic_name,omitempty"`
-	Wake      *bool   `json:"wake,omitempty"`
+	Name    string  `json:"name"`
+	VPN     bool    `json:"vpn"`
+	When    string  `json:"when"`
+	Config  string  `json:"config"`        // which VPN configuration
+	Mic     *string `json:"mic,omitempty"` // absent keeps the microphone as it is
+	MicName string  `json:"mic_name,omitempty"`
+	Wake    *bool   `json:"wake,omitempty"`
 }
 
 func (h *hermes) servesAppSettings() {
@@ -116,24 +118,12 @@ func appSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *hermes) appSettingsView() appSettingsView {
-	var set vpnSettings
-	_ = readJSON(filepath.Join(h.dir, "vpn.json"), &set)
-	v := appSettingsView{Name: h.cfg.Name, Device: h.cfg.Device, Server: h.cfg.Server, VPN: set.On, When: set.When,
+	set := computerVPN(h.dir)
+	v := appSettingsView{Name: h.cfg.Name, Device: h.cfg.Device, Server: h.cfg.Server, Username: h.cfg.Username,
+		VPN: set.On, When: set.When, Config: set.Config, Configs: appVPNs(h.dir),
 		Route: map[bool]string{true: "vpn", false: "direct"}[route.use.Load()]}
 	if v.Name == "" {
 		v.Name = titleFromDevice(h.cfg.Device)
-	}
-	if v.When != "always" {
-		v.When = "away"
-	}
-	if raw, err := os.ReadFile(filepath.Join(h.dir, "wireguard.conf")); err == nil {
-		v.HasConfig = true
-		if cfg, err := parseWireGuard(raw); err == nil {
-			v.Address = strings.Join(cfg.Addresses, ", ")
-			if len(cfg.Peers) > 0 {
-				v.Endpoint = cfg.Peers[0].Endpoint
-			}
-		}
 	}
 	app.mu.Lock()
 	v.VPNError = app.vpnError
@@ -160,31 +150,17 @@ func (h *hermes) saveAppSettings(c appSettingsChange) string {
 	if device == "car-thing" {
 		return "Car Thing is the Car Thing's own name; pick another for this computer."
 	}
-	confPath := filepath.Join(h.dir, "wireguard.conf")
-	if c.WireGuard != nil {
-		cfg, err := parseWireGuard([]byte(*c.WireGuard))
-		if err == nil {
-			_, err = cfg.uapi()
+	if _, ok := findVPN(h.dir, c.Config); c.VPN && !ok {
+		if len(liveVPNs(h.dir)) == 0 {
+			return "Add a VPN configuration first."
 		}
-		if err != nil {
-			return "That WireGuard config won't work: " + err.Error() + "."
-		}
-	} else if _, err := os.Stat(confPath); c.VPN && err != nil {
-		return "Import a WireGuard config first."
+		return "Choose which VPN configuration to use."
 	}
 	when := c.When
 	if when != "always" {
 		when = "away"
 	}
-	if c.WireGuard != nil {
-		if err := os.WriteFile(confPath+".tmp", []byte(*c.WireGuard), 0o600); err != nil {
-			return "Couldn't save the config: " + err.Error()
-		}
-		if err := os.Rename(confPath+".tmp", confPath); err != nil {
-			return "Couldn't save the config: " + err.Error()
-		}
-	}
-	if err := writeJSON(filepath.Join(h.dir, "vpn.json"), vpnSettings{On: c.VPN, When: when}, 0o644); err != nil {
+	if err := writeJSON(filepath.Join(h.dir, "vpn.json"), vpnSettings{On: c.VPN, When: when, Config: c.Config}, 0o644); err != nil {
 		return "Couldn't save the VPN setting: " + err.Error()
 	}
 	if c.Mic != nil || c.Wake != nil {

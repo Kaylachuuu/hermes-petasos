@@ -319,21 +319,27 @@ The pin at the right of the controls keeps the Petasos window above other window
 ### Settings
 
 **Settings…** (⌘,) or the cog under the screen opens the app's settings page. The page belongs to
-the petasos program, so a Windows app will share it.
+the petasos program, so the Windows and Linux apps share it. Its tabs follow the Car Thing's,
+less Bluetooth and the screen's light, which the computer looks after itself.
 
-- **Name**: this computer's name. Its chat with the agent is "Petasos · <name>" unless the
-  dashboard's Petasos tab has all devices share one chat, "Petasos".
-- **Soft keys**: the shared ones, or this computer's own: for each of the eight (two sets of four), what it does,
-  what it asks and its label.
-- **Microphone**: which one Petasos records from. By default the one the computer's sound
-  settings use; choosing one here leaves those alone. AirPods and other Bluetooth headsets drop
-  to call quality while their microphone is on, so choosing the Mac's own keeps them sounding
-  their best for the replies.
-- **VPN**: WireGuard, built into the program. Only Petasos's own connection to Hermes goes
-  through it, so the rest of the Mac is untouched and no administrator password is needed.
-  Import a `.conf` (give the Mac a peer of its own), then use it always or only when Hermes
-  can't be reached directly. The network icon on the screen turns into a shield while it is in
-  use.
+- **Device**: this computer's name (its chat with the agent is "Petasos · <name>" unless the
+  dashboard's Petasos tab has all devices share one chat, "Petasos"), the microphone Petasos
+  records from (by default the one the computer's sound settings use; AirPods and other
+  Bluetooth headsets drop to call quality while their microphone is on, so choosing the Mac's
+  own keeps them sounding their best for the replies), the wake word, and the versions.
+- **Display**: the sound bands (Bands, Response, Decay, Peaks) and the screensaver (which, Start
+  after, Preview), as on the Car Thing; these take effect at once. A key, a click or the mouse
+  moving over the window ends the screensaver.
+- **Network**: the server and account signed in to, with Log out. The VPN: WireGuard, built
+  into the program. Only Petasos's own connection to Hermes goes through it, so the rest of the
+  computer is untouched and no administrator password is needed. Choose one of the VPN
+  configurations, and whether to use it always or only when Hermes can't be reached directly;
+  the network icon on the screen turns into a shield while it is in use. The configurations are
+  the Car Thing's too, shared through Hermes: add one by pasting or importing a `.conf` (give
+  each device a peer of its own), and leave out its PrivateKey to have a key made here.
+- **Music**: the music sources on Hermes, and how much of a song to have in before it plays.
+- **Soft keys**: the shared ones, or this computer's own: for each of the eight (two sets of
+  four), what it does, what it asks and its label.
 
 ### Windows
 

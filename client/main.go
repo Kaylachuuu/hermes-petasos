@@ -604,8 +604,8 @@ func (h *hermes) run(eventsFile string) {
 		go bt.start()
 		go music.watch()
 		go h.watchHome()
-		go func() { time.Sleep(15 * time.Minute); h.keepVPNsSynced() }()
 	}
+	go func() { time.Sleep(15 * time.Minute); h.keepVPNsSynced() }()
 
 	v := newVoice(h, presses)
 	library.attach(h, v)
@@ -633,9 +633,7 @@ func (h *hermes) run(eventsFile string) {
 			}
 			online = true
 			log.Printf("connected")
-			if !virtual {
-				go h.syncVPNs()
-			}
+			go h.syncVPNs()
 			setHome(true)
 			for _, c := range commands {
 				v.carryOut(c)

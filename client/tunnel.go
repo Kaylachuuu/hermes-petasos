@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sync/atomic"
 	"time"
 )
@@ -17,13 +16,15 @@ import (
 // carries only Petasos's own connections to Hermes. It needs no administrator rights and leaves
 // the rest of the Mac alone. vpn.json in the app's folder says whether it is on, and when:
 // "away" uses it only while Hermes can't be reached directly (at home it can), "always" for
-// every connection. The WireGuard config is wireguard.conf beside it.
+// every connection. The WireGuard config is one of the VPN configurations (vpn.go), shared with
+// the Car Thing and Hermes.
 //
 // The Car Thing has its own system tunnel (wireguard.go) and never routes through this.
 
 type vpnSettings struct {
-	On   bool   `json:"on"`
-	When string `json:"when"` // "away" (the default) or "always"
+	On     bool   `json:"on"`
+	When   string `json:"when"`             // "away" (the default) or "always"
+	Config string `json:"config,omitempty"` // which of the VPN configurations (vpn.go)
 }
 
 var route struct {
@@ -43,14 +44,17 @@ func dialHermes(ctx context.Context, network, addr string) (net.Conn, error) {
 // startVPN brings the tunnel up when vpn.json turns it on, and keeps choosing between it and
 // the direct way.
 func (h *hermes) startVPN() {
-	var set vpnSettings
-	if err := readJSON(filepath.Join(h.dir, "vpn.json"), &set); err != nil || !set.On {
+	set := computerVPN(h.dir)
+	if !set.On {
 		return
 	}
-	raw, err := os.ReadFile(filepath.Join(h.dir, "wireguard.conf"))
-	if err == nil {
+	choice, ok := findVPN(h.dir, set.Config)
+	var err error
+	if !ok {
+		err = fmt.Errorf("its configuration is gone; choose another in Settings")
+	} else {
 		var cfg *wgConfig
-		if cfg, err = parseWireGuard(raw); err == nil {
+		if cfg, err = parseWireGuard([]byte(choice.Conf)); err == nil {
 			route.tunnel, err = newTunnel(cfg)
 		}
 	}
@@ -62,7 +66,7 @@ func (h *hermes) startVPN() {
 		display.notice(fmt.Sprintf("The VPN didn't start: %v", err))
 		return
 	}
-	log.Printf("VPN ready (WireGuard, %s)", map[bool]string{true: "always", false: "when away"}[set.When == "always"])
+	log.Printf("VPN ready (%q, %s)", choice.Name, map[bool]string{true: "always", false: "when away"}[set.When == "always"])
 	if set.When == "always" {
 		h.useTunnel(true)
 		return

@@ -104,7 +104,7 @@ func TestScreenSettingsWithTheKnob(t *testing.T) {
 	b.mu.Lock()
 	b.tab = "music" // what the Music tab sets once Hermes answers
 	b.mu.Unlock()
-	press("front")
+	b.close()
 	b.openScreens()
 	waitTab("device")
 	if v := view(); v.Set != 0 {

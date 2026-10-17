@@ -133,7 +133,9 @@ func deleteVPN(dir, id string) error {
 
 // vpnChanged follows a change on this device: the tunnel, and Hermes's copy.
 func vpnChanged(dir string) {
-	go setUpTunnel(dir)
+	if !virtual { // a computer's tunnel starts with the program (tunnel.go)
+		go setUpTunnel(dir)
+	}
 	if h := hereNow(); h != nil {
 		go h.syncVPNs()
 	}
@@ -210,8 +212,14 @@ func tunnelChoice(dir string) (vpnConfig, bool) {
 	return findVPN(dir, p.Config)
 }
 
-// vpnUsers names the paired phones set to use a config.
+// vpnUsers names the paired phones set to use a config, or on a computer, the computer.
 func vpnUsers(dir, id string) []string {
+	if virtual {
+		if set := computerVPN(dir); set.On && set.Config == id {
+			return []string{"This computer"}
+		}
+		return nil
+	}
 	var names []string
 	own := loadOwnSettings(dir)
 	devs, _ := bt.devices()

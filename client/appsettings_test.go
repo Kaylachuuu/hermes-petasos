@@ -31,29 +31,53 @@ func TestAppSettingsAreCheckedAndSaved(t *testing.T) {
 	srv := httptest.NewServer(plugin)
 	defer srv.Close()
 	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "mac"}, http: srv.Client()}
-	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true}); !strings.Contains(p, "Import") {
+	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true}); !strings.Contains(p, "Add a VPN") {
 		t.Fatalf("VPN without a config: %q", p)
 	}
 	bad := "[Interface]\nPrivateKey = nope\nAddress = 10.8.0.9/32\n[Peer]\nPublicKey = nope\nAllowedIPs = 10.0.0.0/24\n"
-	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true, WireGuard: &bad}); !strings.Contains(p, "won't work") {
-		t.Fatalf("bad config: %q", p)
+	if _, err := saveAppVPN(dir, "", "Bad", bad); err == nil || !strings.Contains(err.Error(), "won't work") {
+		t.Fatalf("bad config: %v", err)
 	}
 	if p := h.saveAppSettings(appSettingsChange{Name: "Car Thing"}); p == "" {
 		t.Fatal("took the Car Thing's name")
 	}
-	good := "[Interface]\nPrivateKey = " + strings.Repeat("A", 43) + "=\nAddress = 10.8.0.9/32\n[Peer]\nPublicKey = " +
-		strings.Repeat("B", 43) + "=\nEndpoint = 127.0.0.1:51820\nAllowedIPs = 0.0.0.0/0\n"
-	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true, When: "always", WireGuard: &good}); p != "" {
+	// Pasted without a private key, a new configuration gets one of its own.
+	good := "[Interface]\nAddress = 10.8.0.9/32\n[Peer]\nPublicKey = " + strings.Repeat("B", 43) +
+		"=\nEndpoint = 127.0.0.1:51820\nAllowedIPs = 0.0.0.0/0\n"
+	id, err := saveAppVPN(dir, "", "Office", good)
+	if err != nil || id != "office" {
+		t.Fatalf("saving a config: %q %v", id, err)
+	}
+	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true, When: "always"}); !strings.Contains(p, "Choose") {
+		t.Fatalf("VPN with no config chosen: %q", p)
+	}
+	if p := h.saveAppSettings(appSettingsChange{Name: "Office Mac", VPN: true, When: "always", Config: id}); p != "" {
 		t.Fatal(p)
 	}
 	var cfg config
 	var set vpnSettings
 	readJSON(filepath.Join(dir, "config.json"), &cfg)
 	readJSON(filepath.Join(dir, "vpn.json"), &set)
-	info, err := os.Stat(filepath.Join(dir, "wireguard.conf"))
+	info, err := os.Stat(filepath.Join(dir, vpnsFile))
 	if cfg.Device != "office-mac" || cfg.Name != "Office Mac" || cfg.Server == "" || !set.On || set.When != "always" ||
-		err != nil || info.Mode().Perm() != 0o600 {
+		set.Config != "office" || err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("saved %+v %+v %v %v", cfg, set, info, err)
+	}
+	shown := appVPNs(dir)
+	if len(shown) != 1 || !shown[0].Used || shown[0].PublicKey == "" || strings.Contains(shown[0].Conf, "PrivateKey") ||
+		shown[0].Endpoint != "127.0.0.1:51820" {
+		t.Fatalf("listed %+v", shown)
+	}
+	// Edited without its key (the page never has it), it keeps the one it had.
+	before, _ := findVPN(dir, id)
+	if _, err := saveAppVPN(dir, id, "Office", strings.Replace(shown[0].Conf, "51820", "51821", 1)); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := findVPN(dir, id)
+	k1, _ := parseWireGuard([]byte(before.Conf))
+	k2, _ := parseWireGuard([]byte(after.Conf))
+	if k1.PrivateKey != k2.PrivateKey || endpointOf(after.Conf) != "127.0.0.1:51821" {
+		t.Fatalf("edited: %q", after.Conf)
 	}
 	if _, old := plugin.own["mac"]; old || plugin.own["office-mac"]["preset-1"]["press"].Action != "stop_speaking" {
 		t.Fatalf("the soft keys didn't follow the new name: %+v", plugin.own)
@@ -102,4 +126,27 @@ func TestPinKeepsWindowOnTop(t *testing.T) {
 	if rec.Code != 200 || !loadWindowSettings(appDir).OnTop || !display.snapshot().OnTop {
 		t.Fatalf("not kept on top: %d %s", rec.Code, rec.Body)
 	}
+}
+
+// The Display tab's settings and the buffer take effect at once, and come back as saved.
+func TestAppPrefsTakeEffectAtOnce(t *testing.T) {
+	saved := backlight
+	defer func() { backlight = saved }()
+	dir := t.TempDir()
+	backlight = &light{set: defaultLight, file: filepath.Join(dir, "screen.json"), swallow: map[string]bool{}}
+	want := appPrefs{Bands: 5, Rise: "fast", Fall: "slow", Peaks: true, Saver: "emblem", SaverAfter: 120, Buffer: -1}
+	if err := setAppPrefs(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := getAppPrefs(dir); got != want {
+		t.Fatalf("saved %+v, got %+v", want, got)
+	}
+	if streamBuffer.Load() != -1 || meterBands.Load() != 5 {
+		t.Fatalf("not applied: buffer %d, bands %d", streamBuffer.Load(), meterBands.Load())
+	}
+	setAppPrefs(dir, appPrefs{Bands: 4, Rise: "warp", Saver: "lava", Buffer: 7})
+	if got := getAppPrefs(dir); got.Bands != 5 || got.Rise != "fast" || got.Saver != "off" || got.Buffer != 4 {
+		t.Fatalf("nonsense became %+v", got)
+	}
+	setBufferTo(dir, 4)
 }

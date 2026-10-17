@@ -936,6 +936,15 @@ function draw(s) {
 
 // --- the screensaver -----------------------------------------------------------------------------
 
+// On a computer, the mouse moving over the window counts as activity: it ends the screensaver
+// and keeps it away, as a key or a click does.
+let wokeAt = 0;
+addEventListener("mousemove", () => {
+  if (!state || !state.virtual || Date.now() - wokeAt < (state.saver ? 300 : 5000)) return;
+  wokeAt = Date.now();
+  fetch("/app/prefs?wake", { method: "POST" }).catch(() => {});
+});
+
 // Which one shows: Automatic is Now playing while music plays, else the Clock, and Now playing
 // and the Visualizer fall back to the Clock when nothing plays.
 function saverKind(s) {

@@ -193,6 +193,8 @@ func (s *screen) serve() {
 	mux.HandleFunc("/app/soundcloud", appSoundCloud)
 	mux.HandleFunc("/app/spotify", appSpotify)
 	mux.HandleFunc("/app/signin", appSignIn)
+	mux.HandleFunc("/app/vpns", appVPNsHandler)
+	mux.HandleFunc("/app/prefs", appPrefsHandler)
 	mux.HandleFunc("/music/browse", musicBrowse)
 	mux.HandleFunc("/music/play", musicPlay)
 	mux.HandleFunc("/music/control", musicControlPost)

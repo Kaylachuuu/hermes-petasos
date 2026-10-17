@@ -50,6 +50,15 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
 .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; color: var(--dust); }
 .tabs button:hover { color: var(--bronze); }
 .tabs button.on { color: var(--ember); border-bottom-color: var(--ember); }
+.vpns { display: grid; gap: 8px; margin: 8px 0; }
+.vpn { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding: 10px 12px;
+       border: 1.5px solid var(--rule); border-radius: 8px; }
+.vpn b { font-weight: 400; }
+.vpn small { grid-column: 1; color: var(--dust); font-size: 14px; }
+.vpn .acts { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 8px; }
+.vpn .acts button { padding: 6px 12px; font-size: 14px; }
+.editor { border: 1.5px solid var(--ember); border-radius: 8px; padding: 4px 14px 14px; margin: 8px 0; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; word-break: break-all; }
 [hidden] { display: none !important; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .hint { grid-column: 1; } }
 </style>
@@ -61,8 +70,10 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
   <form id="form" hidden>
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="device">Device</button>
-      <button type="button" role="tab" data-tab="connection">Connection</button>
+      <button type="button" role="tab" data-tab="display">Display</button>
+      <button type="button" role="tab" data-tab="network">Network</button>
       <button type="button" role="tab" data-tab="music">Music</button>
+      <button type="button" role="tab" data-tab="softkeys">Soft keys</button>
     </nav>
     <section data-tab="device">
     <h2>This computer</h2>
@@ -72,7 +83,6 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
       <p class="hint" id="name-hint"></p>
     </div>
 
-    <h2>Audio</h2>
     <div class="row">
       <label for="mic">Microphone</label>
       <select id="mic"></select>
@@ -84,14 +94,6 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
       <p class="hint">Saying it starts a conversation, as the conversation button does. The microphone stays on while Petasos is open and waiting, and nothing it hears leaves this computer until you say it.</p>
     </div>
 
-    <h2>Soft keys</h2>
-    <div class="row">
-      <label for="keys-own">Soft keys</label>
-      <select id="keys-own"><option value="shared">Shared with your other devices</option><option value="own">This computer's own</option></select>
-      <p class="hint" id="keys-hint">The buttons along the top of the screen: two sets of four, the second shown after a press of the top-right button.</p>
-    </div>
-    <div id="keys"></div>
-
     <h2>Versions</h2>
     <div class="row">
       <label>Versions</label>
@@ -99,40 +101,111 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
     </div>
 
     </section>
-    <section data-tab="connection" hidden>
-    <h2>Hermes</h2>
+    <section data-tab="display" hidden>
+    <p class="hint" style="margin:14px 0 0">Changes here take effect at once. This computer looks after its own screen's brightness.</p>
+    <h2>Audio visualization</h2>
     <div class="row">
-      <label>Signed in to</label>
+      <label for="bands">Bands</label>
+      <select id="bands" data-pref="bands"><option value="1">1</option><option value="3">3</option><option value="5">5</option></select>
+      <p class="hint">How the band at the top shows the sound as it plays: in bands of pitch, bass at the bottom.</p>
+    </div>
+    <div class="row">
+      <label for="rise">Response</label>
+      <select id="rise" data-pref="rise"><option value="fast">Fast</option><option value="medium">Medium</option><option value="slow">Slow</option></select>
+      <p class="hint">How quickly the bands rise.</p>
+    </div>
+    <div class="row">
+      <label for="fall">Decay</label>
+      <select id="fall" data-pref="fall"><option value="fast">Fast</option><option value="medium">Medium</option><option value="slow">Slow</option></select>
+      <p class="hint">How quickly they fall back.</p>
+    </div>
+    <div class="row">
+      <label for="peaks">Peaks</label>
+      <select id="peaks" data-pref="peaks"><option value="off">Off</option><option value="on">On</option></select>
+      <p class="hint">A line held at each band's recent high for about a second.</p>
+    </div>
+    <h2>Screensaver</h2>
+    <div class="row">
+      <label for="saver">Screensaver</label>
+      <select id="saver" data-pref="saver"><option value="off">Off</option><option value="clock">Clock</option><option value="now">Now playing</option>
+        <option value="visualizer">Visualizer</option><option value="emblem">Emblem</option><option value="auto">Automatic</option></select>
+      <p class="hint">Shown once Petasos is left alone. Now playing and the Visualizer show the clock while nothing plays; Automatic is Now playing while music plays, else the clock. A key, a click or moving the mouse over it ends it.</p>
+    </div>
+    <div class="row">
+      <label for="saver-after">Start after</label>
+      <select id="saver-after" data-pref="saver_after"><option value="60">60 seconds</option><option value="90">90 seconds</option><option value="120">120 seconds</option></select>
+    </div>
+    <div class="row">
+      <span></span>
+      <div class="status"><button type="button" id="preview">Preview</button><span id="prefs-status"></span></div>
+    </div>
+
+    </section>
+    <section data-tab="network" hidden>
+    <h2>Server</h2>
+    <div class="row">
+      <label>Address</label>
       <span id="server"></span>
-      <div class="hint"><button type="button" id="signin">Sign in again…</button></div>
+    </div>
+    <div class="row">
+      <label>Username</label>
+      <span id="username"></span>
+    </div>
+    <div class="row">
+      <label>Status</label>
+      <div class="status"><span class="dot on"></span><span id="signed-in"></span><button type="button" id="logout">Log out…</button></div>
+      <p class="hint">Logging out stops everything that needs Hermes until you log in again, from the page Petasos then opens on.</p>
     </div>
 
     <h2>VPN</h2>
     <div class="row">
-      <label for="vpn">VPN</label>
-      <select id="vpn"><option value="off">Off</option><option value="wireguard">WireGuard</option></select>
+      <label for="vpn">Enabled</label>
+      <select id="vpn"><option value="off">Off</option><option value="on">On</option></select>
       <p class="hint">Only Petasos's own connection to Hermes goes through it. The rest of this computer is left alone, and no administrator password is needed.</p>
     </div>
     <div id="vpn-on">
       <div class="row">
+        <label for="config">Configuration</label>
+        <select id="config"></select>
+        <p class="hint" id="config-hint"></p>
+      </div>
+      <div class="row">
         <label for="when">Use it</label>
         <select id="when"><option value="away">When Hermes can't be reached directly</option><option value="always">Always</option></select>
         <p class="hint">At home Hermes answers directly, so the first choice only uses the VPN when you're away.</p>
-      </div>
-      <div class="row">
-        <label>Configuration</label>
-        <div class="status"><span class="dot" id="conf-dot"></span><span id="conf-text"></span></div>
-        <div class="hint">
-          <button type="button" id="import">Import a .conf file…</button>
-          <input type="file" id="file" accept=".conf,text/plain" hidden>
-        </div>
-        <p class="hint">The kind any WireGuard app exports. Give this computer a peer of its own: one key can't be in use on two devices at once.</p>
       </div>
       <div class="row" id="route-row">
         <label>Right now</label>
         <div class="status"><span class="dot" id="route-dot"></span><span id="route-text"></span></div>
       </div>
     </div>
+
+    <h2>VPN configurations</h2>
+    <p class="hint sub">Shared with your Car Thing and other computers through Hermes. Private keys are never shown again once saved.</p>
+    <div class="vpns" id="vpns"></div>
+    <div class="editor" id="editor" hidden>
+      <h3 id="ed-title">New VPN configuration</h3>
+      <div class="row">
+        <label for="ed-name">Name</label>
+        <input type="text" id="ed-name" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Home">
+      </div>
+      <div class="row">
+        <label for="ed-conf">Configuration</label>
+        <textarea id="ed-conf" rows="10" spellcheck="false" placeholder="[Interface]&#10;Address = 10.8.0.7/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = home.example.net:51820&#10;AllowedIPs = 10.0.0.0/24"></textarea>
+        <p class="hint" id="ed-hint">Paste a wg-quick file, or import one. Leave out the PrivateKey to keep the saved one, or on a new configuration, to have a new key made here; then give the server its public key. To share it with the Car Thing, list only the home network in AllowedIPs.</p>
+      </div>
+      <div class="row" id="ed-pub-row" hidden>
+        <label>Public key</label>
+        <span class="mono" id="ed-pub"></span>
+      </div>
+      <div class="row">
+        <span></span>
+        <div class="status"><button type="button" class="primary" id="ed-save">Save</button><button type="button" id="import">Import a .conf file…</button>
+          <button type="button" id="ed-cancel">Cancel</button><input type="file" id="file" accept=".conf,text/plain" hidden></div>
+        <p class="hint error" id="ed-error" hidden></p>
+      </div>
+    </div>
+    <div class="row"><span></span><div><button type="button" id="vpn-add">Add new VPN configuration</button></div></div>
 
     </section>
     <section data-tab="music" hidden>
@@ -146,6 +219,12 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
           <option value="low">Low, 96 kbps</option><option value="lowest">Lowest, 64 kbps</option></select>
         <p class="hint">What Hermes sends your devices. Lower stutters less on a slow connection, like a phone's hotspot.</p>
       </div>
+      </div>
+      <h3>On this computer</h3>
+      <div class="row">
+        <label for="buffer">Buffer before playing</label>
+        <select id="buffer" data-pref="buffer"><option value="4">4 seconds</option><option value="10">10 seconds</option><option value="30">30 seconds</option><option value="-1">Whole song</option></select>
+        <p class="hint">For SoundCloud and Navidrome; more stutters less on a slow connection. Kept in memory, and saved at once.</p>
       </div>
       <h3>Navidrome</h3>
       <p class="hint sub">Your Navidrome server and your Navidrome account (not your Hermes sign-in). Leave the address empty to not use it.</p>
@@ -208,6 +287,16 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
     </div>
 
     </section>
+    <section data-tab="softkeys" hidden>
+    <h2>Soft keys</h2>
+    <div class="row">
+      <label for="keys-own">Soft keys</label>
+      <select id="keys-own"><option value="shared">Shared with your other devices</option><option value="own">This computer's own</option></select>
+      <p class="hint" id="keys-hint">The buttons along the top of the screen: two sets of four, the second shown after a press of the top-right button.</p>
+    </div>
+    <div id="keys"></div>
+
+    </section>
 
     <div class="actions" id="actions">
       <button type="submit" class="primary" id="save">Save</button>
@@ -218,7 +307,7 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-let current = null, newConfig = null, keys = null, keysSaved = "";
+let current = null, keys = null, keysSaved = "";
 const ACTIONS = [["prompt", "Ask a question"], ["conversation", "Start a conversation"], ["stop_speaking", "Stop speaking"],
                  ["mic_toggle", "Turn the mic on or off"], ["music_toggle", "Play or pause music"],
                  ["music_next", "Next song"], ["music_previous", "Previous song"], ["music_stop", "Stop the music"],
@@ -245,24 +334,180 @@ function showName() {
 }
 
 function showVPN() {
-  $("vpn-on").hidden = $("vpn").value !== "wireguard";
-  const dot = $("conf-dot");
-  if (newConfig) {
-    dot.className = "dot on";
-    $("conf-text").textContent = `${newConfig.name}, ready to save`;
-  } else if (current.has_config) {
-    dot.className = current.vpn_error ? "dot bad" : "dot on";
-    $("conf-text").textContent = current.vpn_error
-      ? `Didn't start: ${current.vpn_error}`
-      : [current.address, current.endpoint && `to ${current.endpoint}`].filter(Boolean).join(" ") || "Imported";
-  } else {
-    dot.className = "dot";
-    $("conf-text").textContent = "None yet";
+  $("vpn-on").hidden = $("vpn").value !== "on";
+  const select = $("config"), chosen = select.value || current.config;
+  select.textContent = "";
+  for (const c of current.configs) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = c.endpoint ? `${c.name} (${c.endpoint})` : c.name;
+    select.append(o);
   }
-  $("route-row").hidden = !current.vpn || newConfig !== null;
+  if (current.configs.some((c) => c.id === chosen)) select.value = chosen;
+  $("config-hint").textContent = current.vpn_error && current.vpn ? `Didn't start: ${current.vpn_error}`
+    : current.configs.length ? "" : "Add one below first.";
+  $("config-hint").className = current.vpn_error && current.vpn ? "hint error" : "hint";
+  $("route-row").hidden = !current.vpn;
   $("route-dot").className = current.route === "vpn" ? "dot on" : "dot";
   $("route-text").textContent = current.route === "vpn" ? "Reaching Hermes through the VPN" : "Reaching Hermes directly";
+  showVPNList();
 }
+
+// --- the VPN configurations, kept on this computer and shared through Hermes (appvpn.go) ---
+
+let editing = null; // the configuration in the editor: {id} for one saved, {} for a new one
+
+function showVPNList() {
+  const list = $("vpns");
+  list.textContent = "";
+  if (!current.configs.length) {
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = "None yet.";
+    list.append(p);
+  }
+  for (const c of current.configs) {
+    const row = document.createElement("div");
+    row.className = "vpn";
+    row.innerHTML = `<b></b><small></small><div class="acts"><button type="button" data-a="edit">Edit</button><button type="button" data-a="delete">Delete</button></div>`;
+    row.querySelector("b").textContent = c.name + (c.used ? " · in use" : "");
+    row.querySelector("small").textContent = c.endpoint || "No endpoint";
+    row.querySelector('[data-a="edit"]').addEventListener("click", () => openEditor(c));
+    row.querySelector('[data-a="delete"]').addEventListener("click", () => deleteVPN(c));
+    list.append(row);
+  }
+}
+
+function openEditor(c) {
+  editing = c ? { id: c.id } : {};
+  $("ed-title").textContent = c ? `Edit ${c.name}` : "New VPN configuration";
+  $("ed-name").value = c ? c.name : "";
+  $("ed-conf").value = c ? c.conf : "";
+  $("ed-pub-row").hidden = !(c && c.public_key);
+  $("ed-pub").textContent = c ? c.public_key : "";
+  $("ed-error").hidden = true;
+  $("editor").hidden = false;
+  $("vpn-add").hidden = true;
+  $("ed-name").focus();
+}
+
+function closeEditor() {
+  editing = null;
+  $("editor").hidden = true;
+  $("vpn-add").hidden = false;
+}
+
+async function vpnRequest(method, body, query) {
+  const res = await fetch("/app/vpns" + (query || ""), { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error || `HTTP ${res.status}`);
+  current.configs = out.configs;
+  if (out.restarting) { $("save").disabled = true; $("save").textContent = "Restarting…"; await waitForRestart(); location.reload(); }
+  return out;
+}
+
+$("ed-save").addEventListener("click", async () => {
+  $("ed-error").hidden = true;
+  $("ed-save").disabled = true;
+  try {
+    const wasNew = !editing.id, name = $("ed-name").value.trim();
+    await vpnRequest("POST", { id: editing.id || "", name, conf: $("ed-conf").value });
+    showVPN();
+    const saved = current.configs.find((c) => editing.id ? c.id === editing.id : c.name === name);
+    if (wasNew && saved && !/^\s*PrivateKey\s*=/mi.test($("ed-conf").value)) {
+      openEditor(saved); // a new key was made here: show its public key, for the server
+      $("ed-error").textContent = "Saved, with a new key. Give the server the public key below.";
+      $("ed-error").className = "hint";
+      $("ed-error").hidden = false;
+    } else closeEditor();
+  } catch (err) {
+    $("ed-error").textContent = String(err.message || err);
+    $("ed-error").className = "hint error";
+    $("ed-error").hidden = false;
+  } finally {
+    $("ed-save").disabled = false;
+  }
+});
+
+async function deleteVPN(c) {
+  if (!confirm(`Delete the VPN configuration “${c.name}”? It's deleted from your other devices too.`)) return;
+  try {
+    await vpnRequest("DELETE", null, "?id=" + encodeURIComponent(c.id));
+    if (editing && editing.id === c.id) closeEditor();
+    showVPN();
+  } catch (err) {
+    alert(String(err.message || err));
+  }
+}
+
+$("vpn-add").addEventListener("click", () => openEditor(null));
+$("ed-cancel").addEventListener("click", closeEditor);
+
+// --- this computer's own settings that take effect at once: the Display tab and the buffer ---
+
+async function loadPrefs() {
+  const res = await fetch("/app/prefs", { cache: "no-store" });
+  if (!res.ok) return;
+  const p = await res.json();
+  for (const el of document.querySelectorAll("[data-pref]")) {
+    const v = p[el.dataset.pref];
+    el.value = typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+  }
+  showSaver();
+}
+
+function prefsChange() {
+  const p = {};
+  for (const el of document.querySelectorAll("[data-pref]")) {
+    const k = el.dataset.pref;
+    p[k] = k === "peaks" ? el.value === "on" : ["bands", "saver_after", "buffer"].includes(k) ? Number(el.value) : el.value;
+  }
+  return p;
+}
+
+function showSaver() {
+  const off = $("saver").value === "off";
+  $("saver-after").disabled = off;
+  $("preview").disabled = off;
+}
+
+async function savePrefs() {
+  showSaver();
+  try {
+    const res = await fetch("/app/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefsChange()) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    $("prefs-status").textContent = "";
+  } catch (err) {
+    $("prefs-status").innerHTML = "";
+    const e = document.createElement("span"); e.className = "error"; e.textContent = `Not saved: ${err.message || err}`;
+    $("prefs-status").append(e);
+  }
+}
+for (const el of document.querySelectorAll("[data-pref]")) el.addEventListener("change", savePrefs);
+
+// Preview: back to the screen, showing the screensaver until a key, a click or the mouse moves.
+$("preview").addEventListener("click", async () => {
+  await fetch("/app/prefs?preview", { method: "POST" });
+  location.href = "/";
+});
+
+$("logout").addEventListener("click", async () => {
+  if (!confirm(`Log out of ${current.server}? Petasos can't reach your agent until you log in again.`)) return;
+  $("logout").disabled = true;
+  try {
+    const res = await fetch("/app/prefs?logout", { method: "POST" });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    await new Promise((r) => setTimeout(r, 1500));
+    for (let i = 0; i < 60; i++) {
+      try { if ((await fetch("/app/signin", { cache: "no-store" })).ok) break; } catch (_) {}
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    location.href = "signin.html";
+  } catch (err) {
+    alert(`Couldn't log out: ${err.message || err}`);
+    $("logout").disabled = false;
+  }
+});
 
 function showMics() {
   const select = $("mic");
@@ -461,10 +706,12 @@ async function load() {
   current = await res.json();
   $("name").value = current.name;
   $("server").textContent = current.server || "";
+  $("username").textContent = current.username || "—";
+  $("signed-in").textContent = current.username ? `Logged in as ${current.username}` : "Logged in";
   const v = current.versions || {};
   $("versions").textContent = `Petasos ${v.program || "?"}` + (v.latest && v.latest !== v.program ? ` (updating to ${v.latest})` : "") +
     ` · plugin on Hermes ${v.plugin || "unknown"}`;
-  $("vpn").value = current.vpn ? "wireguard" : "off";
+  $("vpn").value = current.vpn ? "on" : "off";
   $("when").value = current.when;
   $("wake").value = current.wake ? "on" : "off";
   $("loading").hidden = true;
@@ -473,13 +720,12 @@ async function load() {
   showVPN();
   showMics();
   settingsSaved = JSON.stringify(settingsChange());
-  await Promise.all([loadKeys(), loadMusic()]);
+  await Promise.all([loadKeys(), loadMusic(), loadPrefs()]);
   showTab((location.hash || "").slice(1));
 }
 
 function settingsChange() {
-  const change = { name: $("name").value.trim(), vpn: $("vpn").value === "wireguard", when: $("when").value };
-  if (newConfig) change.wireguard = newConfig.text;
+  const change = { name: $("name").value.trim(), vpn: $("vpn").value === "on", when: $("when").value, config: $("config").value || "" };
   change.mic = $("mic").value;
   change.wake = $("wake").value === "on";
   change.mic_name = $("mic").selectedOptions[0] ? $("mic").selectedOptions[0].textContent.replace(/ \((built in|not connected)\)$/, "") : "";
@@ -497,15 +743,17 @@ $("vpn").addEventListener("change", showVPN);
 $("keys-own").addEventListener("change", showKeys);
 $("music-save").addEventListener("click", saveMusic);
 
-// The tabs, as on the Car Thing. Music saves on its own button; the others share Save.
+// The tabs, as on the Car Thing's. Music saves on its own button and Display at once; the others
+// share Save.
 function showTab(name) {
-  if (!["device", "connection", "music"].includes(name)) name = "device";
+  if (name === "connection") name = "network"; // its name before
+  if (!["device", "display", "network", "music", "softkeys"].includes(name)) name = "device";
   for (const el of document.querySelectorAll("section[data-tab]")) el.hidden = el.dataset.tab !== name;
   for (const el of document.querySelectorAll(".tabs button")) {
     el.classList.toggle("on", el.dataset.tab === name);
     el.setAttribute("aria-selected", el.dataset.tab === name);
   }
-  $("actions").hidden = name === "music";
+  $("actions").hidden = name === "music" || name === "display";
   history.replaceState(null, "", "#" + name);
 }
 for (const el of document.querySelectorAll(".tabs button")) el.addEventListener("click", () => showTab(el.dataset.tab));
@@ -575,16 +823,15 @@ for (const id of ["nd-url", "nd-user", "nd-password", "sc-id", "sc-secret", "sp-
 $("import").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", async () => {
   const f = $("file").files[0];
+  $("file").value = "";
   if (!f) return;
-  if (f.size > 32 * 1024) { fail("That file is too big to be a WireGuard config."); return; }
+  if (f.size > 8 * 1024) { alert("That file is too big to be a WireGuard config."); return; }
   const text = await f.text();
-  if (!/\[Interface\]/i.test(text) || !/\[Peer\]/i.test(text)) { fail("That isn't a WireGuard config: it needs [Interface] and [Peer]."); return; }
-  newConfig = { name: f.name, text };
-  fail("");
-  showVPN();
+  if (!/\[Interface\]/i.test(text) || !/\[Peer\]/i.test(text)) { alert("That isn't a WireGuard config: it needs [Interface] and [Peer]."); return; }
+  $("ed-conf").value = text;
+  if (!$("ed-name").value.trim()) $("ed-name").value = f.name.replace(/\.conf$/i, "").slice(0, 40);
 });
 $("back").addEventListener("click", () => { location.href = "/"; });
-$("signin").addEventListener("click", () => { location.href = "signin.html"; });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") location.href = "/"; });
 
 $("form").addEventListener("submit", async (e) => {

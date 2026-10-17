@@ -122,6 +122,17 @@ func setBuffer(dir string) error {
 	return nil
 }
 
+// setBufferTo sets the Buffer before playing to a choice, in seconds or -1 for the whole song.
+func setBufferTo(dir string, seconds int) error {
+	own := loadOwnSettings(dir)
+	own.Buffer = streamBuffers[nearest(streamBuffers, seconds)].value
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	streamBuffer.Store(int32(own.Buffer))
+	return nil
+}
+
 // cushionFor is how many bytes to have in before a stream plays: the seconds set, at the
 // bitrate its first frame gives.
 func cushionFor(ahead *readAhead) int {
