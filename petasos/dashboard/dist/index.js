@@ -243,6 +243,83 @@
           : null));
   }
 
+  // VPN configurations for the devices (petasos vpn.py): WireGuard configs pasted here reach
+  // every device the next time it reaches Hermes. Private keys are never shown again.
+  function VpnCard() {
+    const [configs, setConfigs] = useState(null);
+    const [editing, setEditing] = useState(null); // { id, name, conf, isNew }
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    function load() {
+      SDK.fetchJSON(API + "/vpn").then((d) => setConfigs(d.configs.filter((c) => !c.deleted)))
+        .catch((e) => setError(String(e.message || e)));
+    }
+    useEffect(load, []);
+
+    function slug(name) {
+      let base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "vpn";
+      let id = base, n = 2;
+      while ((configs || []).some((c) => c.id === id)) id = base + "-" + n++;
+      return id;
+    }
+
+    async function send(method, id, body, query) {
+      setBusy(true);
+      setError("");
+      try {
+        const res = await SDK.authedFetch(API + "/vpn/" + encodeURIComponent(id) + (query || ""), {
+          method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.detail || "That didn't save (HTTP " + res.status + ").");
+        setEditing(null);
+        load();
+      } catch (e) {
+        setError(String(e.message || e));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function save() {
+      const id = editing.isNew ? slug(editing.name) : editing.id;
+      send("PUT", id, { name: editing.name.trim(), conf: editing.conf, updated: Date.now() });
+    }
+
+    function remove(c) {
+      if (window.confirm("Delete " + c.name + " from Hermes and every device?")) send("DELETE", c.id, null, "?updated=" + Date.now());
+    }
+
+    if (!configs) return error ? h("p", { className: "petasos-error" }, error) : null;
+    const set = (key) => (e) => setEditing(Object.assign({}, editing, { [key]: e.target.value }));
+    return h(C.Card, null,
+      h(C.CardHeader, null, h(C.CardTitle, null, "VPN")),
+      h(C.CardContent, { className: "petasos-fields" },
+        h("p", { className: "petasos-hint" },
+          "WireGuard configurations a device can reach Hermes through when away from home. Each phone chooses one on the Car Thing (its page in the Bluetooth settings)."),
+        configs.length
+          ? h("ul", { className: "petasos-checks" }, configs.map((c) => h("li", { key: c.id, className: "petasos-vpn" },
+              h("span", null, h("b", null, c.name), " ", h("span", { className: "petasos-hint" }, (c.conf.match(/^\s*Endpoint\s*=\s*(\S+)/mi) || [])[1] || "")),
+              h(C.Button, { variant: "outline", size: "sm", disabled: busy, onClick: () => setEditing({ id: c.id, name: c.name, conf: c.conf, isNew: false }) }, "Edit"),
+              h(C.Button, { variant: "outline", size: "sm", disabled: busy, onClick: () => remove(c) }, "Delete"))))
+          : h("p", { className: "petasos-hint" }, "None yet."),
+        editing
+          ? h("div", { className: "petasos-fields" },
+              h(Field, { id: "petasos-vpn-name", label: "Name" },
+                h(C.Input, Object.assign({ id: "petasos-vpn-name", value: editing.name, maxLength: 40, onChange: set("name") }, NO_AUTOFILL))),
+              h(Field, { id: "petasos-vpn-conf", label: "WireGuard configuration" },
+                h("textarea", { id: "petasos-vpn-conf", className: "petasos-textarea", rows: 10, value: editing.conf, onChange: set("conf"),
+                  spellCheck: false, placeholder: "[Interface]\nPrivateKey = …\nAddress = 10.8.0.5/32\n\n[Peer]\nPublicKey = …\nAllowedIPs = 10.0.0.0/24\nEndpoint = home.example.net:51820" })),
+              editing.isNew ? null : h("p", { className: "petasos-hint" }, "The private key isn't shown. Leave it out to keep the saved one."),
+              h("div", { className: "petasos-actions" },
+                h(C.Button, { onClick: save, disabled: busy || !editing.name.trim() || !editing.conf.trim() }, busy ? "Saving…" : "Save"),
+                h(C.Button, { variant: "outline", onClick: () => { setEditing(null); setError(""); } }, "Cancel")))
+          : h("div", { className: "petasos-actions" },
+              h(C.Button, { onClick: () => setEditing({ id: "", name: "", conf: "", isNew: true }) }, "Add a VPN configuration")),
+        error ? h("p", { className: "petasos-error" }, error) : null));
+  }
+
   function PetasosPage() {
     const [loaded, setLoaded] = useState(null); // { mapping, problems, path }
     const [agent, setAgent] = useState("");
@@ -329,7 +406,8 @@
         h(C.Button, { onClick: save, disabled: saving || !agentOk }, saving ? "Saving…" : "Save"),
         saved ? h("span", { className: "petasos-hint" }, "Saved.") : null,
         error ? h("p", { className: "petasos-error" }, error) : null),
-      h(MusicCard, null));
+      h(MusicCard, null),
+      h(VpnCard, null));
   }
 
   window.__HERMES_PLUGINS__.register("petasos", PetasosPage);

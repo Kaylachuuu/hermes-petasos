@@ -57,6 +57,9 @@ type tokens struct {
 	Provider     string `json:"provider,omitempty"`
 }
 
+// errNotSignedIn is a device logged out: it has a server, but no sign-in for it.
+var errNotSignedIn = errors.New("not logged in")
+
 var errSignedOut = errors.New("Hermes no longer accepts this device's sign-in; run the installer again")
 
 type hermes struct {
@@ -135,11 +138,14 @@ func main() {
 		keepLog(*dir)
 		adopt(*dir)
 		h, err := load(*dir)
-		for err != nil {
+		for err != nil && !errors.Is(err, errNotSignedIn) {
 			// A fresh image starts this before the installer has given it a server and sign-in.
 			log.Printf("waiting for setup (%v); run install_device.py from a computer", err)
 			time.Sleep(30 * time.Second)
 			h, err = load(*dir)
+		}
+		if err != nil {
+			log.Printf("logged out; log in from the Network tab of the settings")
 		}
 		h.run(*events)
 	default:
@@ -166,6 +172,9 @@ func load(dir string) (*hermes, error) {
 		h.cfg.Device = "car-thing"
 	}
 	if err := readJSON(filepath.Join(dir, "tokens.json"), &h.tokens); err != nil {
+		if errors.Is(err, os.ErrNotExist) && !virtual {
+			return h, errNotSignedIn // the Car Thing runs logged out, to log in from its settings
+		}
 		return nil, fmt.Errorf("reading tokens.json: %w", err)
 	}
 	return h, nil
@@ -570,6 +579,8 @@ func (h *hermes) run(eventsFile string) {
 	wakeOn.Store(wakeSetting(h.dir))
 	applyMeter(h.dir)
 	streamBuffer.Store(int32(bufferSetting(h.dir)))
+	signedOut := !h.signedIn()
+	display.update(func(st *screenState) { st.SignedOut = signedOut })
 	go display.serve()
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
@@ -593,6 +604,7 @@ func (h *hermes) run(eventsFile string) {
 		go bt.start()
 		go music.watch()
 		go h.watchHome()
+		go func() { time.Sleep(15 * time.Minute); h.keepVPNsSynced() }()
 	}
 
 	v := newVoice(h, presses)
@@ -621,6 +633,9 @@ func (h *hermes) run(eventsFile string) {
 			}
 			online = true
 			log.Printf("connected")
+			if !virtual {
+				go h.syncVPNs()
+			}
 			setHome(true)
 			for _, c := range commands {
 				v.carryOut(c)

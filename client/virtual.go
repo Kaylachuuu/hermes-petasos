@@ -216,7 +216,7 @@ func signIn(dir, server, username string, password io.Reader) error {
 	var cfg config
 	_ = readJSON(filepath.Join(dir, "config.json"), &cfg)
 	cfg.Server, cfg.Username = server, username
-	if cfg.Device == "" {
+	if cfg.Device == "" && virtual { // the Car Thing is car-thing unless renamed
 		cfg.Device = defaultComputerID()
 	}
 	if err := writeJSON(filepath.Join(dir, "config.json"), cfg, 0o644); err != nil {

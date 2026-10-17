@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // The tunnel home: the phone's hotspot reaches the internet but not the home network (phones
@@ -38,28 +39,24 @@ type wgConfig struct {
 	Peers                       []wgPeer
 }
 
-// setUpTunnel brings up the tunnel when <dir>/wireguard.conf exists. Problems are logged and
-// leave the Car Thing without a tunnel rather than stopping the program.
+// setUpTunnel brings up the tunnel the phone the Car Thing is online through is set to use
+// (vpn.go), or takes it down when it uses none. Problems are logged and leave the Car Thing
+// without a tunnel rather than stopping the program.
 func setUpTunnel(dir string) {
-	if !vpnSetting(dir) {
+	tunnelMu.Lock()
+	defer tunnelMu.Unlock()
+	choice, ok := tunnelChoice(dir)
+	if !ok {
 		tearDownTunnel()
 		return
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "wireguard.conf"))
-	if os.IsNotExist(err) {
-		log.Printf("no wireguard.conf, so no tunnel home; the installer's --wireguard option adds one")
-		return
-	}
-	if err != nil {
-		log.Printf("can't read wireguard.conf: %v", err)
-		return
-	}
-	cfg, err := parseWireGuard(raw)
+	cfg, err := parseWireGuard([]byte(choice.Conf))
 	if err == nil {
 		err = cfg.homeOnly()
 	}
 	if err != nil {
-		log.Printf("wireguard.conf: %v; no tunnel home", err)
+		log.Printf("the VPN configuration %q: %v; no tunnel home", choice.Name, err)
+		tearDownTunnel()
 		return
 	}
 	netdev, network := cfg.networkd()
@@ -82,20 +79,18 @@ func setUpTunnel(dir string) {
 	if !changed {
 		return
 	}
+	_ = exec.Command("networkctl", "delete", wgName).Run() // reload leaves a link up with its old keys
 	if out, err := exec.Command("networkctl", "reload").CombinedOutput(); err != nil {
 		log.Printf("networkctl reload failed: %v: %s", err, strings.TrimSpace(string(out)))
 		return
 	}
-	log.Printf("tunnel home set up (%s, %s)", wgName, strings.Join(cfg.Addresses, ", "))
+	log.Printf("tunnel home set up with %q (%s, %s)", choice.Name, wgName, strings.Join(cfg.Addresses, ", "))
 }
 
-// hasTunnel is whether a tunnel home is set up to use (the installer's --wireguard).
-func hasTunnel(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "wireguard.conf"))
-	return err == nil
-}
+// tunnelMu keeps one change to the tunnel at a time.
+var tunnelMu sync.Mutex
 
-// tearDownTunnel takes the tunnel home down, turned off in the Device tab.
+// tearDownTunnel takes the tunnel home down: the phone in use is set to use none.
 func tearDownTunnel() {
 	removed := false
 	for _, f := range []string{wgNetDev, wgNetwork} {
@@ -210,7 +205,7 @@ func (c *wgConfig) homeOnly() error {
 // networkd renders the .netdev and .network files.
 func (c *wgConfig) networkd() (netdev, network []byte) {
 	var d bytes.Buffer
-	fmt.Fprintf(&d, "# Written by petasos from %s; changes here are lost on restart.\n", "wireguard.conf")
+	fmt.Fprintf(&d, "# Written by petasos from its VPN configurations; changes here are lost on restart.\n")
 	fmt.Fprintf(&d, "[NetDev]\nName=%s\nKind=wireguard\n", wgName)
 	if c.MTU != "" {
 		fmt.Fprintf(&d, "MTUBytes=%s\n", c.MTU)
@@ -232,7 +227,7 @@ func (c *wgConfig) networkd() (netdev, network []byte) {
 		}
 	}
 	var n bytes.Buffer
-	fmt.Fprintf(&n, "# Written by petasos from wireguard.conf.\n[Match]\nName=%s\n\n[Network]\n", wgName)
+	fmt.Fprintf(&n, "# Written by petasos from its VPN configurations.\n[Match]\nName=%s\n\n[Network]\n", wgName)
 	for _, a := range c.Addresses {
 		fmt.Fprintf(&n, "Address=%s\n", a)
 	}

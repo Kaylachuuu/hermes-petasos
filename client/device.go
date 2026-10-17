@@ -290,7 +290,7 @@ type ownSettings struct {
 	Device string `json:"device,omitempty"`
 	Mic    string `json:"mic,omitempty"`
 	Wake   *bool  `json:"wake,omitempty"`  // listen for the wake word; on unless turned off
-	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home (wireguard.conf); on unless turned off
+	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home, before each phone had its own (Phones); on unless turned off
 	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 3 if not set
 	Rise   string `json:"rise,omitempty"`  // how quickly the meander's sound rises (meterSpeeds)
 	Fall   string `json:"fall,omitempty"`  // how quickly it falls back (meterSpeeds, or an older fall-off)
@@ -302,6 +302,9 @@ type ownSettings struct {
 	// Buffer is how many seconds of a stream are in before it starts playing, or -1 for all of
 	// it (streamBuffers); 0 is the first choice.
 	Buffer int `json:"buffer,omitempty"`
+	// Phones is whether to use a VPN while online through each phone, and which (vpn.go), by
+	// its Bluetooth address. One not set follows VPN.
+	Phones map[string]phoneVPN `json:"phones,omitempty"`
 	// Delays is how much later the meander shows the sound for each speaker, by its Bluetooth
 	// address, in ms (meterDelays): one speaker plays what it's sent later than another.
 	Delays map[string]int `json:"delays,omitempty"`
@@ -470,24 +473,6 @@ func setExternalMic(dir, address string, on bool) error {
 	}
 	own.Mics[strings.ToUpper(address)] = map[bool]string{true: "external", false: "internal"}[on]
 	return writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644)
-}
-
-// vpnSetting is whether to bring up the tunnel home, when there is one: on unless turned off in
-// the Device tab (on a network that reaches Hermes directly, such as an Android phone sharing
-// the home Wi-Fi, it isn't needed).
-func vpnSetting(dir string) bool {
-	o := loadOwnSettings(dir)
-	return o.VPN == nil || *o.VPN
-}
-
-func (h *hermes) setVPN(on bool) error {
-	own := loadOwnSettings(h.dir)
-	own.VPN = &on
-	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
-		return err
-	}
-	go setUpTunnel(h.dir)
-	return nil
 }
 
 // wakeSetting is whether to listen for the wake word: the Car Thing does unless it was turned
@@ -789,13 +774,24 @@ func (b *bluetooth) keyboard(title, note, text string, max int, done func(string
 // keyboardFor is keyboard with a choice of starting in capitals (plain is for addresses, paths
 // and sign-ins, which mostly don't).
 func (b *bluetooth) keyboardFor(title, note, text string, max int, plain bool, done func(string), back func()) {
+	b.keyboardShown(&btScreen{Title: title, Note: note, Text: text, Max: max, Plain: plain}, done, back)
+}
+
+// keyboardSecret is a keyboard for a password: what's typed shows as dots.
+func (b *bluetooth) keyboardSecret(title, note string, max int, done func(string), back func()) {
+	b.keyboardShown(&btScreen{Title: title, Note: note, Max: max, Plain: true, Secret: true}, done, back)
+}
+
+func (b *bluetooth) keyboardShown(v *btScreen, done func(string), back func()) {
 	b.mu.Lock()
 	b.kbID++
-	id := b.kbID
+	v.View, v.Keyboard, v.Tab, v.Sub = "keyboard", b.kbID, b.tab, ""
+	if b.view != nil {
+		v.Sub = b.view.Sub
+	}
 	b.typed, b.typedBack = done, back
-	tab := b.tab
 	b.mu.Unlock()
-	b.show(&btScreen{View: "keyboard", Tab: tab, Title: title, Note: note, Text: text, Max: max, Keyboard: id, Plain: plain})
+	b.show(v)
 }
 
 // keyboardInput takes a knob event while the keyboard is up: the page moves its highlight and

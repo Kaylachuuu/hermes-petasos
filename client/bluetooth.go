@@ -31,6 +31,8 @@ type btScreen struct {
 	View    string   `json:"view"`            // list, device, scan, pair, message, screen
 	Tab     string   `json:"tab"`             // the settings tab it belongs to (settingsTabs)
 	Set     int      `json:"set"`             // which set of tabs the preset buttons show: 0 or 1
+	Sub     string   `json:"sub,omitempty"`   // a tab's own screens (VPN): their name in its place, the other tabs blank
+	Holding bool     `json:"holding"`         // the knob is held on a row that acts after a hold
 	Editing bool     `json:"editing"`         // the highlighted row's value is being turned
 	Meter   int      `json:"meter,omitempty"` // a level, 1–100, lit along the band at the bottom like the volume
 	Title   string   `json:"title,omitempty"`
@@ -45,7 +47,8 @@ type btScreen struct {
 	Text     string `json:"text,omitempty"`
 	Max      int    `json:"max,omitempty"`
 	Keyboard int    `json:"keyboard,omitempty"`
-	Plain    bool   `json:"plain,omitempty"` // no capital to start: addresses, paths, sign-ins
+	Plain    bool   `json:"plain,omitempty"`  // no capital to start: addresses, paths, sign-ins
+	Secret   bool   `json:"secret,omitempty"` // a password: what's typed shows as dots
 }
 
 type btItem struct {
@@ -57,8 +60,10 @@ type btItem struct {
 	Value  string `json:"value,omitempty"` // a setting's current value
 	Check  string `json:"check,omitempty"` // a checkbox's state, "on" or "off", for a row the knob toggles
 	Off    bool   `json:"off,omitempty"`   // greyed out: shown, but the knob passes over it
+	Hold   bool   `json:"hold,omitempty"`  // acts once the knob is held on it (holdDone), not on a press
 
 	do   func()
+	hold func()
 	turn func(delta int) // changes a setting's value
 }
 
@@ -85,6 +90,9 @@ type bluetooth struct {
 	set     int             // the set of tabs the preset buttons show (settingsTabs)
 	name    string          // what other devices see the Car Thing as: its name (device.go)
 
+	signin    *signInDraft  // the Network tab's address, username and password (network.go)
+	vpn       *vpnDraft     // the VPN configuration being changed
+	holding   *time.Timer   // the knob held on a Hold row
 	draft     *softKeyDraft // the soft key being edited
 	kbID      int           // the latest on-screen keyboard
 	music     *musicDraft   // the Music tab's unsaved edits (musictab.go)
@@ -212,13 +220,16 @@ func (b *bluetooth) watchLinks() {
 			continue
 		}
 		var l links
-		speaker := ""
+		speaker, phone := "", ""
 		for _, d := range devs {
 			if !d.Paired {
 				continue
 			}
 			if d.Phone {
 				l.PhonePaired = true
+				if d.NetUp {
+					phone = d.Address
+				}
 			}
 			if d.Speaker {
 				l.SpeakerKnown = true
@@ -230,6 +241,12 @@ func (b *bluetooth) watchLinks() {
 			}
 		}
 		l.Phone = tethered()
+		if phone != phoneAddress() {
+			phoneNow.Store(phone) // each phone may use its own VPN
+			if h := hereNow(); h != nil && phone != "" {
+				go setUpTunnel(h.dir)
+			}
+		}
 		if speaker != speakerAddress() {
 			speakerNow.Store(speaker)
 			if h := hereNow(); h != nil {
@@ -281,6 +298,13 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 		}
 		return true
 	}
+	if name == "knob" && action == "release" {
+		b.letGo()
+		return true
+	}
+	if view.Sub != "" && (presetIndex(name) >= 0 || name == "mute") {
+		return true // inside a tab's own screens, the other tabs wait for the front button
+	}
 	if i := presetIndex(name); i >= 0 && action == "press" && view.View != "pair" {
 		b.mu.Lock()
 		tabs := settingsTabs[b.set]
@@ -304,6 +328,9 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 				default:
 				}
 			}
+			return true
+		}
+		if b.holdStart() {
 			return true
 		}
 		b.choose()
@@ -459,6 +486,53 @@ func (b *bluetooth) choose() {
 	go v.Items[v.Sel].do()
 }
 
+// holdStart starts the hold on a Hold row, reporting whether the highlighted row is one.
+func (b *bluetooth) holdStart() bool {
+	b.mu.Lock()
+	v := b.view
+	if v == nil || v.Sel < 0 || v.Sel >= len(v.Items) || v.Items[v.Sel].hold == nil || v.Items[v.Sel].Off {
+		b.mu.Unlock()
+		return false
+	}
+	act := v.Items[v.Sel].hold
+	if b.holding != nil {
+		b.holding.Stop()
+	}
+	var t *time.Timer
+	t = time.AfterFunc(logoutHold, func() {
+		b.mu.Lock()
+		still := b.holding == t
+		b.holding = nil
+		b.mu.Unlock()
+		if still {
+			act()
+		}
+	})
+	b.holding = t
+	n := *v
+	n.Holding = true
+	b.mu.Unlock()
+	b.show(&n)
+	return true
+}
+
+// letGo ends a hold before it acted.
+func (b *bluetooth) letGo() {
+	b.mu.Lock()
+	t, v := b.holding, b.view
+	b.holding = nil
+	b.mu.Unlock()
+	if t == nil {
+		return
+	}
+	t.Stop()
+	if v != nil && v.Holding {
+		n := *v
+		n.Holding = false
+		b.show(&n)
+	}
+}
+
 func (b *bluetooth) back() {
 	b.mu.Lock()
 	v := b.view
@@ -469,6 +543,12 @@ func (b *bluetooth) back() {
 	switch v.View {
 	case "list", "screen", "mine", "music", "network", "softkeys":
 		b.close()
+	case "vpns":
+		b.networkView()
+	case "vpn":
+		b.vpnListView()
+	case "vpnkey":
+		b.vpnEditViewAt(-1)
 	case "scan":
 		b.stopScan()
 		b.listView()
@@ -611,6 +691,44 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 			address := d.Address
 			items = append(items, btItem{Kind: "row", Icon: "plus", Label: "Try this one first",
 				do: func() { netFirst.set(address); b.deviceViewAt(-1) }})
+		}
+		// The VPN to use while online through it, for when its network doesn't reach Hermes.
+		if h := hereNow(); h != nil {
+			address, p, live := d.Address, vpnForPhone(h.dir, d.Address), liveVPNs(h.dir)
+			at := len(items) + 1
+			items = append(items, btItem{Kind: "header", Label: "VPN"},
+				btItem{Kind: "row", Icon: "shield", Label: "Enabled", Check: checked(p.On), Off: len(live) == 0 && !p.On, do: func() {
+					p.On = !p.On
+					if p.On && p.Config == "" && len(live) > 0 {
+						p.Config = live[0].ID
+					}
+					if err := setVPNForPhone(h.dir, address, p); err != nil {
+						b.message("Couldn't save that", err.Error())
+						return
+					}
+					b.deviceViewAt(at)
+				}})
+			name, next := "None", ""
+			for i, c := range live {
+				if c.ID == p.Config {
+					name, next = c.Name, live[(i+1)%len(live)].ID
+				}
+			}
+			if next == "" && len(live) > 0 {
+				next = live[0].ID
+			}
+			items = append(items, btItem{Kind: "row", Icon: "shield", Label: "Configuration", Value: truncate(name, 24),
+				Off: !p.On || len(live) < 2 && name != "None", do: func() {
+					p.Config = next
+					if err := setVPNForPhone(h.dir, address, p); err != nil {
+						b.message("Couldn't save that", err.Error())
+						return
+					}
+					b.deviceViewAt(at + 1)
+				}})
+			if len(live) == 0 {
+				items = append(items, btItem{Kind: "note", Label: "Add a VPN configuration in the Network tab"})
+			}
 		}
 	} else if d.Speaker {
 		if d.Connected {

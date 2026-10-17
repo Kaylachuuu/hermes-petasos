@@ -81,6 +81,11 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row.edit b { color: var(--ember); }
 .row.edit b::before { content: "‹  "; } .row.edit b::after { content: "  ›"; }
 .row.off { opacity: .38; }
+/* A row that acts after the knob is held: a bar fills along its foot while it's held. */
+.row { position: relative; }
+.row .holdbar { position: absolute; left: 0; bottom: 0; height: .5cqw; width: 0; background: var(--ember); border-radius: .25cqw; }
+.row.holding .holdbar { animation: holdfill 3s linear forwards; }
+@keyframes holdfill { to { width: 100%; } }
 /* A checkbox row: a box, ticked when on. */
 .row .box { width: 2.6cqw; height: 2.6cqw; border: .25cqw solid var(--bronze); border-radius: .4cqw; position: relative; }
 .row .box.on { border-color: var(--ember); background: var(--ember); }
@@ -407,6 +412,7 @@ function warning(s) {
   if (!l.checked) return "";
   if (!l.phone_paired) return "Pair your phone: hold the mic button for two seconds";
   if (!l.phone) return s.virtual ? "This Mac isn't online" : `Turn on Personal Hotspot to reach ${a}`;
+  if (s.signed_out) return "Logged out: log in from the Network tab of the settings";
   if (!l.home) return `Can't reach ${a}'s server`;
   if (!l.speaker_paired) return "Pair a speaker: hold the mic button for two seconds";
   if (!l.speaker) return `Turn on ${l.speaker_name || "the speaker"} to hear ${a}`;
@@ -457,7 +463,13 @@ function drawTop(s) {
   s.presets.forEach((label, i) => {
     const el = $("p" + i);
     if (s.bt) {
+      // Inside a tab's own screens (VPN), its name takes the tab's place and the rest go blank.
       const [tab, name] = TABS[s.bt.set || 0][i] || [];
+      if (s.bt.sub) {
+        el.textContent = tab === s.bt.tab ? s.bt.sub : "";
+        el.className = tab === s.bt.tab ? "tab" : "off";
+        return;
+      }
       el.textContent = name || "—";
       el.className = !name ? "off" : tab === s.bt.tab ? "tab" : "";
       return;
@@ -472,7 +484,7 @@ function drawTop(s) {
     el.className = !label ? "off" : (s.key_pages || [])[i] === page ? "on" : "";
   });
   const sets = $("sets");
-  sets.hidden = s.bt ? false : music || !(s.key_sets > 1);
+  sets.hidden = s.bt ? !!s.bt.sub : music || !(s.key_sets > 1);
   [...sets.children].forEach((dot, i) => dot.classList.toggle("on", i + 1 === (s.bt ? (s.bt.set || 0) + 1 : s.keys || 1)));
   const l = s.links, checked = l.checked;
   $("l-phone").classList.toggle("lost", checked && !l.phone);
@@ -558,12 +570,13 @@ function drawBands() {
   let top;
   if (s.bt) top = { theme: "petasos", lit: (s.bt.meter || 0) / 100 };
   // While sound plays, turning the volume just moves the mark over the running level.
-  else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
+  // With nothing playing, the volume is the mark alone, over the unlit meander.
+  else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: 0, mark: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
   else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol,
                               parts: partsShown && partsShown.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))),
                               peaks: s.peaks ? peaks.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))) : null };
-  else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
+  else if (onMusic) top = { theme: page, dim: true, lit: 0, mark: vol };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
   const m = pageMusic(s, page), service = m && THEMES[m.service] ? m.service : onMusic ? page : "";
@@ -732,6 +745,9 @@ function drawBT(b) {
                  mine: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  music: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  network: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 vpns: [["Knob", "choose"], ["Press", "open"], ["Front button", "back"]],
+                 vpn: [["Knob", "choose"], ["Press", "change"], ["Front button", "back"]],
+                 vpnkey: [["Knob", "choose"], ["Press", "choose"], ["Front button", "back"]],
                  softkeys: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  softkey: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "back"]],
                  keyboard: [["Touch or knob", "type"], ["Done", "save"], ["Front button", "cancel"]],
@@ -754,8 +770,9 @@ function drawBT(b) {
     const sel = i === b.sel;
     const end = it.check ? `<i class="box${it.check === "on" ? " on" : ""}"></i>` : it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`;
     const sub = (it.value || it.check) && it.detail ? `<em class="sub">${esc(it.detail)}</em>` : "";
-    return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}${it.off ? " off" : ""}" id="${sel ? "sel" : ""}">
-      ${icon(it.icon || "device")}<span>${esc(it.label)}${sub}</span>${end}</div>`;
+    const holding = sel && b.holding && it.hold;
+    return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}${it.off ? " off" : ""}${holding ? " holding" : ""}" id="${sel ? "sel" : ""}">
+      ${icon(it.icon || "device")}<span>${esc(it.label)}${sub}</span>${end}${it.hold ? `<i class="holdbar"></i>` : ""}</div>`;
   }).join("");
   body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
     `<div class="list">${rows}</div>`;
@@ -780,7 +797,7 @@ function kbKeys() {
 
 function drawKeyboard(b) {
   if (!kb || kb.id !== b.keyboard) {
-    kb = { id: b.keyboard, text: b.text || "", max: b.max || 48, layout: "abc", shift: !b.text && !b.plain, sel: 0, sent: false };
+    kb = { id: b.keyboard, text: b.text || "", max: b.max || 48, layout: "abc", shift: !b.text && !b.plain, sel: 0, sent: false, secret: !!b.secret };
     $("bt-body").innerHTML = `<div class="kb" id="kb"></div>`;
     $("kb").addEventListener("pointerdown", (e) => {
       const el = e.target.closest(".k");
@@ -811,7 +828,7 @@ function renderKeyboard() {
     if (n === kb.sel) cls += " sel";
     return `<div class="${cls}" data-k="${esc(k)}" data-i="${n}">${esc(face)}</div>`;
   }).join("")}</div>`).join("");
-  el.innerHTML = `<div class="field"><span>${esc(kb.title)}</span><div class="text"><bdi>${esc(kb.text)}</bdi></div>
+  el.innerHTML = `<div class="field"><span>${esc(kb.title)}</span><div class="text"><bdi>${esc(kb.secret ? "•".repeat([...kb.text].length) : kb.text)}</bdi></div>
     <span class="count">${[...kb.text].length}/${kb.max}</span>${kb.onCancel ? `<span class="kx" data-x="1">×</span>` : ""}</div>${rows}`;
 }
 

@@ -22,3 +22,6 @@
 /* A set of soft keys: its title, the screen's copy and its four presets. */
 .petasos-set { display: flex; flex-direction: column; gap: .75rem; }
 .petasos-set-title { font-size: 1rem; font-weight: 600; margin: .5rem 0 0; }
+/* A VPN configuration: its name and where it goes, then its buttons. */
+.petasos-vpn { display: flex; align-items: center; gap: .5rem; list-style: none; margin-left: -1.1rem; }
+.petasos-vpn > span { flex: 1; }

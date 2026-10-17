@@ -230,11 +230,11 @@ func TestDeviceTabOpensWithoutHermes(t *testing.T) {
 	if time.Since(began) > 2*time.Second || view().View != "mine" {
 		t.Fatalf("took %v: %+v", time.Since(began), view())
 	}
-	// The tunnel home can be turned off and on again whether or not Hermes answers.
+	// The VPN configurations open whether or not Hermes answers; the installer's is the first.
 	bt.networkView()
 	found := false
 	for _, it := range view().Items {
-		found = found || it.Label == "Tunnel home" && it.Check == "on"
+		found = found || it.Label == "VPN configurations" && it.Value == "1"
 	}
 	if !found {
 		t.Fatalf("got %+v", view())

@@ -51,6 +51,10 @@ def _music():
     return _load("hermes_petasos_music", "music.py")
 
 
+def _vpn():
+    return _load("hermes_petasos_vpn", "vpn.py")
+
+
 @router.post("/input")
 def input_event(body: dict) -> dict:
     """One button or knob event in; the commands for the device to carry out come back."""
@@ -175,6 +179,26 @@ def put_music_quality(body: dict) -> dict:
         return music.save_quality(body.get("quality"))
     except music.MusicError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.get("/vpn")
+def vpn_list(keys: int = 0) -> dict:
+    """The VPN configurations; a device asks with keys=1 for the private keys too."""
+    return _vpn().listed(bool(keys))
+
+
+@router.put("/vpn/{ident}")
+def vpn_put(ident: str, body: dict) -> dict:
+    vpn = _vpn()
+    try:
+        return vpn.put(ident, body)
+    except vpn.VPNError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.delete("/vpn/{ident}")
+def vpn_delete(ident: str, updated: int = 0) -> dict:
+    return _vpn().delete(ident, updated or None)
 
 
 @router.post("/music/check")
