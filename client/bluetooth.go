@@ -29,7 +29,8 @@ const (
 // btScreen is what the page draws while the Bluetooth screens are open.
 type btScreen struct {
 	View    string   `json:"view"`            // list, device, scan, pair, message, screen
-	Tab     string   `json:"tab"`             // the settings tab it belongs to: bluetooth or screen
+	Tab     string   `json:"tab"`             // the settings tab it belongs to (settingsTabs)
+	Set     int      `json:"set"`             // which set of tabs the preset buttons show: 0 or 1
 	Editing bool     `json:"editing"`         // the highlighted row's value is being turned
 	Meter   int      `json:"meter,omitempty"` // a level, 1–100, lit along the band at the bottom like the volume
 	Title   string   `json:"title,omitempty"`
@@ -54,6 +55,8 @@ type btItem struct {
 	Detail string `json:"detail,omitempty"`
 	Hot    bool   `json:"hot,omitempty"`   // shown in orange: the speaker Athena uses, the phone's hotspot
 	Value  string `json:"value,omitempty"` // a setting's current value
+	Check  string `json:"check,omitempty"` // a checkbox's state, "on" or "off", for a row the knob toggles
+	Off    bool   `json:"off,omitempty"`   // greyed out: shown, but the knob passes over it
 
 	do   func()
 	turn func(delta int) // changes a setting's value
@@ -79,6 +82,7 @@ type bluetooth struct {
 	stop    chan struct{}   // ends the scan view's refreshing
 	confirm chan bool       // the knob's answer to a pairing code
 	tab     string          // the settings tab last shown, opened again next time
+	set     int             // the set of tabs the preset buttons show (settingsTabs)
 	name    string          // what other devices see the Car Thing as: its name (device.go)
 
 	draft     *softKeyDraft // the soft key being edited
@@ -264,29 +268,32 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 		return true
 	}
 	if view.Editing {
+		b.mu.Lock()
+		undo := b.undo
+		b.mu.Unlock()
 		switch {
 		case name == "knob" && action == "turn":
 			b.adjust(intOf(ev["delta"], 0))
-		case name == "front" && action == "press" && view.View == "peek":
+		case name == "front" && action == "press" && undo != nil:
 			b.cancelEditing()
 		case (name == "knob" || name == "front") && action == "press":
 			b.doneEditing()
 		}
 		return true
 	}
+	if i := presetIndex(name); i >= 0 && action == "press" && view.View != "pair" {
+		b.mu.Lock()
+		tabs := settingsTabs[b.set]
+		b.mu.Unlock()
+		if i < len(tabs) {
+			b.stopScan()
+			go b.openTab(tabs[i].id)
+		}
+		return true
+	}
 	switch {
-	case name == "preset-1" && action == "press" && view.View != "pair":
-		b.stopScan()
-		b.listView()
-	case name == "preset-2" && action == "press" && view.View != "pair":
-		b.stopScan()
-		b.screenView()
-	case name == "preset-3" && action == "press" && view.View != "pair":
-		b.stopScan()
-		go b.mineView() // asks Hermes for the soft keys
-	case name == "preset-4" && action == "press" && view.View != "pair":
-		b.stopScan()
-		go b.musicView() // asks Hermes for the music settings
+	case name == "mute" && action == "press" && view.View != "pair":
+		b.swapTabs()
 	case name == "knob" && action == "turn":
 		b.move(intOf(ev["delta"], 0))
 	case name == "knob" && action == "press":
@@ -317,10 +324,11 @@ func (b *bluetooth) show(v *btScreen) {
 	if v.Tab == "" {
 		v.Tab = "bluetooth"
 		if v.View == "screen" {
-			v.Tab = "screen"
+			v.Tab = "display"
 		}
 	}
 	b.mu.Lock()
+	v.Set = b.set
 	b.view = v
 	if v.View != "pair" && v.View != "message" {
 		b.tab = v.Tab
@@ -337,17 +345,77 @@ func (b *bluetooth) openScreens() {
 	b.mu.Lock()
 	b.open = true
 	tab := b.tab
+	if tab == "" {
+		tab = "device"
+	}
+	b.set = tabSet(tab)
 	b.mu.Unlock()
 	log.Printf("settings open")
 	switch tab {
-	case "screen":
+	case "display", "bluetooth":
+		b.openTab(tab)
+	default:
+		go b.openTab(tab) // asks Hermes
+	}
+}
+
+type settingsTab struct{ id, label string }
+
+// settingsTabs are what the preset buttons open while the settings are open, in two sets: a
+// short press of the top-right button swaps between them, as it swaps the soft keys at home.
+var settingsTabs = [][]settingsTab{
+	{{"device", "Device"}, {"display", "Display"}, {"bluetooth", "Bluetooth"}, {"network", "Network"}},
+	{{"music", "Music"}, {"softkeys", "Soft keys"}},
+}
+
+func tabSet(id string) int {
+	for i, set := range settingsTabs {
+		for _, t := range set {
+			if t.id == id {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+// presetIndex is 0 to 3 for the preset buttons, or -1.
+func presetIndex(name string) int {
+	for i := 0; i < 4; i++ {
+		if name == fmt.Sprintf("preset-%d", i+1) {
+			return i
+		}
+	}
+	return -1
+}
+
+// openTab shows a tab's first screen. Some ask Hermes, so it may take a moment.
+func (b *bluetooth) openTab(id string) {
+	switch id {
+	case "display":
 		b.screenView()
 	case "device":
 		b.mineView()
+	case "network":
+		b.networkView()
 	case "music":
-		go b.musicView()
+		b.musicView()
+	case "softkeys":
+		b.softKeysView()
 	default:
 		b.listView()
+	}
+}
+
+// swapTabs shows the other set of tabs on the preset buttons, leaving the screen as it is.
+func (b *bluetooth) swapTabs() {
+	b.mu.Lock()
+	b.set = (b.set + 1) % len(settingsTabs)
+	v := b.view
+	b.mu.Unlock()
+	if v != nil {
+		n := *v
+		b.show(&n)
 	}
 }
 
@@ -373,7 +441,7 @@ func (b *bluetooth) move(delta int) {
 		step = -1
 	}
 	for i := n.Sel + step; i >= 0 && i < len(n.Items); i += step {
-		if n.Items[i].Kind == "row" {
+		if n.Items[i].Kind == "row" && !n.Items[i].Off {
 			n.Sel = i
 			break
 		}
@@ -385,7 +453,7 @@ func (b *bluetooth) choose() {
 	b.mu.Lock()
 	v := b.view
 	b.mu.Unlock()
-	if v == nil || v.Sel < 0 || v.Sel >= len(v.Items) || v.Items[v.Sel].do == nil {
+	if v == nil || v.Sel < 0 || v.Sel >= len(v.Items) || v.Items[v.Sel].do == nil || v.Items[v.Sel].Off {
 		return
 	}
 	go v.Items[v.Sel].do()
@@ -399,23 +467,13 @@ func (b *bluetooth) back() {
 		return
 	}
 	switch v.View {
-	case "list", "screen", "mine", "music":
+	case "list", "screen", "mine", "music", "network", "softkeys":
 		b.close()
-	case "softkey":
-		go b.mineView()
 	case "scan":
 		b.stopScan()
 		b.listView()
 	default:
-		if v.Tab == "device" {
-			go b.mineView()
-			return
-		}
-		if v.Tab == "music" {
-			go b.musicView()
-			return
-		}
-		b.listView()
+		go b.openTab(v.Tab)
 	}
 }
 
@@ -436,11 +494,11 @@ func (b *bluetooth) redraw() {
 }
 
 func firstRow(items []btItem, from int) int {
-	if from >= 0 && from < len(items) && items[from].Kind == "row" {
+	if from >= 0 && from < len(items) && items[from].Kind == "row" && !items[from].Off {
 		return from
 	}
 	for i, it := range items {
-		if it.Kind == "row" {
+		if it.Kind == "row" && !it.Off {
 			return i
 		}
 	}
@@ -563,6 +621,20 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Use for " + display.agent(),
 				do: func() { b.act(d.Name, "Connecting", b.useSpeaker(d.Path)) }})
 		}
+		if h := hereNow(); h != nil {
+			// Which microphone listens while it's connected: a car's own is nearer the driver.
+			at, address := len(items), d.Address
+			external := externalMic(h.dir, address)
+			items = append(items, btItem{Kind: "row", Icon: "mic", Label: "Microphone",
+				Value: map[bool]string{true: "External (" + truncate(d.Name, 16) + ")", false: "Internal (Petasos)"}[external],
+				do: func() {
+					if err := setExternalMic(h.dir, address, !external); err != nil {
+						b.message("Couldn't save that", err.Error())
+						return
+					}
+					b.deviceViewAt(at)
+				}})
+		}
 		// The sound shown on the screen, later for a speaker that plays what it's sent later.
 		if h := hereNow(); h != nil {
 			at, address := len(items), d.Address
@@ -628,7 +700,7 @@ func (b *bluetooth) message(title, note string) {
 	b.mu.Lock()
 	tab := b.tab
 	b.mu.Unlock()
-	if tab != "device" && tab != "music" {
+	if tab == "" {
 		tab = "bluetooth"
 	}
 	b.show(&btScreen{View: "message", Tab: tab, Title: title, Note: note})

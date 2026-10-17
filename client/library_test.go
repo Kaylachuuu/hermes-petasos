@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -305,5 +306,89 @@ func TestLibraryRepeatsASongFromMemory(t *testing.T) {
 	l.control("stop")
 	if n := streams.Load(); n != 1 {
 		t.Fatalf("%d downloads of a song on repeat; want 1", n)
+	}
+}
+
+// The next song downloads while this one plays, so it starts from memory.
+func TestLibraryFetchesTheNextSongAhead(t *testing.T) {
+	dir := t.TempDir()
+	tone, err := os.ReadFile("testdata/tone.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := &libraryPlayer{}
+	fetchedDuring := make(chan string, 4) // the song playing when each download began
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		playing := ""
+		if m := display.snapshot().Music; m != nil {
+			playing = m.Title
+		}
+		fetchedDuring <- r.URL.Query().Get("id") + " during " + playing
+		w.Write(tone)
+	}))
+	defer srv.Close()
+	os.WriteFile(filepath.Join(dir, "aplay"), []byte("#!/bin/sh\n"+
+		"while :; do n=$(dd bs=19200 count=1 iflag=fullblock status=none | wc -c); [ $n -gt 0 ] || exit 0; sleep 0.05; done\n"), 0o755)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	oldV := virtual
+	virtual = false
+	defer func() { virtual = oldV }()
+	display.setPhase("idle")
+	h := &hermes{dir: dir, cfg: config{Server: srv.URL, Device: "test"}, http: srv.Client()}
+	l.attach(h, &voice{h: h, speaker: "bluealsa"})
+	saved := library
+	library = l
+	defer func() { library = saved }()
+
+	l.start("Two songs", []libTrack{{Source: "folder", ID: "a", Title: "One"}, {Source: "folder", ID: "b", Title: "Two"}}, "", false)
+	for _, want := range []string{"a during One", "b during One"} {
+		select {
+		case got := <-fetchedDuring:
+			if got != want {
+				t.Fatalf("download %q; want %q", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no download for %q", want)
+		}
+	}
+	for deadline := time.Now().Add(10 * time.Second); l.active() && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if l.active() || len(fetchedDuring) != 0 {
+		t.Fatalf("finished %v, %d more downloads", !l.active(), len(fetchedDuring))
+	}
+}
+
+func TestStreamBufferSettings(t *testing.T) {
+	tone, err := os.ReadFile("testdata/tone.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := mp3Kbps(tone); k < 32 || k > 320 {
+		t.Errorf("tone.mp3 is %d kbps", k)
+	}
+	// An MPEG-1 Layer III frame header at 128 kbps, 44.1 kHz, after some junk.
+	if k := mp3Kbps([]byte{0, 0xFF, 0x00, 0xFF, 0xFB, 0x90, 0x64}); k != 128 {
+		t.Errorf("128 kbps header read as %d", k)
+	}
+	if k := mp3Kbps([]byte("not an mp3")); k != 192 {
+		t.Errorf("no frame gave %d", k)
+	}
+	dir := t.TempDir()
+	defer streamBuffer.Store(4)
+	var seen []int
+	for range 4 {
+		if err := setBuffer(dir); err != nil {
+			t.Fatal(err)
+		}
+		seen = append(seen, bufferSetting(dir))
+	}
+	if fmt.Sprint(seen) != "[10 30 -1 4]" || streamBuffer.Load() != 4 {
+		t.Errorf("went %v, now %d", seen, streamBuffer.Load())
+	}
+	streamBuffer.Store(10)
+	r := newReadAhead(bytes.NewReader(append([]byte{0xFF, 0xFB, 0x90, 0x64}, make([]byte, 400<<10)...)), func(error) {})
+	if c := cushionFor(r); c != 10*128*1000/8 {
+		t.Errorf("10 seconds at 128 kbps is %d bytes", c)
 	}
 }

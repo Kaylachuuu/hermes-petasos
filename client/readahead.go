@@ -16,10 +16,12 @@ type readAhead struct {
 	buf       bytes.Buffer // read but not yet played
 	err       error        // how the download ended (io.EOF: all of it)
 	abandoned bool         // no longer played: what still comes is dropped
+	got       time.Time    // when the last of it came
 }
 
-// readAheadMax is the most held unplayed; the download waits beyond it.
-const readAheadMax = 16 << 20
+// readAheadMax is the most held unplayed, enough for a whole song to be in before it starts
+// (the Music tab's Buffer before playing); the download waits beyond it.
+const readAheadMax = 64 << 20
 
 // newReadAhead starts reading src to its end; done is called with how that went.
 func newReadAhead(src io.Reader, done func(error)) *readAhead {
@@ -36,6 +38,7 @@ func newReadAhead(src io.Reader, done func(error)) *readAhead {
 			if !r.abandoned {
 				r.buf.Write(chunk[:n])
 			}
+			r.got = time.Now()
 			if err != nil {
 				r.err = err
 			}
@@ -64,20 +67,47 @@ func (r *readAhead) Read(p []byte) (int, error) {
 	return 0, r.err
 }
 
-// fill waits until at least want bytes are held, the download has ended, or wait has passed.
-func (r *readAhead) fill(want int, wait time.Duration) {
-	timer := time.AfterFunc(wait, func() {
-		r.mu.Lock()
-		r.cond.Broadcast()
-		r.mu.Unlock()
-	})
-	defer timer.Stop()
-	until := time.Now().Add(wait)
+// fill waits until at least want bytes are held, the download has ended, or nothing more has
+// come for stall: a slow download is waited for as long as it keeps coming.
+func (r *readAhead) fill(want int, stall time.Duration) {
+	tick := time.NewTicker(min(stall/4, 250*time.Millisecond))
+	defer tick.Stop()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				r.mu.Lock()
+				r.cond.Broadcast()
+				r.mu.Unlock()
+			}
+		}
+	}()
+	began := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for r.buf.Len() < want && r.err == nil && time.Now().Before(until) {
+	// Waiting from when it was asked for, or from when the last of it came if that's later.
+	for r.buf.Len() < want && r.err == nil && time.Since(later(r.got, began)) < stall {
 		r.cond.Wait()
 	}
+}
+
+// later is the later of two times.
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// head is a copy of up to n of the bytes held, from the start of what is unplayed.
+func (r *readAhead) head(n int) []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]byte(nil), r.buf.Bytes()[:min(n, r.buf.Len())]...)
 }
 
 // low is whether fewer than want bytes are held with more still to come.

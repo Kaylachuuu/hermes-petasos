@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mp3 "github.com/hajimehoshi/go-mp3"
@@ -66,28 +68,204 @@ type libraryPlayer struct {
 	// from memory instead of being downloaded again.
 	cacheKey  string
 	cacheData []byte
+
+	// The next track, downloading once the one playing is all in, so it starts at once.
+	next *nextTrack
 }
 
-// A stream starts once streamCushion bytes are in (about 4 seconds at 192 kbps), and pauses to
-// build that up again when it falls under streamLow.
+// nextTrack is the next track in the queue, downloading or downloaded ahead of time.
+type nextTrack struct {
+	t       libTrack
+	ahead   *readAhead
+	got     *capture
+	data    []byte // all of it, once it's in
+	adopted bool   // it began playing before it was all in, and plays from the download
+}
+
+// A stream starts once the Music tab's Buffer before playing is in (streamBuffer), and pauses
+// to build that up again when it falls under streamLow. Everything is held in memory; nothing
+// is written to the Car Thing's flash.
 const (
-	streamCushion = 96 << 10
-	streamLow     = 8 << 10
+	streamLow   = 8 << 10
+	streamStall = 10 * time.Second // giving up on a cushion when nothing comes for this long
 )
 
-// libraryCacheMax is the most kept of one track: about 20 minutes at 192 kbps.
-const libraryCacheMax = 32 << 20
+// libraryCacheMax is the most kept of one track: about 25 minutes at 320 kbps. A longer one
+// streams.
+const libraryCacheMax = 64 << 20
+
+// streamBuffer is how many seconds of a stream are in before it plays, or -1 for all of it.
+var streamBuffer atomic.Int32
+
+func init() { streamBuffer.Store(4) }
+
+// streamBuffers are the Music tab's choices for it.
+var streamBuffers = []choice{{4, "4 seconds"}, {10, "10 seconds"}, {30, "30 seconds"}, {-1, "Whole song"}}
+
+// bufferSetting is the Buffer before playing in seconds, or -1 for the whole song.
+func bufferSetting(dir string) int {
+	b := loadOwnSettings(dir).Buffer
+	if b == 0 {
+		return streamBuffers[0].value
+	}
+	return streamBuffers[nearest(streamBuffers, b)].value
+}
+
+// setBuffer steps the Buffer before playing on to its next choice.
+func setBuffer(dir string) error {
+	own := loadOwnSettings(dir)
+	own.Buffer = streamBuffers[(nearest(streamBuffers, bufferSetting(dir))+1)%len(streamBuffers)].value
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	streamBuffer.Store(int32(own.Buffer))
+	return nil
+}
+
+// cushionFor is how many bytes to have in before a stream plays: the seconds set, at the
+// bitrate its first frame gives.
+func cushionFor(ahead *readAhead) int {
+	secs := int(streamBuffer.Load())
+	if secs < 0 {
+		return libraryCacheMax
+	}
+	ahead.fill(16<<10, streamStall)
+	head := ahead.head(16 << 10)
+	if len(head) >= 10 && string(head[:3]) == "ID3" { // a tag first, perhaps with a picture
+		size := int(head[6])<<21 | int(head[7])<<14 | int(head[8])<<7 | int(head[9])
+		ahead.fill(10+size+4<<10, streamStall)
+		head = ahead.head(10 + size + 4<<10)
+		if len(head) > 10+size {
+			head = head[10+size:]
+		}
+	}
+	return secs * mp3Kbps(head) * 1000 / 8
+}
+
+// mp3Kbps is the bitrate of the first MP3 frame in data, or 192 when there isn't one.
+func mp3Kbps(data []byte) int {
+	mpeg1 := []int{0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}
+	mpeg2 := []int{0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}
+	for i := 0; i+3 < len(data); i++ {
+		if data[i] != 0xFF || data[i+1]&0xE0 != 0xE0 {
+			continue
+		}
+		version, layer := data[i+1]>>3&3, data[i+1]>>1&3
+		index, rate := int(data[i+2]>>4), data[i+2]>>2&3
+		if layer != 1 || version == 1 || index == 0 || index == 15 || rate == 3 {
+			continue
+		}
+		if version == 3 {
+			return mpeg1[index]
+		}
+		return mpeg2[index]
+	}
+	return 192
+}
 
 func trackKey(t libTrack) string { return t.Source + "\x00" + t.ID }
 
-// cached is the track's MP3 when it is the one kept.
+// cached is the track's MP3 when it is the one kept, or the next one, all in.
 func (l *libraryPlayer) cached(t libTrack) []byte {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.cacheKey == trackKey(t) {
 		return l.cacheData
 	}
+	if n := l.next; n != nil && n.data != nil && trackKey(n.t) == trackKey(t) {
+		l.cacheKey, l.cacheData, l.next = trackKey(t), n.data, nil
+		return n.data
+	}
 	return nil
+}
+
+// adopt takes the next track's download, still coming, to play from.
+func (l *libraryPlayer) adopt(t libTrack) *readAhead {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if n := l.next; n != nil && n.ahead != nil && n.data == nil && trackKey(n.t) == trackKey(t) {
+		n.adopted, l.next = true, nil
+		return n.ahead
+	}
+	return nil
+}
+
+// nextLocked is the track after the one playing, if there is one.
+func (l *libraryPlayer) nextLocked() (libTrack, bool) {
+	if l.repeat == "one" || l.want == "" {
+		return libTrack{}, false
+	}
+	i := l.pos + 1
+	if i >= len(l.queue) {
+		if l.repeat != "all" || len(l.queue) < 2 {
+			return libTrack{}, false
+		}
+		i = 0
+	}
+	return l.queue[i], true
+}
+
+// fetchNext downloads the next track while this one plays, once this one is all in. A track
+// too long to keep isn't fetched ahead: it streams when it comes.
+func (l *libraryPlayer) fetchNext() {
+	l.mu.Lock()
+	t, ok := l.nextLocked()
+	h := l.h
+	if !ok || h == nil || trackKey(t) == l.cacheKey || l.next != nil && trackKey(l.next.t) == trackKey(t) {
+		l.mu.Unlock()
+		return
+	}
+	if old := l.next; old != nil && old.ahead != nil {
+		old.ahead.abandon()
+	}
+	n := &nextTrack{t: t}
+	l.next = n
+	l.mu.Unlock()
+	body, err := h.openStream(streamPath(t))
+	if err != nil {
+		log.Printf("can't fetch the next song ahead: %v", err)
+		l.mu.Lock()
+		if l.next == n {
+			l.next = nil
+		}
+		l.mu.Unlock()
+		return
+	}
+	n.got = &capture{stop: func() { body.Close() }}
+	ahead := newReadAhead(io.TeeReader(body, n.got), func(err error) {
+		body.Close()
+		whole := err == io.EOF && !n.got.over
+		l.mu.Lock()
+		adopted := n.adopted
+		switch {
+		case adopted:
+		case l.next == n && whole:
+			n.data = n.got.buf.Bytes()
+		case l.next == n:
+			l.next = nil // too long, or it failed: it streams when it comes
+		}
+		l.mu.Unlock()
+		if adopted && whole {
+			l.keep(n.t, n.got.buf.Bytes())
+			go l.fetchNext()
+		} else if !adopted {
+			l.mu.Lock()
+			if n.ahead != nil {
+				n.ahead.abandon() // the copy kept is all that's needed
+			}
+			l.mu.Unlock()
+		}
+	})
+	l.mu.Lock()
+	n.ahead = ahead
+	if n.data != nil || l.next != n { // it was all in, or given up on, already
+		ahead.abandon()
+	}
+	l.mu.Unlock()
+}
+
+func streamPath(t libTrack) string {
+	return "/api/plugins/petasos/music/stream?source=" + url.QueryEscape(t.Source) + "&id=" + url.QueryEscape(t.ID)
 }
 
 func (l *libraryPlayer) keep(t libTrack, data []byte) {
@@ -96,16 +274,21 @@ func (l *libraryPlayer) keep(t libTrack, data []byte) {
 	l.mu.Unlock()
 }
 
-// capture keeps what is read from a stream, up to libraryCacheMax.
+// capture keeps what is read from a stream, up to libraryCacheMax; stop, if set, is called
+// once it's over that.
 type capture struct {
 	buf  bytes.Buffer
 	over bool
+	stop func()
 }
 
 func (c *capture) Write(p []byte) (int, error) {
 	if !c.over {
 		if c.buf.Len()+len(p) > libraryCacheMax {
 			c.over, c.buf = true, bytes.Buffer{}
+			if c.stop != nil {
+				c.stop()
+			}
 		} else {
 			c.buf.Write(p)
 		}
@@ -393,25 +576,31 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 		return from, fmt.Errorf("not connected")
 	}
 	var src io.Reader
+	cushion := 0
 	var ahead *readAhead // a stream's download, not a track kept in memory
 	if data := l.cached(t); data != nil {
 		src = bytes.NewReader(data)
+		go l.fetchNext()
 	} else {
-		body, err := h.openStream("/api/plugins/petasos/music/stream?source=" + url.QueryEscape(t.Source) +
-			"&id=" + url.QueryEscape(t.ID))
-		if err != nil {
-			return from, err
-		}
-		got := &capture{}
-		ahead = newReadAhead(io.TeeReader(body, got), func(err error) {
-			body.Close()
-			if err == io.EOF && !got.over {
-				// The whole track: carrying on, or it coming round again, plays from memory.
-				l.keep(t, got.buf.Bytes())
+		if ahead = l.adopt(t); ahead == nil {
+			body, err := h.openStream(streamPath(t))
+			if err != nil {
+				return from, err
 			}
-		})
+			got := &capture{}
+			ahead = newReadAhead(io.TeeReader(body, got), func(err error) {
+				body.Close()
+				if err == io.EOF && !got.over {
+					// The whole track: carrying on, or it coming round again, plays from memory,
+					// and the next one can come.
+					l.keep(t, got.buf.Bytes())
+					go l.fetchNext()
+				}
+			})
+		}
 		defer ahead.abandon()
-		ahead.fill(streamCushion, 10*time.Second)
+		cushion = cushionFor(ahead)
+		ahead.fill(cushion, streamStall)
 		src = ahead
 	}
 	dec, err := mp3.NewDecoder(src)
@@ -451,7 +640,7 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 			// The download fell behind: let the speaker pause until there's a cushion again,
 			// rather than stuttering through each piece as it comes.
 			waited := time.Now()
-			ahead.fill(streamCushion, 15*time.Second)
+			ahead.fill(cushion, streamStall)
 			if time.Since(waited) > 300*time.Millisecond { // the speaker ran dry meanwhile
 				heard = time.Now().Add(speakerLag).Add(-time.Duration(frame-from) * time.Second / libraryRate)
 			}

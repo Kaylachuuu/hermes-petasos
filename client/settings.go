@@ -1,10 +1,13 @@
 package main
 
+import "fmt"
+
 // The settings on the Car Thing itself. Holding the mic button opens them. The preset buttons
-// become tabs while they are open: the first for Bluetooth (the screens in bluetooth.go), the
-// second for Screen, the light's brightness, dimming and time-out; the third for this Car Thing
-// itself, its name, microphone and soft keys (device.go); the fourth is spare.
-// A Screen row is changed by pressing the knob, turning it, and pressing again.
+// become tabs while they are open, in two sets the top-right button swaps between
+// (settingsTabs): Device, Display, Bluetooth and Network, then Music and Soft keys.
+// This is the Display tab: the light's brightness, dimming and time-out, and how the top meander
+// shows the sound. A choice is changed by pressing the knob, turning it, and pressing again; the
+// front button puts it back.
 
 type choice struct {
 	value int
@@ -15,7 +18,7 @@ var (
 	brightnessChoices = []choice{{0, "Auto"}, {10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"},
 		{50, "50%"}, {60, "60%"}, {70, "70%"}, {80, "80%"}, {90, "90%"}, {100, "100%"}}
 	waitChoices     = []choice{{0, "Off"}, {15, "15 seconds"}, {30, "30 seconds"}, {45, "45 seconds"}, {60, "60 seconds"}}
-	dimAfterChoices = waitChoices
+	dimAfterChoices = waitChoices[1:] // never dimming is the Dim screen box
 	dimToChoices    = []choice{{10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"}, {50, "50%"},
 		{60, "60%"}, {70, "70%"}}
 	offAfterChoices = waitChoices
@@ -49,7 +52,7 @@ func stepChoice(choices []choice, value, delta int) int {
 	return choices[i].value
 }
 
-// screenView lists the light's settings; editing is the row being changed, or -1.
+// screenView is the Display tab; editing is whether the highlighted row is being changed.
 func (b *bluetooth) screenView() { b.screenViewAt(-1, false) }
 
 func (b *bluetooth) screenViewAt(sel int, editing bool) {
@@ -71,26 +74,72 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 				backlight.change(s)
 			}}
 	}
+	dir := ""
+	if h := hereNow(); h != nil {
+		dir = h.dir
+	}
+	m := meterSetting(dir)
+	meterRow := func(label, value, which string) btItem {
+		return btItem{Kind: "row", Icon: "speaker", Label: label, Value: value,
+			turn: func(delta int) {
+				if err := stepMeter(dir, which, delta); err != nil {
+					b.message("Couldn't save that", err.Error())
+				}
+			}}
+	}
+	dimRow := func(it btItem) btItem { it.Off = s.NoDim; return it }
 	items := []btItem{
 		setting("sun", "Brightness", bright, brightnessChoices,
 			func(s lightSettings) int { return s.Brightness }, func(s *lightSettings, v int) { s.Brightness = v }),
-		setting("moon", "Dim after", labelFor(dimAfterChoices, s.DimAfter), dimAfterChoices,
-			func(s lightSettings) int { return s.DimAfter }, func(s *lightSettings, v int) { s.DimAfter = v }),
-		setting("moon", "Dim to", labelFor(dimToChoices, s.DimTo), dimToChoices,
-			func(s lightSettings) int { return s.DimTo }, func(s *lightSettings, v int) { s.DimTo = v; backlight.showDim(v) }),
+		{Kind: "row", Icon: "moon", Label: "Dim screen", Check: checked(!s.NoDim), do: func() {
+			s := backlight.settings()
+			s.NoDim = !s.NoDim
+			backlight.change(s)
+			b.screenViewAt(1, false)
+		}},
+		dimRow(setting("moon", "Dim after", labelFor(dimAfterChoices, s.DimAfter), dimAfterChoices,
+			func(s lightSettings) int { return s.DimAfter }, func(s *lightSettings, v int) { s.DimAfter = v })),
+		dimRow(setting("moon", "Dimmed brightness", labelFor(dimToChoices, s.DimTo), dimToChoices,
+			func(s lightSettings) int { return s.DimTo }, func(s *lightSettings, v int) { s.DimTo = v; backlight.showDim(v) })),
 		setting("power", "Turn off after", labelFor(offAfterChoices, s.OffAfter), offAfterChoices,
 			func(s lightSettings) int { return s.OffAfter }, func(s *lightSettings, v int) { s.OffAfter = v }),
+		{Kind: "header", Label: "Audio visualization"},
+		meterRow("Bands", fmt.Sprint(m.Bands), "bands"),
+		meterRow("Response", speedLabel(m.Rise), "rise"),
+		meterRow("Decay", speedLabel(m.Fall), "fall"),
+		{Kind: "row", Icon: "speaker", Label: "Peaks", Check: checked(m.Peaks), do: func() {
+			if err := stepMeter(dir, "peaks", 0); err != nil {
+				b.message("Couldn't save that", err.Error())
+				return
+			}
+			b.screenViewAt(9, false)
+		}},
 	}
 	for i := range items {
 		if items[i].turn != nil {
 			i := i
-			items[i].do = func() { b.screenViewAt(i, true) }
+			items[i].do = func() {
+				// The front button puts the settings back as they were before the change.
+				light, meter := backlight.settings(), meterSetting(dir)
+				b.mu.Lock()
+				b.undo = func() {
+					backlight.change(light)
+					if dir != "" {
+						_ = setMeterTo(dir, meter)
+					}
+				}
+				b.mu.Unlock()
+				b.screenViewAt(i, true)
+			}
 		}
 	}
 	sel = firstRow(items, sel)
 	note := "Any button wakes a dark screen. A preset pressed while it is dark only wakes it."
-	// The band at the bottom shows the level of the Brightness or Dim to row while one of them
-	// is highlighted; the other rows are times, shown as words only.
+	if items[sel].Icon == "speaker" {
+		note = "How the band at the top shows the sound as it plays."
+	}
+	// The band at the top shows the level of the Brightness or Dimmed brightness row while one
+	// of them is highlighted; the other rows are words only.
 	meter := 0
 	switch items[sel].Label {
 	case "Brightness":
@@ -98,12 +147,12 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 		if meter == 0 {
 			meter = backlight.percent()
 		}
-	case "Dim to":
+	case "Dimmed brightness":
 		meter = s.DimTo
 	}
 	b.show(&btScreen{View: "screen", Note: note, Items: items, Sel: sel,
 		Editing: editing && items[sel].turn != nil, Meter: meter})
-	if editing && items[sel].Label == "Dim to" {
+	if editing && items[sel].Label == "Dimmed brightness" {
 		backlight.showDim(s.DimTo)
 	} else {
 		backlight.showDim(0)
@@ -143,7 +192,11 @@ func (b *bluetooth) cancelEditing() {
 	if undo != nil {
 		undo()
 	}
-	if v != nil {
+	switch {
+	case v == nil:
+	case v.View == "screen":
+		b.screenViewAt(v.Sel, false)
+	default:
 		b.deviceViewEdit(v.Sel, false)
 	}
 }
@@ -164,6 +217,9 @@ func (b *bluetooth) doneEditing() {
 		stopBeeps()
 		b.deviceViewEdit(v.Sel, false)
 	default:
+		b.mu.Lock()
+		b.undo = nil
+		b.mu.Unlock()
 		b.screenViewAt(v.Sel, false)
 	}
 }

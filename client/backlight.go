@@ -33,10 +33,11 @@ const (
 
 // lightSettings is screen.json. Brightness 0 means auto; seconds of 0 mean never.
 type lightSettings struct {
-	Brightness int `json:"brightness"` // percent, or 0 for auto
-	DimAfter   int `json:"dim_after"`  // seconds without activity before dimming
-	DimTo      int `json:"dim_to"`     // percent of the normal brightness while dimmed
-	OffAfter   int `json:"off_after"`  // seconds without activity before the screen turns off
+	Brightness int  `json:"brightness"`       // percent, or 0 for auto
+	DimAfter   int  `json:"dim_after"`        // seconds without activity before dimming
+	DimTo      int  `json:"dim_to"`           // percent of the normal brightness while dimmed
+	OffAfter   int  `json:"off_after"`        // seconds without activity before the screen turns off
+	NoDim      bool `json:"no_dim,omitempty"` // the Dim screen box is unticked
 }
 
 var defaultLight = lightSettings{Brightness: 0, DimAfter: 60, DimTo: 30, OffAfter: 0}
@@ -45,7 +46,10 @@ func (s lightSettings) valid() lightSettings {
 	clamp := func(v, lo, hi int) int { return max(lo, min(hi, v)) }
 	s.Brightness = clamp(s.Brightness, 0, 100)
 	s.DimTo = clamp(s.DimTo, 5, 100)
-	// Times are kept to the choices the Screen tab offers, so it always shows the one in use.
+	if s.DimAfter == 0 { // never dimming, before the Dim screen box
+		s.NoDim, s.DimAfter = true, defaultLight.DimAfter
+	}
+	// Times are kept to the choices the Display tab offers, so it always shows the one in use.
 	s.DimAfter = dimAfterChoices[nearest(dimAfterChoices, s.DimAfter)].value
 	s.OffAfter = offAfterChoices[nearest(offAfterChoices, s.OffAfter)].value
 	return s
@@ -154,7 +158,7 @@ func (l *light) target(maxLevel, ambient int) int {
 	dimTo := 0
 	if l.preview > 0 {
 		dimTo = l.preview
-	} else if s.DimAfter > 0 && idle >= time.Duration(s.DimAfter)*time.Second {
+	} else if !s.NoDim && idle >= time.Duration(s.DimAfter)*time.Second {
 		dimTo = s.DimTo
 	}
 	if dimTo > 0 {

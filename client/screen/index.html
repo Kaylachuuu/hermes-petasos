@@ -80,6 +80,12 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .row b { font-weight: 400; font-size: 2.4cqw; color: var(--bronze); white-space: nowrap; }
 .row.edit b { color: var(--ember); }
 .row.edit b::before { content: "‹  "; } .row.edit b::after { content: "  ›"; }
+.row.off { opacity: .38; }
+/* A checkbox row: a box, ticked when on. */
+.row .box { width: 2.6cqw; height: 2.6cqw; border: .25cqw solid var(--bronze); border-radius: .4cqw; position: relative; }
+.row .box.on { border-color: var(--ember); background: var(--ember); }
+.row .box.on::after { content: ""; position: absolute; left: .7cqw; top: .15cqw; width: .7cqw; height: 1.4cqw;
+                      border: solid #1f1b17; border-width: 0 .35cqw .35cqw 0; transform: rotate(45deg); }
 
 .pair { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.4cqw; }
 .pair .code { font-family: var(--display); font-size: 9cqw; letter-spacing: .14em; color: var(--ember); font-variant-numeric: tabular-nums; }
@@ -307,6 +313,7 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <path class="stack" d="" fill="url(#l-petasos)" transform="translate(2 0)"/>
     <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
     <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
+    <path class="peaks" d="" fill="#e8823a"/>
     <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
   </svg>
   <svg class="band bottom" id="bottom-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
@@ -406,8 +413,10 @@ function warning(s) {
   return "";
 }
 
-// In the settings the preset buttons are its tabs.
-const TABS = [["bluetooth", "Bluetooth"], ["screen", "Screen"], ["device", "Device"], ["music", "Music"]];
+// In the settings the preset buttons are its tabs, in two sets the top-right button swaps
+// between (bluetooth.go's settingsTabs).
+const TABS = [[["device", "Device"], ["display", "Display"], ["bluetooth", "Bluetooth"], ["network", "Network"]],
+              [["music", "Music"], ["softkeys", "Soft keys"]]];
 
 // Each page's colours: the meander's own, its dim one (under a level), the lit one, and the
 // accent for text and buttons.
@@ -448,7 +457,7 @@ function drawTop(s) {
   s.presets.forEach((label, i) => {
     const el = $("p" + i);
     if (s.bt) {
-      const [tab, name] = TABS[i];
+      const [tab, name] = TABS[s.bt.set || 0][i] || [];
       el.textContent = name || "—";
       el.className = !name ? "off" : tab === s.bt.tab ? "tab" : "";
       return;
@@ -463,8 +472,8 @@ function drawTop(s) {
     el.className = !label ? "off" : (s.key_pages || [])[i] === page ? "on" : "";
   });
   const sets = $("sets");
-  sets.hidden = !!s.bt || music || !(s.key_sets > 1);
-  [...sets.children].forEach((dot, i) => dot.classList.toggle("on", i + 1 === (s.keys || 1)));
+  sets.hidden = s.bt ? false : music || !(s.key_sets > 1);
+  [...sets.children].forEach((dot, i) => dot.classList.toggle("on", i + 1 === (s.bt ? (s.bt.set || 0) + 1 : s.keys || 1)));
   const l = s.links, checked = l.checked;
   $("l-phone").classList.toggle("lost", checked && !l.phone);
   if (s.virtual) { // the network icon: a shield while Hermes is reached through the VPN
@@ -504,6 +513,12 @@ function setBand(id, b) {
   part("mark").setAttribute("x", b.mark == null ? -10 : (1000 * b.mark - 4).toFixed(1));
   part("mark").setAttribute("fill", t.lit);
   if (part("stack")) setParts(el, b);
+  if (part("peaks")) {
+    // Peak lines, half as wide as the volume mark, each across its own band.
+    const p = b.peaks || [], height = 60 / (p.length || 1);
+    part("peaks").setAttribute("d", p.map((w, i) => w > 4 ? `M${w - 2} ${((p.length - 1 - i) * height).toFixed(1)}h4v${height.toFixed(1)}h-4Z` : "").join(""));
+    part("peaks").setAttribute("fill", t.lit);
+  }
 }
 
 // setParts stacks the sound's bands of pitch in the band, the bass at the bottom and the treble
@@ -546,7 +561,8 @@ function drawBands() {
   else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
   else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol,
-                              parts: partsShown && partsShown.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))) };
+                              parts: partsShown && partsShown.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))),
+                              peaks: s.peaks ? peaks.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))) : null };
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
@@ -557,10 +573,13 @@ function drawBands() {
                                       : { theme: onMusic ? page : "petasos", dim: onMusic, lit: m ? musicProgress(m) : 0 });
 }
 
-// How much of the way down the sound's levels fall each frame, as the Device tab sets it.
-const FALLS = { quick: 0.15, gentle: 0.04, slow: 0.02, peaks: 0.02 };
-// How much of the way up they rise: at once for quick and peaks (which then falls slowly).
-const RISES = { quick: 0.5, peaks: 0.5 };
+// How much of the way down the sound's levels fall each frame, and up they rise, as the Display
+// tab's Decay and Response set them.
+const FALLS = { fast: 0.15, medium: 0.04, slow: 0.02 };
+const RISES = { fast: 0.5, medium: 0.25, slow: 0.1 };
+// With Peaks, a line stays at each band's recent high for PEAK_HOLD ms, then drifts down.
+const PEAK_HOLD = 1000, PEAK_FALL = 0.02;
+let peaks = [], peaksAt = [];
 
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
 // The levels move by time, not by frame, but no more than a tenth of a second's worth at a step,
@@ -576,9 +595,9 @@ function stepBands(now) {
     shown += (target - shown) * (1 - Math.pow(1 - (target > shown ? rise : fall), frames));
     return Math.abs(target - shown) < 0.005 ? target : shown;
   };
-  const fall = FALLS[state && state.fall] || FALLS.gentle;
+  const fall = FALLS[state && state.fall] || FALLS.medium;
   micShown = ease(micShown, state && state.phase === "listening" ? micTarget : 0);
-  const rise = RISES[state && state.fall] || 0.25;
+  const rise = RISES[state && state.rise] || RISES.medium;
   lvlShown = ease(lvlShown, lvlTarget, fall, rise);
   let partsMoving = false;
   if (partsTarget) {
@@ -586,9 +605,24 @@ function stepBands(now) {
     partsShown = partsTarget.map((target, i) => ease(partsShown ? partsShown[i] : 0, target, fall, rise));
     partsMoving = partsShown.some((l, i) => l !== partsTarget[i]);
   }
+  const peaksMoving = state && state.peaks && stepPeaks(now, frames);
   drawBands();
-  if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget || partsMoving) bandFrame = requestAnimationFrame(stepBands);
+  if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget || partsMoving || peaksMoving) bandFrame = requestAnimationFrame(stepBands);
   else bandsAt = 0;
+}
+
+// stepPeaks holds each band's high, then lets it drift down to where the band is; it says
+// whether any is still above its band.
+function stepPeaks(now, frames) {
+  const levels = partsShown && partsShown.length ? partsShown : [lvlShown];
+  if (peaks.length !== levels.length) { peaks = levels.map(() => 0); peaksAt = levels.map(() => 0); }
+  let moving = false;
+  levels.forEach((l, i) => {
+    if (l >= peaks[i]) { peaks[i] = l; peaksAt[i] = now; return; }
+    if (now - peaksAt[i] > PEAK_HOLD) peaks[i] = Math.max(l, peaks[i] - PEAK_FALL * frames);
+    moving = moving || peaks[i] > l + 0.005;
+  });
+  return moving;
 }
 
 function moveBands() {
@@ -694,9 +728,11 @@ function drawBT(b) {
                  device: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
                  scan: [["Knob", "choose"], ["Press", "pair"], ["Front button", "back"]],
                  pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
-                 screen: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 screen: b.editing ? [["Knob", "change"], ["Press", "done"], ["Front button", "undo"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  mine: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  music: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 network: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
+                 softkeys: [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],
                  softkey: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "back"]],
                  keyboard: [["Touch or knob", "type"], ["Done", "save"], ["Front button", "cancel"]],
                  message: [] }[b.view] || [];
@@ -716,8 +752,10 @@ function drawBT(b) {
     if (it.kind === "header") return `<h3>${esc(it.label)}</h3>`;
     if (it.kind === "note") return `<div class="empty">${esc(it.label)}</div>`;
     const sel = i === b.sel;
-    return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}" id="${sel ? "sel" : ""}">
-      ${icon(it.icon || "device")}<span>${esc(it.label)}${it.value && it.detail ? `<em class="sub">${esc(it.detail)}</em>` : ""}</span>${it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`}</div>`;
+    const end = it.check ? `<i class="box${it.check === "on" ? " on" : ""}"></i>` : it.value ? `<b>${esc(it.value)}</b>` : `<em>${esc(it.detail)}</em>`;
+    const sub = (it.value || it.check) && it.detail ? `<em class="sub">${esc(it.detail)}</em>` : "";
+    return `<div class="row${sel ? " sel" : ""}${sel && b.editing ? " edit" : ""}${it.hot ? " hot" : ""}${it.off ? " off" : ""}" id="${sel ? "sel" : ""}">
+      ${icon(it.icon || "device")}<span>${esc(it.label)}${sub}</span>${end}</div>`;
   }).join("");
   body.innerHTML = (b.title ? `<h2>${esc(b.title)}</h2>` : "") + (b.note ? `<p class="note">${esc(b.note)}</p>` : "") +
     `<div class="list">${rows}</div>`;

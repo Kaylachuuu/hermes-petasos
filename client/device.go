@@ -274,25 +274,12 @@ var restartSoon = func() {
 
 // --- the microphone ------------------------------------------------------------------------
 
-// carMic says the Car Thing records from the car's microphone, over Bluetooth (hands-free),
-// while it is connected to the car; otherwise it uses its own.
+// carMic is the one microphone choice there was before each speaker had its own (externalMic):
+// the car's, over Bluetooth (hands-free), while it is connected; it is what a speaker not yet
+// set uses.
 var carMic atomic.Bool
 
 const carMicDevice = "plug:'bluealsa:PROFILE=sco'" // converts the car's 8 or 16 kHz audio to what petasos records
-
-func (h *hermes) setCarMic(on bool) error {
-	own := loadOwnSettings(h.dir)
-	own.Mic = ""
-	if on {
-		own.Mic = "car"
-	}
-	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
-		return err
-	}
-	h.cfg.Mic = own.Mic
-	carMic.Store(on)
-	return nil
-}
 
 // The Car Thing keeps what its settings set in device.json, beside config.json, which the
 // installer writes afresh each time it runs; device.json's settings win.
@@ -304,19 +291,34 @@ type ownSettings struct {
 	Mic    string `json:"mic,omitempty"`
 	Wake   *bool  `json:"wake,omitempty"`  // listen for the wake word; on unless turned off
 	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home (wireguard.conf); on unless turned off
-	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 4 if not set
-	Fall   string `json:"fall,omitempty"`  // how quickly the meander's sound falls back (meterFalls), "gentle" if not set
+	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 3 if not set
+	Rise   string `json:"rise,omitempty"`  // how quickly the meander's sound rises (meterSpeeds)
+	Fall   string `json:"fall,omitempty"`  // how quickly it falls back (meterSpeeds, or an older fall-off)
+	Peaks  bool   `json:"peaks,omitempty"` // a line held at each band's recent high
+	// Mics is which microphone each speaker uses while it's connected, by its Bluetooth
+	// address: "external" (its own, over hands-free) or "internal" (the Car Thing's). One not
+	// set uses Mic, the choice from before each speaker had its own.
+	Mics map[string]string `json:"mics,omitempty"`
+	// Buffer is how many seconds of a stream are in before it starts playing, or -1 for all of
+	// it (streamBuffers); 0 is the first choice.
+	Buffer int `json:"buffer,omitempty"`
 	// Delays is how much later the meander shows the sound for each speaker, by its Bluetooth
 	// address, in ms (meterDelays): one speaker plays what it's sent later than another.
 	Delays map[string]int `json:"delays,omitempty"`
 }
 
-// The choices for the top meander's sound, in the order the Device tab steps through them.
+// The choices for the top meander's sound, in the order the Display tab steps through them.
 var (
-	meterBandChoices = []int{1, 3, 4, 5}
-	meterFalls       = []string{"quick", "gentle", "slow", "peaks"} // peaks: rising at once, falling slowly
+	meterBandChoices = []int{1, 3, 5}
+	meterSpeeds      = []choiceOf{{"fast", "Fast"}, {"medium", "Medium"}, {"slow", "Slow"}}
 	meterDelays      = delaySteps(-200, 800, 50)
 )
+
+// oldFalls are the fall-offs before rising and falling were set apart, as the rise and fall
+// each stands for.
+var oldFalls = map[string][2]string{
+	"quick": {"fast", "fast"}, "gentle": {"medium", "medium"}, "slow": {"medium", "slow"}, "peaks": {"fast", "slow"},
+}
 
 func delaySteps(from, to, step int) []int {
 	var d []int
@@ -379,42 +381,95 @@ func delayLabel(ms int) string {
 	return "As played"
 }
 
-// meterSetting is the top meander's bands and fall-off, as set in the Device tab.
-func meterSetting(dir string) (int, string) {
+// meterSettings is how the top meander shows the sound, as set in the Display tab.
+type meterSettings struct {
+	Bands      int
+	Rise, Fall string // fast, medium or slow
+	Peaks      bool
+}
+
+func meterSetting(dir string) meterSettings {
 	o := loadOwnSettings(dir)
-	bands, fall := 4, "gentle"
+	m := meterSettings{Bands: 3, Rise: "medium", Fall: "medium", Peaks: o.Peaks}
 	if slices.Contains(meterBandChoices, o.Bands) {
-		bands = o.Bands
+		m.Bands = o.Bands
 	}
-	if slices.Contains(meterFalls, o.Fall) {
-		fall = o.Fall
+	if old, ok := oldFalls[o.Fall]; ok {
+		m.Rise, m.Fall = old[0], old[1]
+	} else if speedIndex(o.Fall) >= 0 {
+		m.Fall = o.Fall
 	}
-	return bands, fall
+	if speedIndex(o.Rise) >= 0 {
+		m.Rise = o.Rise
+	}
+	return m
+}
+
+func speedIndex(name string) int {
+	return slices.IndexFunc(meterSpeeds, func(c choiceOf) bool { return c.value == name })
+}
+
+func speedLabel(name string) string {
+	return meterSpeeds[max(0, speedIndex(name))].label
 }
 
 // applyMeter passes the meander's settings on to the audio meter and the screen.
 func applyMeter(dir string) {
-	bands, fall := meterSetting(dir)
-	meterBands.Store(int32(bands))
+	m := meterSetting(dir)
+	meterBands.Store(int32(m.Bands))
 	meterDelay.Store(int32(delayFor(dir, speakerAddress())))
-	display.update(func(s *screenState) { s.Fall = fall })
+	display.update(func(s *screenState) { s.Rise, s.Fall, s.Peaks = m.Rise, m.Fall, m.Peaks })
 }
 
-// setMeter steps one of the meander's settings, "bands" or "fall", on to its next choice.
-func (h *hermes) setMeter(which string) error {
-	own := loadOwnSettings(h.dir)
-	bands, f := meterSetting(h.dir)
-	switch which {
-	case "fall":
-		own.Fall = meterFalls[(slices.Index(meterFalls, f)+1)%len(meterFalls)]
-	default:
-		own.Bands = meterBandChoices[(slices.Index(meterBandChoices, bands)+1)%len(meterBandChoices)]
+// stepMeter steps one of the meander's settings, "bands", "rise" or "fall", delta choices along,
+// stopping at the ends; "peaks" turns the peak line on or off.
+func stepMeter(dir, which string, delta int) error {
+	if dir == "" {
+		return errors.New("Petasos is still starting.")
 	}
-	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
+	m := meterSetting(dir)
+	step := func(i, n int) int { return max(0, min(n-1, i+delta)) }
+	switch which {
+	case "bands":
+		m.Bands = meterBandChoices[step(slices.Index(meterBandChoices, m.Bands), len(meterBandChoices))]
+	case "rise":
+		m.Rise = meterSpeeds[step(speedIndex(m.Rise), len(meterSpeeds))].value
+	case "fall":
+		m.Fall = meterSpeeds[step(speedIndex(m.Fall), len(meterSpeeds))].value
+	case "peaks":
+		m.Peaks = !m.Peaks
+	}
+	return setMeterTo(dir, m)
+}
+
+// setMeterTo saves the meander's settings, as new ones: an older fall-off is replaced.
+func setMeterTo(dir string, m meterSettings) error {
+	own := loadOwnSettings(dir)
+	own.Bands, own.Rise, own.Fall, own.Peaks = m.Bands, m.Rise, m.Fall, m.Peaks
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
 		return err
 	}
-	applyMeter(h.dir)
+	applyMeter(dir)
 	return nil
+}
+
+// externalMic is whether to record from a speaker's own microphone (a car's, over hands-free)
+// while it's connected, as its page in the Bluetooth tab sets. A speaker not set follows the
+// one choice there was before (carMic).
+func externalMic(dir, address string) bool {
+	if m, ok := loadOwnSettings(dir).Mics[strings.ToUpper(address)]; ok {
+		return m == "external"
+	}
+	return carMic.Load()
+}
+
+func setExternalMic(dir, address string, on bool) error {
+	own := loadOwnSettings(dir)
+	if own.Mics == nil {
+		own.Mics = map[string]string{}
+	}
+	own.Mics[strings.ToUpper(address)] = map[bool]string{true: "external", false: "internal"}[on]
+	return writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644)
 }
 
 // vpnSetting is whether to bring up the tunnel home, when there is one: on unless turned off in
@@ -474,7 +529,7 @@ func (c *config) applyOwnSettings(dir string) {
 
 // --- the Device tab ------------------------------------------------------------------------
 
-// mineView is the Device tab: the name, the microphone and the soft keys.
+// mineView is the Device tab: the name, the wake word and the versions.
 func (b *bluetooth) mineView() { b.mineViewAt(-1) }
 
 func (b *bluetooth) mineViewAt(sel int) {
@@ -483,74 +538,68 @@ func (b *bluetooth) mineViewAt(sel int) {
 		b.show(&btScreen{View: "message", Tab: "device", Title: "Not ready", Note: "Petasos is still starting."})
 		return
 	}
-	mic := "Car Thing"
-	if carMic.Load() {
-		mic = "The car's"
-	}
 	items := []btItem{
 		{Kind: "row", Icon: "device", Label: "Name", Value: h.shownName(), do: b.nameKeyboard},
-		{Kind: "row", Icon: "mic", Label: "Microphone", Value: mic, do: func() {
-			if err := h.setCarMic(!carMic.Load()); err != nil {
-				b.message("Couldn't save that", err.Error())
-				return
-			}
-			b.mineViewAt(1)
-		}},
-		{Kind: "row", Icon: "mic", Label: "Wake word", Value: map[bool]string{true: "“Hey Athena”", false: "Off"}[wakeOn.Load()],
+		{Kind: "row", Icon: "mic", Label: "Wake word", Detail: "“Hey " + display.agent() + "”", Check: checked(wakeOn.Load()),
 			do: func() {
 				if err := h.setWake(!wakeOn.Load()); err != nil {
 					b.message("Couldn't save that", err.Error())
 					return
 				}
-				b.mineViewAt(2)
+				b.mineViewAt(1)
 			}},
 	}
-	if hasTunnel(h.dir) {
-		items = append(items, btItem{Kind: "row", Icon: "device", Label: "VPN tunnel home",
-			Value: map[bool]string{true: "On", false: "Off"}[vpnSetting(h.dir)], do: func() {
-				if err := h.setVPN(!vpnSetting(h.dir)); err != nil {
-					b.message("Couldn't save that", err.Error())
-					return
-				}
-				b.mineViewAt(3)
-			}})
+	// The versions come from Hermes too, waited on briefly so the tab opens even when Hermes
+	// can't be reached (the tunnel home turned off, say).
+	versionsCh := make(chan versions, 1)
+	go func() { versionsCh <- h.versions() }()
+	v := h.localVersions()
+	select {
+	case v = <-versionsCh:
+	case <-time.After(hermesWait):
 	}
-	// What comes from Hermes is asked for together and waited on briefly, so the tab opens even
-	// when Hermes can't be reached (the tunnel home turned off, say) and its own settings, the VPN
-	// among them, can still be changed.
+	items = append(items, versionItems(v, func() { b.checkForUpdate(h) })...)
+	b.show(&btScreen{View: "mine", Tab: "device", Note: "Name is also what Bluetooth shows this Car Thing as.",
+		Items: items, Sel: firstRow(items, sel)})
+}
+
+// checked is a checkbox row's state.
+func checked(on bool) string {
+	return map[bool]string{true: "on", false: "off"}[on]
+}
+
+// softKeysView is the Soft keys tab: what each preset button does, in both sets.
+func (b *bluetooth) softKeysView() { b.softKeysViewAt(-1) }
+
+func (b *bluetooth) softKeysViewAt(sel int) {
+	h := hereNow()
+	if h == nil {
+		b.show(&btScreen{View: "message", Tab: "softkeys", Title: "Not ready", Note: "Petasos is still starting."})
+		return
+	}
 	type got struct {
 		p   devicePresets
 		err error
 	}
-	presetsCh, versionsCh := make(chan got, 1), make(chan versions, 1)
+	presetsCh := make(chan got, 1)
 	go func() { p, err := h.presets(); presetsCh <- got{p, err} }()
-	go func() { versionsCh <- h.versions() }()
-	until := time.Now().Add(hermesWait)
 	var p devicePresets
 	err := errors.New("Hermes didn't answer in time")
 	select {
 	case g := <-presetsCh:
 		p, err = g.p, g.err
-	case <-time.After(time.Until(until)):
+	case <-time.After(hermesWait):
 	}
-	v := h.localVersions()
-	select {
-	case v = <-versionsCh:
-	case <-time.After(time.Until(until)):
-	}
-	note := "Name is also what Bluetooth shows this Car Thing as."
-	if carMic.Load() {
-		note = "The car's microphone is used while the car is connected, the Car Thing's own otherwise."
-	}
+	agent := display.agent()
+	var items []btItem
+	note := "What each preset button does on the home screen."
 	if err != nil {
-		items = append(items, btItem{Kind: "header", Label: "Soft keys"},
-			btItem{Kind: "note", Label: "Can't reach " + display.agent() + " for the soft keys"})
+		items = append(items, btItem{Kind: "note", Label: "Can't reach " + agent + " for the soft keys"})
 	} else {
-		agent := display.agent()
 		for i, name := range presetNames {
 			switch i {
 			case 0:
-				items = append(items, btItem{Kind: "header", Label: "Soft keys"})
+				items = append(items, btItem{Kind: "header", Label: "First set"})
 			case 4:
 				items = append(items, btItem{Kind: "header", Label: "Second set, after the top-right button"})
 			}
@@ -568,29 +617,13 @@ func (b *bluetooth) mineViewAt(sel int) {
 					b.message("Couldn't change them", friendlyHermes(err))
 					return
 				}
-				b.mineView()
+				b.softKeysView()
 			}})
 		} else {
-			items = append(items, btItem{Kind: "note", Label: "Shared with your other devices until you change one"})
+			note = "Shared with your other devices until you change one."
 		}
 	}
-	bands, fall := meterSetting(h.dir)
-	items = append(items, btItem{Kind: "header", Label: "Sound on the screen"})
-	at := len(items)
-	for i, row := range []struct{ label, value, which string }{
-		{"Bands", fmt.Sprint(bands), "bands"},
-		{"Fall-off", strings.ToUpper(fall[:1]) + fall[1:], "fall"},
-	} {
-		items = append(items, btItem{Kind: "row", Icon: "speaker", Label: row.label, Value: row.value, do: func() {
-			if err := h.setMeter(row.which); err != nil {
-				b.message("Couldn't save that", err.Error())
-				return
-			}
-			b.mineViewAt(at + i)
-		}})
-	}
-	items = append(items, versionItems(v, func() { b.checkForUpdate(h) })...)
-	b.show(&btScreen{View: "mine", Tab: "device", Note: note, Items: items, Sel: firstRow(items, sel)})
+	b.show(&btScreen{View: "softkeys", Tab: "softkeys", Note: note, Items: items, Sel: firstRow(items, sel)})
 }
 
 func (b *bluetooth) nameKeyboard() {
@@ -630,7 +663,7 @@ func (b *bluetooth) softKeyViewAt(sel int, editing bool, problem string) {
 	d := b.draft
 	b.mu.Unlock()
 	if d == nil {
-		b.mineView()
+		b.softKeysView()
 		return
 	}
 	s := d.step
@@ -662,7 +695,7 @@ func (b *bluetooth) softKeyViewAt(sel int, editing bool, problem string) {
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "Label", Value: truncate(label, 24),
 			do: b.labelKeyboard})
 	}
-	items = append(items, btItem{Kind: "row", Icon: "back", Label: "Back", do: b.mineView})
+	items = append(items, btItem{Kind: "row", Icon: "back", Label: "Back", do: b.softKeysView})
 	note := problem
 	if note == "" {
 		note = "Changes are saved as you make them, for this Car Thing only."
@@ -671,7 +704,7 @@ func (b *bluetooth) softKeyViewAt(sel int, editing bool, problem string) {
 	if d.index >= 4 {
 		title = fmt.Sprintf("Second set, key %d", d.index-3)
 	}
-	b.show(&btScreen{View: "softkey", Tab: "device", Title: title, Note: note,
+	b.show(&btScreen{View: "softkey", Tab: "softkeys", Title: title, Note: note,
 		Items: items, Sel: firstRow(items, sel), Editing: editing})
 }
 
@@ -852,7 +885,7 @@ func versionItems(v versions, check func()) []btItem {
 	if !virtual {
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "System image", Value: unknown(v.Image)})
 	}
-	program := btItem{Kind: "row", Icon: "device", Label: "Petasos", Value: v.Program, do: check}
+	program := btItem{Kind: "row", Icon: "device", Label: "Petasos UI", Value: v.Program, do: check}
 	switch {
 	case v.Latest != "" && v.Latest != v.Program:
 		program.Detail = "Updating to " + v.Latest
@@ -861,5 +894,5 @@ func versionItems(v versions, check func()) []btItem {
 	default:
 		program.Detail = "Press the knob to check for an update"
 	}
-	return append(items, program, btItem{Kind: "row", Icon: "device", Label: "Plugin on Hermes", Value: unknown(v.Plugin)})
+	return append(items, program, btItem{Kind: "row", Icon: "device", Label: "Hermes plugin", Value: unknown(v.Plugin)})
 }

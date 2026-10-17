@@ -94,10 +94,18 @@ func TestMusicTabSavesTheSourcesOnHermes(t *testing.T) {
 	}
 
 	bt.show(&btScreen{View: "screen"})
-	ev("preset-4", "press", 0)
+	ev("mute", "press", 0)
+	ev("preset-1", "press", 0)
 	v := waitFor("the Music tab", func(v btScreen) bool { return v.View == "music" && v.Tab == "music" })
-	if v.Items[1].Value != "Not used" {
+	if v.Items[1].Label != "Buffer before playing" || v.Items[1].Value != "4 seconds" || v.Items[4].Value != "Not used" {
 		t.Fatalf("Music tab: %+v", v.Items)
+	}
+	// The buffer is this Car Thing's own, saved at once.
+	defer streamBuffer.Store(4)
+	choose("Buffer before playing")
+	waitFor("10 seconds", func(v btScreen) bool { return v.Items[1].Value == "10 seconds" })
+	if streamBuffer.Load() != 10 {
+		t.Fatalf("the buffer is %d seconds", streamBuffer.Load())
 	}
 	choose("Address")
 	typeText("http://localhost:4533")

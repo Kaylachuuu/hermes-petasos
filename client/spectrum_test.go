@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"path/filepath"
 	"testing"
 )
 
@@ -75,25 +76,34 @@ func TestPinkNoiseLightsTheBandsAlike(t *testing.T) {
 
 func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 	h := &hermes{dir: t.TempDir()}
-	if b, f := meterSetting(h.dir); b != 4 || f != "gentle" {
-		t.Fatalf("defaults: %d %s", b, f)
+	if m := meterSetting(h.dir); m != (meterSettings{Bands: 3, Rise: "medium", Fall: "medium"}) {
+		t.Fatalf("defaults: %+v", m)
 	}
 	var seen []int
-	for range 4 {
-		if err := h.setMeter("bands"); err != nil {
+	for _, delta := range []int{1, 1, -1, -1, -1} { // the knob stops at the ends
+		if err := stepMeter(h.dir, "bands", delta); err != nil {
 			t.Fatal(err)
 		}
-		b, _ := meterSetting(h.dir)
-		seen = append(seen, b)
+		seen = append(seen, meterSetting(h.dir).Bands)
 	}
-	if fmt.Sprint(seen) != "[5 1 3 4]" || meterBands.Load() != 4 {
+	if fmt.Sprint(seen) != "[5 5 3 1 1]" || meterBands.Load() != 1 {
 		t.Errorf("bands went %v, meter %d", seen, meterBands.Load())
 	}
-	if err := h.setMeter("fall"); err != nil {
-		t.Fatal(err)
+	stepMeter(h.dir, "fall", 1)
+	stepMeter(h.dir, "rise", -1)
+	stepMeter(h.dir, "peaks", 0)
+	if m := meterSetting(h.dir); m.Fall != "slow" || m.Rise != "fast" || !m.Peaks {
+		t.Errorf("went to %+v", m)
 	}
-	if _, f := meterSetting(h.dir); f != "slow" {
-		t.Errorf("fall-off went to %s", f)
+	if s := display.snapshot(); s.Rise != "fast" || s.Fall != "slow" || !s.Peaks {
+		t.Errorf("the screen has %s %s %v", s.Rise, s.Fall, s.Peaks)
+	}
+	// The fall-offs from before rising and falling were set apart, and 4 bands, carry over.
+	for old, want := range map[string]string{"peaks": "fast slow", "quick": "fast fast", "gentle": "medium medium", "slow": "medium slow"} {
+		writeJSON(filepath.Join(h.dir, ownSettingsFile), ownSettings{Bands: 4, Fall: old}, 0o644)
+		if m := meterSetting(h.dir); m.Rise+" "+m.Fall != want || m.Bands != 3 {
+			t.Errorf("%s became %+v", old, m)
+		}
 	}
 	const car = "aa:bb:cc:dd:ee:ff"
 	for _, delta := range []int{1, 1, 1, 1, 1, -1} {

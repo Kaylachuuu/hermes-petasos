@@ -76,20 +76,80 @@ func TestScreenSettingsWithTheKnob(t *testing.T) {
 	if view().Editing || !b.isOpen() {
 		t.Fatal("the front button should end editing and stay open")
 	}
+	waitTab := func(tab string) {
+		t.Helper()
+		for i := 0; i < 1000 && view().Tab != tab; i++ {
+			time.Sleep(time.Millisecond)
+		}
+		if v := view(); v.Tab != tab {
+			t.Fatalf("wanted the %s tab: %+v", tab, v)
+		}
+	}
 	press("preset-1")
-	if v := view(); v.Tab != "bluetooth" {
-		t.Fatalf("preset 1 should open the Bluetooth tab: %+v", v)
-	}
+	waitTab("device")
 	press("preset-2")
-	if view().Tab != "screen" {
-		t.Fatal("preset 2 should open the Screen tab")
-	}
+	waitTab("display")
 	press("front")
 	if b.isOpen() {
 		t.Fatal("the front button on a tab closes the settings")
 	}
 	b.openScreens()
-	if view().Tab != "screen" {
+	if view().Tab != "display" {
 		t.Fatal("the settings reopen on the last tab")
+	}
+}
+
+// Unticking Dim screen greys out its two rows, which the knob then passes over, and the front
+// button puts back a change being made.
+func TestDisplayTabDimBoxAndCancelling(t *testing.T) {
+	saved := backlight
+	defer func() { backlight = saved }()
+	backlight = &light{set: defaultLight, file: filepath.Join(t.TempDir(), "screen.json"), swallow: map[string]bool{}}
+	b := &bluetooth{open: true}
+	view := func() btScreen {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return *b.view
+	}
+	b.screenViewAt(1, false)
+	if v := view(); v.Items[1].Label != "Dim screen" || v.Items[1].Check != "on" || v.Items[2].Off {
+		t.Fatalf("Dim screen: %+v", v.Items[:3])
+	}
+	view().Items[1].do()
+	if v := view(); !backlight.settings().NoDim || v.Items[1].Check != "off" || !v.Items[2].Off || !v.Items[3].Off {
+		t.Fatalf("unticked: %+v", v.Items[:4])
+	}
+	b.move(1)
+	if v := view(); v.Items[v.Sel].Label != "Turn off after" {
+		t.Fatalf("the knob landed on %s", v.Items[v.Sel].Label)
+	}
+	view().Items[view().Sel].do() // change Turn off after, then think better of it
+	b.adjust(1)
+	if backlight.settings().OffAfter != 15 {
+		t.Fatalf("turned to %d", backlight.settings().OffAfter)
+	}
+	b.handle(map[string]any{"input": "front", "action": "press"})
+	if v := view(); v.Editing || backlight.settings().OffAfter != 0 || !b.isOpen() {
+		t.Fatalf("the front button should put it back: %d %+v", backlight.settings().OffAfter, v)
+	}
+	// A setting from before the box: never dimming.
+	if s := (lightSettings{DimAfter: 0, DimTo: 30}).valid(); !s.NoDim || s.DimAfter != 60 {
+		t.Fatalf("never dimming became %+v", s)
+	}
+}
+
+// Each speaker has its own microphone choice; one not yet set keeps the one choice from before.
+func TestEachSpeakerHasItsOwnMicrophone(t *testing.T) {
+	dir := t.TempDir()
+	defer carMic.Store(false)
+	carMic.Store(true)
+	if !externalMic(dir, "aa:bb:cc:dd:ee:ff") {
+		t.Fatal("a speaker not set should keep the car's microphone")
+	}
+	if err := setExternalMic(dir, "aa:bb:cc:dd:ee:ff", false); err != nil {
+		t.Fatal(err)
+	}
+	if externalMic(dir, "AA:BB:CC:DD:EE:FF") || !externalMic(dir, "11:22:33:44:55:66") {
+		t.Fatal("one speaker's choice should leave the others alone")
 	}
 }

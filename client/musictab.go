@@ -118,7 +118,7 @@ func (b *bluetooth) musicDraftView(sel int) {
 		}
 		return "None"
 	}
-	var items []btItem
+	items := []btItem{{Kind: "header", Label: "Streaming"}}
 	if d.quality != "" { // an older plugin has no qualities
 		shown, next := d.quality, qualities[0].name
 		for i, q := range qualities {
@@ -126,21 +126,33 @@ func (b *bluetooth) musicDraftView(sel int) {
 				shown, next = q.shown, qualities[(i+1)%len(qualities)].name
 			}
 		}
-		items = append(items, btItem{Kind: "header", Label: "Streaming"},
-			btItem{Kind: "row", Icon: "music", Label: "Quality", Value: shown, do: func() {
-				// Saved at once, apart from the rest of the draft.
-				body, _ := json.Marshal(map[string]string{"quality": next})
-				if h := hereNow(); h != nil {
-					if _, err := h.exchange("PUT", "/api/plugins/petasos/music/quality", "application/json", body, h.http, 1<<20); err != nil {
-						b.musicMessage("Couldn't save that", friendlyHermes(err))
-						return
-					}
+		at := len(items)
+		items = append(items, btItem{Kind: "row", Icon: "music", Label: "Quality", Value: shown, do: func() {
+			// Saved at once, apart from the rest of the draft.
+			body, _ := json.Marshal(map[string]string{"quality": next})
+			if h := hereNow(); h != nil {
+				if _, err := h.exchange("PUT", "/api/plugins/petasos/music/quality", "application/json", body, h.http, 1<<20); err != nil {
+					b.musicMessage("Couldn't save that", friendlyHermes(err))
+					return
 				}
-				d.quality, d.saved.Quality = next, next
-				b.musicDraftView(1)
-			}},
-			btItem{Kind: "note", Label: "Lower stutters less on a slow connection"})
+			}
+			d.quality, d.saved.Quality = next, next
+			b.musicDraftView(at)
+		}})
 	}
+	if h := hereNow(); h != nil {
+		at := len(items)
+		items = append(items, btItem{Kind: "row", Icon: "music", Label: "Buffer before playing",
+			Value: labelFor(streamBuffers, bufferSetting(h.dir)), do: func() {
+				// This Car Thing's own, saved at once. The next song always comes ahead.
+				if err := setBuffer(h.dir); err != nil {
+					b.musicMessage("Couldn't save that", err.Error())
+					return
+				}
+				b.musicDraftView(at)
+			}})
+	}
+	items = append(items, btItem{Kind: "note", Label: "Lower quality or more buffer stutters less on a slow connection"})
 	items = append(items, btItem{Kind: "header", Label: "Navidrome"})
 	items = append(items,
 		btItem{Kind: "row", Icon: "device", Label: "Address", Value: truncate(orNone(d.url, "Not used"), 28),

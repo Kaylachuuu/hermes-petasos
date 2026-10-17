@@ -104,19 +104,29 @@ func TestDeviceTabGivesTheCarThingItsOwnSoftKeysAndName(t *testing.T) {
 	}
 
 	bt.show(&btScreen{View: "screen"})
-	ev("preset-3", "press", 0)
+	ev("preset-1", "press", 0)
 	v := waitFor("the Device tab", func(v btScreen) bool { return v.View == "mine" })
-	if v.Tab != "device" || v.Items[0].Value != "Car Thing" || v.Items[4].Label != "Calendar" {
+	if v.Tab != "device" || v.Items[0].Value != "Car Thing" || v.Items[1].Label != "Wake word" || v.Items[1].Check == "" {
 		t.Fatalf("Device tab: %+v", v)
 	}
+	// The Soft keys tab is in the second set of tabs, after the top-right button.
+	ev("mute", "press", 0)
+	if v := view(); v.Set != 1 || v.View != "mine" {
+		t.Fatalf("the top-right button should only swap the tabs: %+v", v)
+	}
+	ev("preset-2", "press", 0)
+	v = waitFor("the Soft keys tab", func(v btScreen) bool { return v.View == "softkeys" })
+	if v.Tab != "softkeys" || v.Items[1].Label != "Calendar" {
+		t.Fatalf("Soft keys tab: %+v", v)
+	}
 	// The second set follows the first under its own header, each key a row the knob reaches.
-	if v.Items[8].Kind != "header" || v.Items[9].Label != "Apple Music" || v.Items[9].Detail != "Apple Music page" ||
-		v.Items[10].Detail != "Navidrome page" || v.Items[12].Kind != "row" || v.Items[12].Label != "—" {
+	if v.Items[5].Kind != "header" || v.Items[6].Label != "Apple Music" || v.Items[6].Detail != "Apple Music page" ||
+		v.Items[7].Detail != "Navidrome page" || v.Items[9].Kind != "row" || v.Items[9].Label != "—" {
 		t.Fatalf("second set: %+v", v.Items)
 	}
 	// Soft key 3: turn it into a question. Its words are asked for before it is saved.
 	ev("knob", "turn", 1)
-	for view().Sel != 6 {
+	for view().Sel != 3 {
 		ev("knob", "turn", 1)
 	}
 	ev("knob", "press", 0)
@@ -145,9 +155,12 @@ func TestDeviceTabGivesTheCarThingItsOwnSoftKeysAndName(t *testing.T) {
 	ev("front", "press", 0)
 	waitFor("soft key 3 again", func(v btScreen) bool { return v.View == "softkey" })
 	ev("front", "press", 0)
-	waitFor("the Device tab", func(v btScreen) bool { return v.View == "mine" })
+	waitFor("the Soft keys tab", func(v btScreen) bool { return v.View == "softkeys" })
 
 	// Renaming carries the soft keys to the new name and restarts.
+	ev("mute", "press", 0)
+	ev("preset-1", "press", 0)
+	waitFor("the Device tab", func(v btScreen) bool { return v.View == "mine" })
 	bt.mu.Lock()
 	bt.view.Sel = 0
 	bt.mu.Unlock()
@@ -207,19 +220,23 @@ func TestDeviceTabOpensWithoutHermes(t *testing.T) {
 	defer func() { bt, hermesWait = saved, wait }()
 	bt = &bluetooth{open: true}
 	defer display.update(func(st *screenState) { st.BT = nil })
+	view := func() btScreen {
+		bt.mu.Lock()
+		defer bt.mu.Unlock()
+		return *bt.view
+	}
 	began := time.Now()
 	bt.mineView()
-	if time.Since(began) > 2*time.Second {
-		t.Fatalf("took %v", time.Since(began))
+	if time.Since(began) > 2*time.Second || view().View != "mine" {
+		t.Fatalf("took %v: %+v", time.Since(began), view())
 	}
-	bt.mu.Lock()
-	v := *bt.view
-	bt.mu.Unlock()
+	// The tunnel home can be turned off and on again whether or not Hermes answers.
+	bt.networkView()
 	found := false
-	for _, it := range v.Items {
-		found = found || it.Label == "VPN tunnel home"
+	for _, it := range view().Items {
+		found = found || it.Label == "Tunnel home" && it.Check == "on"
 	}
-	if v.View != "mine" || !found {
-		t.Fatalf("got %+v", v)
+	if !found {
+		t.Fatalf("got %+v", view())
 	}
 }

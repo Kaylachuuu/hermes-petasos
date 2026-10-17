@@ -569,6 +569,7 @@ func (h *hermes) run(eventsFile string) {
 	carMic.Store(h.cfg.Mic == "car")
 	wakeOn.Store(wakeSetting(h.dir))
 	applyMeter(h.dir)
+	streamBuffer.Store(int32(bufferSetting(h.dir)))
 	go display.serve()
 	go backlight.start(h.dir)
 	netFirst.load(h.dir)
