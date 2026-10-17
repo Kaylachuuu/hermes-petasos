@@ -317,6 +317,17 @@ def music_stream(source: str, id: str) -> StreamingResponse:
     return StreamingResponse(pieces, media_type="audio/mpeg")
 
 
+@router.get("/music/art")
+def music_art(ref: str) -> Response:
+    """A picture for the music page, kept on this machine after the first time."""
+    music = _music()
+    try:
+        data, kind = music.art(ref)
+    except music.MusicError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)[:300]) from None
+    return Response(data, media_type=kind, headers={"Cache-Control": "private, max-age=604800"})
+
+
 @router.get("/voice/audio/{key}")
 def voice_audio(key: str) -> Response:
     audio = _voice().shared()[1].get(key)

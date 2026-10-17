@@ -220,6 +220,19 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
         <p class="hint">What Hermes sends your devices. Lower stutters less on a slow connection, like a phone's hotspot.</p>
       </div>
       </div>
+      <div id="cache-part" hidden>
+      <h3>SoundCloud cache on Hermes</h3>
+      <div class="row">
+        <label for="cache-source">As SoundCloud has them</label>
+        <select id="cache-source"></select>
+        <p class="hint" id="cache-source-hint"></p>
+      </div>
+      <div class="row">
+        <label for="cache-device">Converted for your devices</label>
+        <select id="cache-device"></select>
+        <p class="hint" id="cache-device-hint"></p>
+      </div>
+      </div>
       <h3>On this computer</h3>
       <div class="row">
         <label for="buffer">Buffer before playing</label>
@@ -618,6 +631,19 @@ function showMusic(s) {
   if (problem) { $("sc-account-hint").textContent = problem; $("sc-account-hint").className = "hint error"; }
   $("quality-part").hidden = !s.quality; // an older plugin has no qualities
   if (s.quality) $("quality").value = s.quality;
+  $("cache-part").hidden = !s.cache; // nor a cache
+  if (s.cache) {
+    const gb = (n) => n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : `${Math.round(n / (1 << 20))} MB`;
+    for (const kind of ["source", "device"]) {
+      const sel = $(`cache-${kind}`);
+      sel.textContent = "";
+      for (const n of s.cache.choices) sel.append(new Option(n ? `${n} GB` : "Don't keep", n));
+      sel.value = s.cache[kind];
+      $(`cache-${kind}-hint`).textContent = `${gb(s.cache[`${kind}_used`])} used. ` + (kind === "source"
+        ? "The best copy SoundCloud has (the artist's upload when they allow downloads), so a song isn't downloaded again."
+        : "Ready to send at the quality above, so a song isn't converted again. The longest unplayed go first once it's full.");
+    }
+  }
   const sp = s.spotify || {};
   $("sp-id").value = sp.client_id || "";
   $("sp-account-row").hidden = !sp.client_id;
@@ -655,6 +681,7 @@ async function saveMusic() {
       soundcloud: { client_id: $("sc-id").value.trim(), client_secret: $("sc-secret").value },
       spotify: { client_id: $("sp-id").value.trim() },
       ...($("quality-part").hidden ? {} : { quality: $("quality").value }),
+      ...($("cache-part").hidden ? {} : { cache: { source: +$("cache-source").value, device: +$("cache-device").value } }),
     }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Saving failed (HTTP ${res.status}).`);

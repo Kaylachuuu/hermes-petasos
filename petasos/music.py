@@ -199,7 +199,8 @@ class Navidrome:
 
     @staticmethod
     def _song(s: dict) -> dict:
-        return _track("navidrome", str(s.get("id")), s.get("title"), s.get("artist"), s.get("album"), s.get("duration"))
+        return _track("navidrome", str(s.get("id")), s.get("title"), s.get("artist"), s.get("album"), s.get("duration"),
+                      f"navidrome:{s['coverArt']}" if s.get("coverArt") else "")
 
     def find(self, query: str, kind: str) -> tuple[str, list[dict]]:
         """What to play for a request: a playlist, an album, an artist's songs or songs."""
@@ -241,7 +242,8 @@ class Navidrome:
     # The music page's lists.
     def playlists(self) -> list[dict]:
         lists = self.call("getPlaylists").get("playlists", {}).get("playlist", [])
-        return [_playlist_entry("navidrome", str(p.get("id")), p.get("name"), p.get("songCount")) for p in lists]
+        return [_playlist_entry("navidrome", str(p.get("id")), p.get("name"), p.get("songCount"),
+                                f"navidrome:{p['coverArt']}" if p.get("coverArt") else "") for p in lists]
 
     def playlist_tracks(self, ident: str) -> list[dict]:
         return [self._song(s) for s in self.call("getPlaylist", id=ident).get("playlist", {}).get("entry", [])]
@@ -674,20 +676,60 @@ class SoundCloud:
         return self._songs(self._items(self.call("/tracks", q=query, limit=30, linked_partitioning="true", access="playable")))
 
     def stream(self, ident: str) -> Iterator[bytes]:
+        """A track as MP3 at the quality set: from the cache (the copy converted for the devices,
+        or else SoundCloud's own copy converted now), or else from SoundCloud, keeping both."""
+        kbps, ffmpeg = bit_rate(), shutil.which("ffmpeg")
+        device = _cache_path("device", "soundcloud", ident, f"{kbps}.mp3")
+        if _cache_hit(device):
+            return _pieces(open(device, "rb"))
+        own = _cache_find("source", "soundcloud", ident)
+        if own and ffmpeg:
+            return _keep(device, *_convert(ffmpeg, ["-i", str(own)], kbps))
         urls = self.call(f"/tracks/{urllib.parse.quote(ident, safe=':')}/streams")
         hls = urls.get("hls_aac_160_url") or urls.get("hls_aac_96_url") or urls.get("hls_mp3_128_url")
-        ffmpeg = shutil.which("ffmpeg")
         if hls and ffmpeg:
-            proc = subprocess.Popen([ffmpeg, "-v", "error", "-headers", f"Authorization: OAuth {self.token()}\r\n",
-                                     "-i", hls, "-vn", "-ac", "2", "-ar", "48000", "-b:a", f"{bit_rate()}k",
-                                     "-f", "mp3", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            return _pieces(proc.stdout, proc)
+            aac = bool(urls.get("hls_aac_160_url") or urls.get("hls_aac_96_url"))
+            _fetch_source("soundcloud", ident, lambda tmp: self._fetch_own(ident, hls, aac, ffmpeg, tmp))
+            return _keep(device, *_convert(ffmpeg, ["-headers", f"Authorization: OAuth {self.token()}\r\n", "-i", hls], kbps))
         if urls.get("http_mp3_128_url"):  # older, plain MP3; SoundCloud is retiring it
             req = urllib.request.Request(urls["http_mp3_128_url"], headers={"Authorization": "OAuth " + self.token()})
             return _pieces(urllib.request.urlopen(req, timeout=30))
         if hls:
             raise MusicError("SoundCloud streams need ffmpeg installed on Hermes")
         raise MusicError("SoundCloud has no stream for this track")
+
+    def _fetch_own(self, ident: str, hls: str, aac: bool, ffmpeg: str, tmp: Path) -> str:
+        """Saves SoundCloud's best copy of a track at tmp, returning its file suffix: the file
+        the artist uploaded, when they allow downloads, else the stream's AAC as it comes (no
+        converting, so nothing is lost)."""
+        quoted = urllib.parse.quote(ident, safe=":")
+        try:
+            if self.call(f"/tracks/{quoted}").get("downloadable"):
+                req = urllib.request.Request(f"{self.API}/tracks/{quoted}/download", headers={"Authorization": "OAuth " + self.token()})
+                resp = urllib.request.urlopen(req, timeout=30)
+                try:
+                    if "json" in (resp.headers.get("Content-Type") or ""):  # where the file is, rather than the file
+                        where = json.loads(resp.read()).get("redirectUri") or ""
+                        if not where.startswith("https://"):
+                            raise ValueError("no download address")
+                        resp.close()
+                        resp = urllib.request.urlopen(where, timeout=30)
+                    suffix = Path(urllib.parse.urlparse(resp.url).path).suffix.lower()
+                    if suffix not in AUDIO_SUFFIXES:
+                        suffix = _SUFFIXES.get((resp.headers.get("Content-Type") or "").split(";")[0].strip(), ".audio")
+                    with open(tmp, "wb") as f:
+                        shutil.copyfileobj(resp, f, 64 << 10)
+                    return suffix
+                finally:
+                    resp.close()
+        except (MusicError, OSError, ValueError):
+            pass  # the stream's copy, then
+        done = subprocess.run([ffmpeg, "-v", "error", "-y", "-headers", f"Authorization: OAuth {self.token()}\r\n", "-i", hls,
+                               "-vn", "-c", "copy", "-f", "adts" if aac else "mp3", str(tmp)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+        if done.returncode != 0:
+            raise OSError("ffmpeg couldn't save the stream")
+        return ".aac" if aac else ".mp3"
 
 
 class Spotify:
@@ -1062,6 +1104,8 @@ def settings() -> dict:
                            "account": _soundcloud_account(sc)},
             "spotify": {"client_id": sp.get("client_id", ""), "account": _spotify_account(sp)},
             "quality": cfg.get("quality") if cfg.get("quality") in QUALITIES else "high",
+            "cache": {"source": cache_gb("source"), "device": cache_gb("device"), "choices": CACHE_CHOICES_GB,
+                      "source_used": cache_used("source"), "device_used": cache_used("device")},
             "ffmpeg": shutil.which("ffmpeg") is not None,
             "path": str(petasos_dir() / "music.json")}
 
@@ -1154,11 +1198,18 @@ def save_settings(body: dict) -> dict:
         if body["quality"] not in QUALITIES:
             raise MusicError("quality is one of " + ", ".join(QUALITIES))
         cfg["quality"] = body["quality"]
+    if isinstance(body.get("cache"), dict):  # likewise
+        sizes = {k: body["cache"].get(k, cache_gb(k)) for k in CACHE_DEFAULT_GB}
+        if any(v not in CACHE_CHOICES_GB or isinstance(v, bool) for v in sizes.values()):
+            raise MusicError("A cache's size is one of " + ", ".join(map(str, CACHE_CHOICES_GB)) + " GB")
+        cfg["cache"] = sizes
     _write_json(petasos_dir() / "music.json", cfg)
     try:
         os.chmod(petasos_dir() / "music.json", 0o600)  # it holds a password
     except OSError:
         pass
+    for kind in CACHE_DEFAULT_GB:  # a smaller size takes effect now
+        _cache_prune(kind)
     return settings()
 
 
@@ -1235,6 +1286,8 @@ def _pieces(f, proc=None) -> Iterator[bytes]:
         while True:
             chunk = f.read(32 * 1024)
             if not chunk:
+                if proc is not None:
+                    proc.wait()  # so its exit says whether it all came
                 return
             yield chunk
     finally:
@@ -1243,6 +1296,186 @@ def _pieces(f, proc=None) -> Iterator[bytes]:
             proc.kill()
             proc.wait()
 
+
+# --- the cache ----------------------------------------------------------------------------------
+#
+# SoundCloud's songs are kept on Hermes so a song played again needn't come from SoundCloud and
+# be converted again: SoundCloud's own copy of each ("source": the artist's upload when they
+# allow downloads, else the stream's AAC as it comes), and the MP3 made from it for the devices
+# at the quality set ("device"). A new quality converts from the kept copies. Each is kept only
+# once it has all come, and the songs played longest ago go first once a cache is over its size.
+
+# How big each may grow, in GB (music.json's "cache"); 0 keeps nothing.
+CACHE_CHOICES_GB = [0, 1, 2, 5, 10, 20, 50]
+CACHE_DEFAULT_GB = {"source": 10, "device": 2}
+_SUFFIXES = {"audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/flac": ".flac", "audio/x-flac": ".flac",
+             "audio/aac": ".aac", "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/aiff": ".aiff", "audio/x-aiff": ".aiff"}
+# The music page's pictures too, a few tens of KB each.
+ART_CACHE_GB = 1
+ART_HOSTS = ("sndcdn.com", "scdn.co", "spotifycdn.com")  # SoundCloud's and Spotify's pictures
+_fetching: set[str] = set()
+_fetching_lock = threading.Lock()
+
+
+def cache_gb(kind: str) -> int:
+    if kind == "art":
+        return ART_CACHE_GB
+    chosen = (config().get("cache") or {}).get(kind)
+    return chosen if chosen in CACHE_CHOICES_GB else CACHE_DEFAULT_GB[kind]
+
+
+def cache_used(kind: str) -> int:
+    return sum(p.stat().st_size for p in _cache_dir(kind).iterdir() if p.is_file() and not p.name.endswith(".tmp"))
+
+
+def _cache_dir(kind: str) -> Path:
+    path = _root() / "petasos" / "music-cache" / kind
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _cache_name(source: str, ident: str) -> str:
+    return hashlib.sha1(f"{source}\0{ident}".encode()).hexdigest()[:24]
+
+
+def _cache_path(kind: str, source: str, ident: str, suffix: str) -> Path:
+    return _cache_dir(kind) / f"{_cache_name(source, ident)}-{suffix}"
+
+
+def _cache_hit(path: Path) -> bool:
+    """Whether a copy is kept, marking it played now."""
+    try:
+        os.utime(path)
+        return True
+    except OSError:
+        return False
+
+
+def _cache_find(kind: str, source: str, ident: str) -> Path | None:
+    for path in _cache_dir(kind).glob(_cache_name(source, ident) + "-*"):
+        if not path.name.endswith(".tmp") and _cache_hit(path):
+            return path
+    return None
+
+
+def _cache_prune(kind: str) -> None:
+    files = [p for p in _cache_dir(kind).iterdir() if p.is_file() and not p.name.endswith(".tmp")]
+    stats = sorted(((p.stat().st_mtime, p.stat().st_size, p) for p in files), key=lambda s: s[0])
+    total, limit = sum(size for _, size, _ in stats), cache_gb(kind) << 30
+    for _, size, path in stats:
+        if total <= limit:
+            break
+        path.unlink(missing_ok=True)
+        total -= size
+
+
+def _convert(ffmpeg: str, source: list[str], kbps: int):
+    """ffmpeg turning a source into MP3 for the devices: its pieces, and whether it all came."""
+    proc = subprocess.Popen([ffmpeg, "-v", "error", *source, "-vn", "-ac", "2", "-ar", "48000", "-b:a", f"{kbps}k",
+                             "-f", "mp3", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return _pieces(proc.stdout, proc), lambda: proc.returncode == 0
+
+
+def _keep(path: Path, pieces: Iterator[bytes], whole=lambda: True) -> Iterator[bytes]:
+    """Passes the pieces on, keeping a copy at path once they've all come. A song skipped, or a
+    disk that won't take it, is simply not kept."""
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        f = open(tmp, "wb") if cache_gb(path.parent.name) > 0 else None
+    except OSError:
+        f = None
+    done = False
+    try:
+        for chunk in pieces:
+            if f is not None:
+                try:
+                    f.write(chunk)
+                except OSError:
+                    f.close()
+                    f = None
+            yield chunk
+        done = True
+    finally:
+        pieces.close()
+        if f is not None:
+            f.close()
+            if done and whole():
+                os.replace(tmp, path)
+                _cache_prune(path.parent.name)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _fetch_source(source: str, ident: str, fetch) -> None:
+    """Keeps a source's own copy of a track, fetched in the background by fetch(tmp), which
+    saves it at tmp and returns its suffix."""
+    name = _cache_name(source, ident)
+    if cache_gb("source") == 0:
+        return
+    with _fetching_lock:
+        if name in _fetching:
+            return
+        _fetching.add(name)
+
+    def run():
+        tmp = _cache_dir("source") / f".{name}.{secrets.token_hex(4)}.tmp"
+        try:
+            suffix = fetch(tmp)
+            os.replace(tmp, _cache_path("source", source, ident, "own" + suffix))
+            _cache_prune("source")
+        except Exception:  # noqa: BLE001 - kept another time, then
+            pass
+        finally:
+            tmp.unlink(missing_ok=True)
+            with _fetching_lock:
+                _fetching.discard(name)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+
+def art(ref: str) -> tuple[bytes, str]:
+    """A picture for the music page (a track's or playlist's "art"), with its type. Kept here
+    after the first time. Only SoundCloud's and Spotify's pictures, and Navidrome's covers
+    ("navidrome:<cover id>"), which need its sign-in."""
+    if ref.startswith("navidrome:"):
+        cfg = config()
+        if not cfg.get("navidrome"):
+            raise MusicError("Navidrome isn't set up")
+        url = Navidrome(cfg["navidrome"]).url_for("getCoverArt", id=ref.removeprefix("navidrome:"), size=300)
+    else:
+        parts = urllib.parse.urlparse(ref)
+        host = parts.hostname or ""
+        if parts.scheme != "https" or not any(host == h or host.endswith("." + h) for h in ART_HOSTS):
+            raise MusicError("not one of the music's pictures")
+        url = ref
+    path = _cache_path("art", "art", ref, "picture")
+    if _cache_hit(path):
+        data = path.read_bytes()
+    else:
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = resp.read(4 << 20)
+        except OSError as exc:
+            raise MusicError(f"The picture didn't come: {exc}") from None
+        if _picture_type(data) == "application/octet-stream":
+            raise MusicError("That isn't a picture")  # Navidrome's error, say
+        b"".join(_keep(path, (piece for piece in [data])))
+    return data, _picture_type(data)
+
+
+def _picture_type(data: bytes) -> str:
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "application/octet-stream"
 
 # --- the agent's tools --------------------------------------------------------------------------
 

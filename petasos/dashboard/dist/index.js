@@ -138,6 +138,8 @@
   const NO_AUTOFILL = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", spellCheck: false };
 
   // Music Athena can play: a Navidrome server and folders on this machine (music.json).
+  function sizeOf(n) { return n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + " GB" : Math.round(n / (1 << 20)) + " MB"; }
+
   function MusicCard() {
     const [loaded, setLoaded] = useState(null);
     const [url, setUrl] = useState("");
@@ -146,6 +148,7 @@
     const [folders, setFolders] = useState("");
     const [scId, setScId] = useState("");
     const [scSecret, setScSecret] = useState("");
+    const [cache, setCache] = useState(null);
     const [busy, setBusy] = useState("");
     const [error, setError] = useState("");
     const [checked, setChecked] = useState(null);
@@ -158,6 +161,7 @@
       setFolders(data.folders.join("\n"));
       setScId((data.soundcloud || {}).client_id || "");
       setScSecret("");
+      setCache(data.cache ? { source: data.cache.source, device: data.cache.device } : null);
     }
 
     useEffect(() => {
@@ -176,6 +180,7 @@
             navidrome: { url: url.trim(), username: username.trim(), password },
             folders: folders.split("\n").map((f) => f.trim()).filter(Boolean),
             soundcloud: { client_id: scId.trim(), client_secret: scSecret },
+            ...(cache ? { cache } : {}),
           }),
         });
         const body = await res.json().catch(() => ({}));
@@ -223,6 +228,14 @@
             hint: (loaded.soundcloud || {}).has_secret ? "Saved. Type a new one to change it." : null },
             h(C.Input, Object.assign({}, NO_AUTOFILL, { id: "petasos-sc-secret", name: "soundcloud-secret", type: "password", value: scSecret, autoComplete: "new-password",
               placeholder: (loaded.soundcloud || {}).has_secret ? "••••••••" : "", onChange: edited(setScSecret) })))),
+        cache ? h("div", { className: "petasos-pair" },
+          ["source", "device"].map((kind) => h(Field, { key: kind, id: "petasos-cache-" + kind,
+            label: kind === "source" ? "Cache as SoundCloud has them" : "Cache converted for devices",
+            hint: sizeOf(loaded.cache[kind + "_used"]) + " used." },
+            h("select", { id: "petasos-cache-" + kind, className: "petasos-select", value: cache[kind],
+              onChange: (e) => { setChecked(null); setCache(Object.assign({}, cache, { [kind]: +e.target.value })); } },
+              loaded.cache.choices.map((n) => h("option", { key: n, value: n }, n ? n + " GB" : "Don't keep")))))) : null,
+        cache ? h("p", { className: "petasos-hint" }, "Kept on this machine so a song isn't downloaded or converted again; the longest unplayed go first once one is full.") : null,
         h("div", { className: "petasos-actions" },
           h(C.Button, { onClick: saveAndCheck, disabled: !!busy }, busy || "Save and check"),
           error ? h("p", { className: "petasos-error" }, error) : null),

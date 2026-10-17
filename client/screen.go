@@ -196,6 +196,7 @@ func (s *screen) serve() {
 	mux.HandleFunc("/app/vpns", appVPNsHandler)
 	mux.HandleFunc("/app/prefs", appPrefsHandler)
 	mux.HandleFunc("/music/browse", musicBrowse)
+	mux.HandleFunc("/music/art", musicArt)
 	mux.HandleFunc("/music/play", musicPlay)
 	mux.HandleFunc("/music/control", musicControlPost)
 	mux.HandleFunc("/music/page", musicPagePost)

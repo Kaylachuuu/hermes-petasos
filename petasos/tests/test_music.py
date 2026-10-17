@@ -113,6 +113,11 @@ class FakeNavidrome(BaseHTTPRequestHandler):
         method = url.path.rsplit("/", 1)[-1].removesuffix(".view")
         FakeNavidrome.calls.append((method, q))
         ok = q.get("u") == "kayla" and q.get("t") == hashlib.md5(("secret" + q.get("s", "")).encode()).hexdigest()
+        if method == "getCoverArt":
+            self.send_response(200 if ok else 401)
+            self.end_headers()
+            self.wfile.write(b"\x89PNG-" + q["id"].encode())
+            return
         if method == "stream":
             self.send_response(200 if ok else 401)
             self.end_headers()
@@ -182,6 +187,8 @@ class FakeSoundCloud(BaseHTTPRequestHandler):
     grants = []
     hls_dir = None
     challenge = ""
+    streams_asked = 0
+    original = None  # the artist's upload, offered as a download when set
 
     def log_message(self, *_):
         pass
@@ -247,7 +254,16 @@ class FakeSoundCloud(BaseHTTPRequestHandler):
             return self._json({"collection": [{"urn": "soundcloud:playlists:9", "title": "Late Night Drive"}]})
         if url.path == "/playlists/soundcloud:playlists:9/tracks":
             return self._json({"collection": [{"urn": "soundcloud:tracks:3", "title": "Fingerprint", "user": user}]})
+        if url.path == "/tracks/soundcloud:tracks:1":
+            return self._json({"urn": "soundcloud:tracks:1", "downloadable": FakeSoundCloud.original is not None})
+        if url.path == "/tracks/soundcloud:tracks:1/download" and FakeSoundCloud.original is not None:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.end_headers()
+            self.wfile.write(FakeSoundCloud.original)
+            return
         if url.path == "/tracks/soundcloud:tracks:1/streams":
+            FakeSoundCloud.streams_asked += 1
             port = self.server.server_port
             return self._json({"hls_aac_160_url": f"http://127.0.0.1:{port}/hls/out.m3u8"} if FakeSoundCloud.hls_dir
                               else {"http_mp3_128_url": f"http://127.0.0.1:{port}/mp3"})
@@ -266,7 +282,7 @@ def soundcloud(home, monkeypatch):
     base = f"http://127.0.0.1:{server.server_port}"
     monkeypatch.setattr(music.SoundCloud, "API", base)
     monkeypatch.setattr(music.SoundCloud, "TOKEN_URL", base + "/oauth/token")
-    FakeSoundCloud.grants, FakeSoundCloud.hls_dir = [], None
+    FakeSoundCloud.grants, FakeSoundCloud.hls_dir, FakeSoundCloud.streams_asked, FakeSoundCloud.original = [], None, 0, None
     configure(home, {"soundcloud": {"client_id": "cid", "client_secret": "secret"}})
     yield base
     server.shutdown()
@@ -596,3 +612,105 @@ def test_quality_is_saved_alone(tmp_path, monkeypatch):
     assert cfg["quality"] == "low" and cfg["folders"] == [str(tmp_path)] and cfg["soundcloud"]["client_secret"] == "sec"
     with pytest.raises(music.MusicError):
         music.save_quality("loud")
+
+
+def _hls(tmp_path):
+    import shutil
+    import subprocess
+    if not shutil.which("ffmpeg"):
+        pytest.skip("no ffmpeg")
+    FakeSoundCloud.hls_dir = tmp_path / "hls"
+    FakeSoundCloud.hls_dir.mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac",
+                    "-f", "hls", "-hls_time", "1", str(FakeSoundCloud.hls_dir / "out.m3u8")], check=True)
+
+
+def _wait_for(check, seconds=10):
+    import time
+    until = time.time() + seconds
+    while not check() and time.time() < until:
+        time.sleep(0.05)
+    return check()
+
+
+def test_soundcloud_songs_are_kept_as_soundcloud_has_them_and_as_converted(home, soundcloud, tmp_path):
+    _hls(tmp_path)
+    cache = home / "petasos" / "music-cache"
+    first = b"".join(music.stream("soundcloud", "soundcloud:tracks:1"))
+    assert _wait_for(lambda: any(p.name.endswith("-own.aac") for p in (cache / "source").iterdir()))
+    assert [p.name.split("-")[1] for p in (cache / "device").iterdir()] == ["192.mp3"]
+    # Played again: from the converted copy, without asking SoundCloud.
+    assert b"".join(music.stream("soundcloud", "soundcloud:tracks:1")) == first
+    assert FakeSoundCloud.streams_asked == 1
+    # Another quality: converted from SoundCloud's copy kept here.
+    configure(home, {"soundcloud": {"client_id": "cid", "client_secret": "secret"}, "quality": "lowest"})
+    low = b"".join(music.stream("soundcloud", "soundcloud:tracks:1"))
+    assert 1000 < len(low) < len(first) and FakeSoundCloud.streams_asked == 1
+    assert sorted(p.name.split("-")[1] for p in (cache / "device").iterdir()) == ["192.mp3", "64.mp3"]
+
+
+def test_a_song_stopped_partway_is_not_kept(home, soundcloud, tmp_path):
+    _hls(tmp_path)
+    pieces = music.stream("soundcloud", "soundcloud:tracks:1")
+    next(pieces)
+    pieces.close()
+    assert list((home / "petasos" / "music-cache" / "device").iterdir()) == []
+
+
+def test_the_artists_upload_is_kept_when_they_allow_downloads(home, soundcloud, tmp_path):
+    _hls(tmp_path)
+    FakeSoundCloud.original = b"RIFF fake wav"
+    b"".join(music.stream("soundcloud", "soundcloud:tracks:1"))
+    source = home / "petasos" / "music-cache" / "source"
+    assert _wait_for(lambda: [p.read_bytes() for p in source.iterdir() if p.name.endswith("-own.wav")] == [b"RIFF fake wav"])
+
+
+def test_the_caches_keep_to_their_size_dropping_the_longest_unplayed(home, monkeypatch):
+    import os
+    monkeypatch.setattr(music, "cache_gb", lambda kind: 1)
+    d = music._cache_dir("device")
+    for i, name in enumerate(["old", "mid", "new"]):
+        (d / name).write_bytes(b"")
+        os.truncate(d / name, 400 << 20)  # sparse: no disk used
+        os.utime(d / name, (1000 + i, 1000 + i))
+    music._cache_prune("device")
+    assert sorted(p.name for p in d.iterdir()) == ["mid", "new"]
+
+
+def test_the_cache_sizes_are_set_and_none_keeps_nothing(home, soundcloud, tmp_path):
+    shown = music.settings()["cache"]
+    assert (shown["source"], shown["device"], shown["device_used"]) == (10, 2, 0)
+    with pytest.raises(music.MusicError):
+        music.save_settings({"folders": [], "cache": {"device": 3}})
+    _hls(tmp_path)
+    music.save_settings({"folders": [], "soundcloud": {"client_id": "cid", "client_secret": ""}, "cache": {"source": 0, "device": 0}})
+    assert music.settings()["cache"]["device"] == 0
+    b"".join(music.stream("soundcloud", "soundcloud:tracks:1"))
+    cache = home / "petasos" / "music-cache"
+    assert list((cache / "device").iterdir()) == [] and list((cache / "source").iterdir()) == []
+
+
+def test_pictures_are_kept_and_only_the_musics_are_fetched(home, monkeypatch):
+    fetched = []
+
+    class Answer:
+        def __init__(self, url): fetched.append(url)
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def read(self, _n): return b"\xff\xd8jpeg"
+
+    monkeypatch.setattr(music.urllib.request, "urlopen", lambda url, timeout: Answer(url))
+    url = "https://i1.sndcdn.com/artworks-abc-t300x300.jpg"
+    assert music.art(url) == (b"\xff\xd8jpeg", "image/jpeg")
+    assert music.art(url) == (b"\xff\xd8jpeg", "image/jpeg")
+    assert fetched == [url]
+    for bad in ["http://i1.sndcdn.com/a.jpg", "https://evil.example/sndcdn.com.jpg", "file:///etc/passwd", "navidrome:al1"]:
+        with pytest.raises(music.MusicError):
+            music.art(bad)
+
+
+def test_navidrome_covers_come_through_its_sign_in(home, navidrome):
+    music.save_settings({"navidrome": {"url": navidrome, "username": "kayla", "password": "secret"}, "folders": []})
+    data, kind = music.art("navidrome:al1")
+    assert (data, kind) == (b"\x89PNG-al1", "image/png")
+    assert FakeNavidrome.calls[-1][0] == "getCoverArt"

@@ -1081,7 +1081,8 @@ function pageState(name) {
 }
 
 const clock = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
-const artStyle = (url) => url ? `background-image:url('${String(url).replace(/['\\()]/g, encodeURIComponent)}')` : "";
+// Pictures come through Petasos, which keeps them; a playlist's (keep) even past a restart.
+const artStyle = (ref, keep) => ref ? `background-image:url('/music/art?${keep ? "keep=1&" : ""}ref=${encodeURIComponent(ref).replace(/['()]/g, escape)}')` : "";
 const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).catch(() => {});
 const viewList = () => [["now", "Now Playing"], ...PAGES[mpName].tabs];
 
@@ -1214,7 +1215,7 @@ function listHTML() {
   const l = mp.lists[mp.view];
   if (!l || l.loading) return note("Loading…");
   if (mp.view === "playlists")
-    return (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art)}">${p.art ? "" : icon("list")}</div>
+    return (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art, true)}">${p.art ? "" : icon("list")}</div>
       <div><b>${esc(p.title)}</b><span>${p.count ? p.count + " songs" : ""}</span></div><em></em></div>`).join("")
       : note(l.note || "No playlists yet.");
   return (l.tracks || []).length ? trackRows(l.tracks, now) : note(l.note || "Nothing here yet.");
