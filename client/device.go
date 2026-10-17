@@ -315,8 +315,16 @@ type ownSettings struct {
 var (
 	meterBandChoices = []int{1, 3, 4, 5}
 	meterFalls       = []string{"quick", "gentle", "slow", "peaks"} // peaks: rising at once, falling slowly
-	meterDelays      = []int{-200, -100, 0, 100, 200, 300, 400, 500, 600, 700, 800}
+	meterDelays      = delaySteps(-200, 800, 50)
 )
+
+func delaySteps(from, to, step int) []int {
+	var d []int
+	for ms := from; ms <= to; ms += step {
+		d = append(d, ms)
+	}
+	return d
+}
 
 // delayFor is how much later the meander shows the sound while a speaker plays it, in ms, as
 // set in its page in the Bluetooth tab.

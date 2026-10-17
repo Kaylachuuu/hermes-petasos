@@ -96,7 +96,7 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 		t.Errorf("fall-off went to %s", f)
 	}
 	const car = "aa:bb:cc:dd:ee:ff"
-	for _, delta := range []int{1, 1, 1, -1} {
+	for _, delta := range []int{1, 1, 1, 1, 1, -1} {
 		if err := setDelay(h.dir, car, delta); err != nil {
 			t.Fatal(err)
 		}
