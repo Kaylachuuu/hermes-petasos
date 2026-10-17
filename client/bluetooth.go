@@ -428,7 +428,7 @@ func (b *bluetooth) redraw() {
 	case "list":
 		b.listViewAt(v.Sel)
 	case "device":
-		b.deviceViewAt(v.Sel)
+		b.deviceViewEdit(v.Sel, v.Editing)
 	}
 }
 
@@ -505,7 +505,11 @@ func (b *bluetooth) deviceView(path dbus.ObjectPath) {
 	b.deviceViewAt(-1)
 }
 
-func (b *bluetooth) deviceViewAt(sel int) {
+func (b *bluetooth) deviceViewAt(sel int) { b.deviceViewEdit(sel, false) }
+
+// deviceViewEdit shows a device's page; editing is whether the highlighted row's value is being
+// turned with the knob.
+func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 	b.mu.Lock()
 	path := b.focus
 	b.mu.Unlock()
@@ -560,12 +564,11 @@ func (b *bluetooth) deviceViewAt(sel int) {
 		if h := hereNow(); h != nil {
 			at, address := len(items), d.Address
 			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Sound bands timing",
-				Value: delayLabel(delayFor(h.dir, address)), do: func() {
-					if err := setDelay(h.dir, address); err != nil {
-						b.message("Couldn't save that", err.Error())
-						return
+				Value: delayLabel(delayFor(h.dir, address)), do: func() { b.deviceViewEdit(at, true) },
+				turn: func(delta int) {
+					if err := setDelay(h.dir, address, delta); err != nil {
+						log.Printf("saving the timing: %v", err)
 					}
-					b.deviceViewAt(at)
 				}})
 		}
 	}
@@ -573,7 +576,9 @@ func (b *bluetooth) deviceViewAt(sel int) {
 		btItem{Kind: "row", Icon: "forget", Label: "Forget this device",
 			do: func() { b.act(d.Name, "Forgetting", b.forget(d.Path)) }},
 		btItem{Kind: "row", Icon: "back", Label: "Back", do: b.listView})
-	b.show(&btScreen{View: "device", Title: d.Name, Note: note, Items: items, Sel: firstRow(items, sel)})
+	sel = firstRow(items, sel)
+	b.show(&btScreen{View: "device", Title: d.Name, Note: note, Items: items, Sel: sel,
+		Editing: editing && items[sel].turn != nil})
 }
 
 // act shows a working message, runs the step, then says how it went and returns to the list.

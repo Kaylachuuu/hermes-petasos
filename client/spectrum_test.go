@@ -96,8 +96,8 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 		t.Errorf("fall-off went to %s", f)
 	}
 	const car = "aa:bb:cc:dd:ee:ff"
-	for range 2 {
-		if err := setDelay(h.dir, car); err != nil {
+	for _, delta := range []int{1, 1, 1, -1} {
+		if err := setDelay(h.dir, car, delta); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -112,6 +112,12 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 	applyMeter(h.dir)
 	if meterDelay.Load() != 200 {
 		t.Errorf("the car's timing isn't applied: %d", meterDelay.Load())
+	}
+	for range 20 { // the knob stops at the ends
+		setDelay(h.dir, car, -1)
+	}
+	if d := delayFor(h.dir, car); d != -200 {
+		t.Errorf("turned all the way down: %d", d)
 	}
 	meterDelay.Store(0)
 }

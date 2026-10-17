@@ -123,11 +123,14 @@ func (b *bluetooth) adjust(delta int) {
 		step = -1
 	}
 	v.Items[v.Sel].turn(step)
-	if v.View == "softkey" {
+	switch v.View {
+	case "softkey":
 		b.softKeyViewAt(v.Sel, true, "")
-		return
+	case "device":
+		b.deviceViewEdit(v.Sel, true)
+	default:
+		b.screenViewAt(v.Sel, true)
 	}
-	b.screenViewAt(v.Sel, true)
 }
 
 // doneEditing leaves the row being edited, keeping its value.
@@ -139,6 +142,8 @@ func (b *bluetooth) doneEditing() {
 	case v == nil:
 	case v.View == "softkey":
 		go b.saveSoftKey(v.Sel)
+	case v.View == "device":
+		b.deviceViewEdit(v.Sel, false)
 	default:
 		b.screenViewAt(v.Sel, false)
 	}

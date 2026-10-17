@@ -679,7 +679,7 @@ function drawReply(s) {
 
 function drawBT(b) {
   const keys = { list: [["Knob", "choose"], ["Press", "open"], ["Front button", "close"]],
-                 device: [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
+                 device: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "do it"], ["Front button", "back"]],
                  scan: [["Knob", "choose"], ["Press", "pair"], ["Front button", "back"]],
                  pair: b.asking ? [["Press", "pair"], ["Front button", "decline"]] : [],
                  screen: b.editing ? [["Knob", "change"], ["Press", "done"]] : [["Knob", "choose"], ["Press", "change"], ["Front button", "close"]],

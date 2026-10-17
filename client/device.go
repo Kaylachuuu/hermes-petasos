@@ -315,7 +315,7 @@ type ownSettings struct {
 var (
 	meterBandChoices = []int{1, 3, 4, 5}
 	meterFalls       = []string{"quick", "gentle", "slow", "peaks"} // peaks: rising at once, falling slowly
-	meterDelays      = []int{0, 100, 200, 300, 400, 500, 700, -200, -100}
+	meterDelays      = []int{-200, -100, 0, 100, 200, 300, 400, 500, 600, 700, 800}
 )
 
 // delayFor is how much later the meander shows the sound while a speaker plays it, in ms, as
@@ -328,14 +328,15 @@ func delayFor(dir, address string) int {
 	return 0
 }
 
-// setDelay steps a speaker's delay on to its next choice.
-func setDelay(dir, address string) error {
+// setDelay steps a speaker's delay on by delta choices, as the knob turns.
+func setDelay(dir, address string, delta int) error {
 	own := loadOwnSettings(dir)
 	if own.Delays == nil {
 		own.Delays = map[string]int{}
 	}
 	address = strings.ToUpper(address)
-	d := meterDelays[(slices.Index(meterDelays, delayFor(dir, address))+1)%len(meterDelays)]
+	at := slices.Index(meterDelays, delayFor(dir, address)) + delta
+	d := meterDelays[max(0, min(len(meterDelays)-1, at))]
 	if d == 0 {
 		delete(own.Delays, address)
 	} else {
