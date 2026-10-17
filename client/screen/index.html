@@ -546,7 +546,7 @@ function drawBands() {
 }
 
 // How much of the way down the sound's levels fall each frame, as the Device tab sets it.
-const FALLS = { quick: 0.15, gentle: 0.06, slow: 0.03 };
+const FALLS = { quick: 0.15, gentle: 0.04, slow: 0.02 };
 
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
 // The levels move by time, not by frame, but no more than a tenth of a second's worth at a step,
@@ -558,17 +558,18 @@ function stepBands(now) {
   if (bandsAt && now - bandsAt < 50) { bandFrame = requestAnimationFrame(stepBands); return; }
   const frames = bandsAt ? Math.min(now - bandsAt, 100) / 16.7 : 1; // in 60ths of a second
   bandsAt = now;
-  const ease = (shown, target, fall = 0.15) => {
-    shown += (target - shown) * (1 - Math.pow(1 - (target > shown ? 0.5 : fall), frames));
+  const ease = (shown, target, fall = 0.15, rise = 0.5) => {
+    shown += (target - shown) * (1 - Math.pow(1 - (target > shown ? rise : fall), frames));
     return Math.abs(target - shown) < 0.005 ? target : shown;
   };
   const fall = FALLS[state && state.fall] || FALLS.gentle;
   micShown = ease(micShown, state && state.phase === "listening" ? micTarget : 0);
-  lvlShown = ease(lvlShown, lvlTarget, fall);
+  const rise = fall < FALLS.quick ? 0.25 : 0.5; // softer rises too, but for quick
+  lvlShown = ease(lvlShown, lvlTarget, fall, rise);
   let partsMoving = false;
   if (partsTarget) {
     if (partsShown && partsShown.length !== partsTarget.length) partsShown = null; // the bands were changed
-    partsShown = partsTarget.map((target, i) => ease(partsShown ? partsShown[i] : 0, target, fall));
+    partsShown = partsTarget.map((target, i) => ease(partsShown ? partsShown[i] : 0, target, fall, rise));
     partsMoving = partsShown.some((l, i) => l !== partsTarget[i]);
   }
   drawBands();
