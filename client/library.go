@@ -133,13 +133,20 @@ func setBufferTo(dir string, seconds int) error {
 	return nil
 }
 
+// Once a stream has its cushion and paceLead seconds more, the rest comes at paceFactor times
+// the speed it plays (readahead.go): fast enough to keep ahead, slow enough to leave the
+// Bluetooth radio to the car's sound most of the time. The next song comes at that pace from
+// the start. streamRate is the last stream's bytes a second, for the next song's.
+const (
+	paceFactor = 2
+	paceLead   = 30
+)
+
+var streamRate atomic.Int32
+
 // cushionFor is how many bytes to have in before a stream plays: the seconds set, at the
-// bitrate its first frame gives.
-func cushionFor(ahead *readAhead) int {
-	secs := int(streamBuffer.Load())
-	if secs < 0 {
-		return libraryCacheMax
-	}
+// bitrate its first frame gives; and that bitrate, in bytes a second.
+func cushionFor(ahead *readAhead) (int, int) {
 	ahead.fill(16<<10, streamStall)
 	head := ahead.head(16 << 10)
 	if len(head) >= 10 && string(head[:3]) == "ID3" { // a tag first, perhaps with a picture
@@ -150,7 +157,11 @@ func cushionFor(ahead *readAhead) int {
 			head = head[10+size:]
 		}
 	}
-	return secs * mp3Kbps(head) * 1000 / 8
+	rate := mp3Kbps(head) * 1000 / 8
+	if secs := int(streamBuffer.Load()); secs >= 0 {
+		return secs * rate, rate
+	}
+	return libraryCacheMax, rate
 }
 
 // mp3Kbps is the bitrate of the first MP3 frame in data, or 192 when there isn't one.
@@ -267,6 +278,11 @@ func (l *libraryPlayer) fetchNext() {
 			l.mu.Unlock()
 		}
 	})
+	rate := int(streamRate.Load())
+	if rate <= 0 {
+		rate = 192 * 1000 / 8
+	}
+	ahead.pace(paceFactor*rate, 0)
 	l.mu.Lock()
 	n.ahead = ahead
 	if n.data != nil || l.next != n { // it was all in, or given up on, already
@@ -610,8 +626,12 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 			})
 		}
 		defer ahead.abandon()
-		cushion = cushionFor(ahead)
+		ahead.pace(0, 0) // the next song's, paced while it waited, wanted now
+		var rate int
+		cushion, rate = cushionFor(ahead)
+		streamRate.Store(int32(rate))
 		ahead.fill(cushion, streamStall)
+		ahead.pace(paceFactor*rate, max(cushion, paceLead*rate))
 		src = ahead
 	}
 	dec, err := mp3.NewDecoder(src)

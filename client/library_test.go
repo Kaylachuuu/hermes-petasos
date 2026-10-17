@@ -389,8 +389,25 @@ func TestStreamBufferSettings(t *testing.T) {
 	}
 	streamBuffer.Store(10)
 	r := newReadAhead(bytes.NewReader(append([]byte{0xFF, 0xFB, 0x90, 0x64}, make([]byte, 400<<10)...)), func(error) {})
-	if c := cushionFor(r); c != 10*128*1000/8 {
-		t.Errorf("10 seconds at 128 kbps is %d bytes", c)
+	if c, rate := cushionFor(r); c != 10*128*1000/8 || rate != 128*1000/8 {
+		t.Errorf("10 seconds at 128 kbps is %d bytes, at %d a second", c, rate)
+	}
+}
+
+// Past its lead, a download keeps to its rate, leaving the Bluetooth radio to the car's sound.
+func TestReadAheadKeepsToItsPace(t *testing.T) {
+	took := func(rate, lead int) time.Duration {
+		began, done := time.Now(), make(chan struct{})
+		r := newReadAhead(bytes.NewReader(make([]byte, 512<<10)), func(error) { close(done) })
+		r.pace(rate, lead)
+		<-done
+		return time.Since(began)
+	}
+	if d := took(1<<20, 1<<20); d > 200*time.Millisecond {
+		t.Errorf("within its lead it took %v", d)
+	}
+	if d := took(1<<20, 0); d < 300*time.Millisecond {
+		t.Errorf("512 KB at 1 MB a second took only %v", d)
 	}
 }
 

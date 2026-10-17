@@ -7,9 +7,11 @@ import (
 	"time"
 )
 
-// readAhead downloads a track as fast as the network allows, ahead of where it is playing, so a
-// moment's slowness (the VPN, the phone changing networks) is taken from what's already here
-// rather than heard as the speaker running dry.
+// readAhead downloads a track ahead of where it is playing, so a moment's slowness (the VPN, the
+// phone changing networks) is taken from what's already here rather than heard as the speaker
+// running dry. It comes as fast as the network allows until lead bytes are held, then at rate:
+// the phone's internet and the car's sound share the Car Thing's one Bluetooth radio, and a
+// download going flat out takes the airtime the car's sound needs, which the car hears as skips.
 type readAhead struct {
 	mu        sync.Mutex
 	cond      *sync.Cond
@@ -17,6 +19,34 @@ type readAhead struct {
 	err       error        // how the download ended (io.EOF: all of it)
 	abandoned bool         // no longer played: what still comes is dropped
 	got       time.Time    // when the last of it came
+	rate      int          // bytes a second once lead is held (or it's abandoned); 0 for no limit
+	lead      int
+}
+
+// abandonedRate paces a download no longer played, which carries on to be kept, when no rate
+// was set: about twice a 192 kbps song's.
+const abandonedRate = 48 << 10
+
+// pace sets the rate the download keeps to once lead bytes are held unplayed.
+func (r *readAhead) pace(rate, lead int) {
+	r.mu.Lock()
+	r.rate, r.lead = rate, lead
+	r.cond.Broadcast()
+	r.mu.Unlock()
+}
+
+// wait is how long to pause after n bytes came, to keep to the rate.
+func (r *readAhead) wait(n int) time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rate := r.rate
+	if r.abandoned && rate == 0 {
+		rate = abandonedRate
+	}
+	if rate <= 0 || n <= 0 || !r.abandoned && r.buf.Len() <= r.lead {
+		return 0
+	}
+	return time.Duration(n) * time.Second / time.Duration(rate)
 }
 
 // readAheadMax is the most held unplayed, enough for a whole song to be in before it starts
@@ -48,6 +78,8 @@ func newReadAhead(src io.Reader, done func(error)) *readAhead {
 				done(err)
 				return
 			}
+			// Not reading leaves the rest in the network's own buffers, so the phone stops sending.
+			time.Sleep(r.wait(n))
 		}
 	}()
 	return r
