@@ -495,7 +495,7 @@ function setBand(id, b) {
 
 // setParts stacks the sound's bands of pitch in the band, the bass at the bottom and the treble
 // at the top, each a strip lit from the left; the one mark stays at the volume.
-const PART_GAP = 3;
+const PART_GAP = 0;
 function setParts(el, b, t) {
   const part = (c) => el.querySelector("." + c), parts = b.parts || [];
   const height = (60 - PART_GAP * (parts.length - 1)) / (parts.length || 1);
