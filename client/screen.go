@@ -53,11 +53,14 @@ type screenState struct {
 	KeySets   int          `json:"key_sets,omitempty"`   // how many sets there are
 	KeyPages  []string     `json:"key_pages,omitempty"`  // the page each soft key shown opens, or ""
 	MicNote   int          `json:"mic_note,omitempty"`
-	Update    *updateShown `json:"update,omitempty"` // a new petasos downloading (main.go's update)  // bumped when the mic is turned off or on, for a note on the screen
-	Hold      *holdShown   `json:"hold,omitempty"`   // a control held down, and what letting go would do (gestures.go)
-	Rise      string       `json:"rise,omitempty"`   // how quickly the top meander's sound rises: fast, medium or slow (device.go's meterSpeeds)
-	Fall      string       `json:"fall,omitempty"`   // and how quickly it falls back
-	Peaks     bool         `json:"peaks,omitempty"`  // a line held at each band's recent high
+	Update    *updateShown `json:"update,omitempty"`     // a new petasos downloading (main.go's update)  // bumped when the mic is turned off or on, for a note on the screen
+	Hold      *holdShown   `json:"hold,omitempty"`       // a control held down, and what letting go would do (gestures.go)
+	Rise      string       `json:"rise,omitempty"`       // how quickly the top meander's sound rises: fast, medium or slow (device.go's meterSpeeds)
+	Fall      string       `json:"fall,omitempty"`       // and how quickly it falls back
+	Peaks     bool         `json:"peaks,omitempty"`      // a line held at each band's recent high
+	Saver     string       `json:"saver,omitempty"`      // the screensaver showing (backlight.go's saverKinds), or ""
+	Zone      string       `json:"zone,omitempty"`       // Hermes's time zone, for the clock: the Car Thing keeps UTC
+	ZoneMins  *int         `json:"utc_offset,omitempty"` // ...and its offset from UTC now, in minutes, when it has no name
 }
 
 type links struct {

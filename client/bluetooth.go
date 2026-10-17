@@ -372,10 +372,10 @@ func (b *bluetooth) openScreens() {
 	b.mu.Lock()
 	b.open = true
 	tab := b.tab
-	if tab == "" {
+	if tab == "" || tabSet(tab) != 0 { // the settings always open on the first set of tabs
 		tab = "device"
 	}
-	b.set = tabSet(tab)
+	b.set = 0
 	b.mu.Unlock()
 	log.Printf("settings open")
 	switch tab {

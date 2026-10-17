@@ -169,6 +169,11 @@ func showScreenCommand(c map[string]any) {
 	if name, _ := c["agent"].(string); name != "" {
 		display.update(func(st *screenState) { st.Agent = name })
 	}
+	if _, ok := c["utc_offset"]; ok { // an older plugin sends no time zone: the clock shows UTC
+		zone, _ := c["zone"].(string)
+		mins := intOf(c["utc_offset"], 0)
+		display.update(func(st *screenState) { st.Zone, st.ZoneMins = zone, &mins })
+	}
 	knobVolume.Store(int64(intOf(c["knob_volume"], 0))) // an older plugin sends none: the knob's turns go to it
 	if raw, ok := c["gestures"]; ok {                   // an older plugin sends none: every tap goes at once
 		var g map[string]gestureHint

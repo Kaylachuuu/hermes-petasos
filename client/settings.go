@@ -22,7 +22,22 @@ var (
 	dimToChoices    = []choice{{10, "10%"}, {20, "20%"}, {30, "30%"}, {40, "40%"}, {50, "50%"},
 		{60, "60%"}, {70, "70%"}}
 	offAfterChoices = waitChoices
+
+	// The screensavers, by their names in screen.json and on the page; a choice's value is its
+	// place here.
+	saverKinds        = []string{"off", "clock", "now", "visualizer", "emblem", "auto"}
+	saverChoices      = []choice{{0, "Off"}, {1, "Clock"}, {2, "Now playing"}, {3, "Visualizer"}, {4, "Emblem"}, {5, "Automatic"}}
+	saverAfterChoices = []choice{{60, "60 seconds"}, {90, "90 seconds"}, {120, "120 seconds"}}
 )
+
+func saverIndex(kind string) int {
+	for i, k := range saverKinds {
+		if k == kind {
+			return i
+		}
+	}
+	return -1
+}
 
 // labelFor is the choice's label for a value, or the nearest choice's.
 func labelFor(choices []choice, value int) string {
@@ -114,6 +129,12 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 			}
 			b.screenViewAt(9, false)
 		}},
+		{Kind: "header", Label: "Screensaver"},
+		setting("moon", "Screensaver", saverChoices[max(0, saverIndex(s.Saver))].label, saverChoices,
+			func(s lightSettings) int { return max(0, saverIndex(s.Saver)) }, func(s *lightSettings, v int) { s.Saver = saverKinds[v] }),
+		saverRow(setting("moon", "Start after", labelFor(saverAfterChoices, s.SaverAfter), saverAfterChoices,
+			func(s lightSettings) int { return s.SaverAfter }, func(s *lightSettings, v int) { s.SaverAfter = v }), s),
+		saverRow(btItem{Kind: "row", Icon: "play", Label: "Preview", do: backlight.trySaver}, s),
 	}
 	for i := range items {
 		if items[i].turn != nil {
@@ -135,8 +156,11 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 	}
 	sel = firstRow(items, sel)
 	note := "Any button wakes a dark screen. A preset pressed while it is dark only wakes it."
-	if items[sel].Icon == "speaker" {
+	switch {
+	case items[sel].Icon == "speaker":
 		note = "How the band at the top shows the sound as it plays."
+	case sel >= 11:
+		note = "Shown once the screen is left alone. The first press or turn only wakes it; the wake word or an answer ends it too."
 	}
 	// The band at the top shows the level of the Brightness or Dimmed brightness row while one
 	// of them is highlighted; the other rows are words only.
@@ -157,6 +181,12 @@ func (b *bluetooth) screenViewAt(sel int, editing bool) {
 	} else {
 		backlight.showDim(0)
 	}
+}
+
+// saverRow greys out a screensaver row while there is none.
+func saverRow(it btItem, s lightSettings) btItem {
+	it.Off = s.Saver == "off"
+	return it
 }
 
 // adjust turns the value of the row being edited.

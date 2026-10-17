@@ -38,9 +38,12 @@ type lightSettings struct {
 	DimTo      int  `json:"dim_to"`           // percent of the normal brightness while dimmed
 	OffAfter   int  `json:"off_after"`        // seconds without activity before the screen turns off
 	NoDim      bool `json:"no_dim,omitempty"` // the Dim screen box is unticked
+
+	Saver      string `json:"saver,omitempty"`       // the screensaver: one of saverKinds
+	SaverAfter int    `json:"saver_after,omitempty"` // seconds without activity before it starts
 }
 
-var defaultLight = lightSettings{Brightness: 0, DimAfter: 60, DimTo: 30, OffAfter: 0}
+var defaultLight = lightSettings{Brightness: 0, DimAfter: 60, DimTo: 30, OffAfter: 0, Saver: "off", SaverAfter: 60}
 
 func (s lightSettings) valid() lightSettings {
 	clamp := func(v, lo, hi int) int { return max(lo, min(hi, v)) }
@@ -52,6 +55,13 @@ func (s lightSettings) valid() lightSettings {
 	// Times are kept to the choices the Display tab offers, so it always shows the one in use.
 	s.DimAfter = dimAfterChoices[nearest(dimAfterChoices, s.DimAfter)].value
 	s.OffAfter = offAfterChoices[nearest(offAfterChoices, s.OffAfter)].value
+	if saverIndex(s.Saver) < 0 {
+		s.Saver = "off"
+	}
+	if s.SaverAfter == 0 {
+		s.SaverAfter = defaultLight.SaverAfter
+	}
+	s.SaverAfter = saverAfterChoices[nearest(saverAfterChoices, s.SaverAfter)].value
 	return s
 }
 
@@ -66,6 +76,8 @@ type light struct {
 	level    int       // the brightness now, in percent of the steps that light the panel
 	swallow  map[string]bool
 	lastSeen [2]int // the screen's notice and volume ids, to notice them changing
+	saving   bool   // the screensaver shows
+	trying   bool   // ...because Preview was pressed
 }
 
 var backlight = &light{set: defaultLight, active: time.Now(), swallow: map[string]bool{}}
@@ -82,6 +94,7 @@ func (l *light) start(dir string) {
 		}
 	}
 	l.mu.Unlock()
+	go l.runSaver()
 	maxLevel := readInt(backlightDir + "/max_brightness")
 	if maxLevel <= 0 {
 		log.Printf("no backlight to control")
@@ -136,12 +149,7 @@ func (l *light) target(maxLevel, ambient int) int {
 	st := display.snapshot()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
-	if st.Phase != "idle" || st.BT != nil || st.NoticeID != l.lastSeen[0] || st.VolumeID != l.lastSeen[1] {
-		l.active = now
-		l.lastSeen = [2]int{st.NoticeID, st.VolumeID}
-	}
-	idle := now.Sub(l.active)
+	idle := l.idle(st)
 	s := l.set
 	if s.OffAfter > 0 && idle >= time.Duration(s.OffAfter)*time.Second {
 		l.dark = true
@@ -165,6 +173,56 @@ func (l *light) target(maxLevel, ambient int) int {
 		level = lightFloor + (level-lightFloor)*dimTo/100
 	}
 	return max(lightFloor, min(maxLevel, level))
+}
+
+// idle is how long nothing has happened, counting what shows on the screen as activity. l.mu
+// is held.
+func (l *light) idle(st screenState) time.Duration {
+	now := time.Now()
+	if st.Phase != "idle" || st.BT != nil || st.Update != nil || st.NoticeID != l.lastSeen[0] || st.VolumeID != l.lastSeen[1] {
+		l.active = now
+		l.lastSeen = [2]int{st.NoticeID, st.VolumeID}
+	}
+	return now.Sub(l.active)
+}
+
+// runSaver starts the screensaver once the screen has been left alone for its Start after
+// time, and ends it when anything happens: Athena hearing her name or answering, a notice, the
+// volume. (A button or the knob ends it in touched, the touchscreen in wake.)
+func (l *light) runSaver() {
+	for ; ; time.Sleep(saverTick) {
+		l.showSaver()
+	}
+}
+
+const saverTick = 500 * time.Millisecond
+
+func (l *light) showSaver() {
+	st := display.snapshot()
+	l.mu.Lock()
+	idle := l.idle(st)
+	s := l.set
+	if st.Phase != "idle" || st.Update != nil {
+		l.trying = false
+	}
+	l.saving = l.trying || s.Saver != "off" && st.BT == nil && idle >= time.Duration(s.SaverAfter)*time.Second
+	kind := ""
+	if l.saving {
+		kind = s.Saver
+	}
+	l.mu.Unlock()
+	if st.Saver != kind {
+		display.update(func(st *screenState) { st.Saver = kind })
+	}
+}
+
+// trySaver shows the screensaver chosen now, until the next press or turn: the Display tab's
+// Preview.
+func (l *light) trySaver() {
+	l.mu.Lock()
+	l.trying = l.set.Saver != "off"
+	l.mu.Unlock()
+	l.showSaver()
 }
 
 // percentLevel spreads 1–100% over the steps that light the panel.
@@ -206,38 +264,54 @@ func median(samples []int) int {
 }
 
 // touched is called for every button and knob event. It reports whether the event only woke
-// the screen and should go no further: a preset pressed while the screen is off, since its
-// label can't be seen. Its release is kept back too.
+// the screen and should go no further: any press or turn while the screensaver shows, and a
+// preset pressed while the screen is off, since its label can't be seen. A swallowed press's
+// release is kept back too. A car's buttons always go through: the driver isn't looking.
 func (l *light) touched(ev map[string]any) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.active = time.Now()
 	name, _ := ev["input"].(string)
 	action, _ := ev["action"].(string)
-	if !strings.HasPrefix(name, "preset-") {
-		return false
-	}
-	switch action {
-	case "press":
-		if l.dark {
-			l.dark = false
+	l.mu.Lock()
+	l.active = time.Now()
+	ended := false
+	if l.saving && !strings.HasPrefix(name, "car-") && (action == "press" || action == "turn") {
+		l.saving, l.trying, l.dark, ended = false, false, false, true
+		if action == "press" {
 			l.swallow[name] = true
-			return true
-		}
-	case "release":
-		if l.swallow[name] {
-			delete(l.swallow, name)
-			return true
 		}
 	}
-	return false
+	swallowed := ended
+	if !ended {
+		switch action {
+		case "press":
+			if l.dark && strings.HasPrefix(name, "preset-") {
+				l.dark = false
+				l.swallow[name] = true
+				swallowed = true
+			}
+		case "release":
+			if l.swallow[name] {
+				delete(l.swallow, name)
+				swallowed = true
+			}
+		}
+	}
+	l.mu.Unlock()
+	if ended {
+		display.update(func(st *screenState) { st.Saver = "" })
+	}
+	return swallowed
 }
 
 // wake counts as activity, for the touchscreen.
 func (l *light) wake() {
 	l.mu.Lock()
 	l.active = time.Now()
+	ended := l.saving
+	l.saving, l.trying = false, false
 	l.mu.Unlock()
+	if ended {
+		display.update(func(st *screenState) { st.Saver = "" })
+	}
 }
 
 func (l *light) settings() lightSettings {

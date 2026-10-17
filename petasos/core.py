@@ -25,7 +25,9 @@ reports with the release (``taps``); "turn" is for the knob.
 from __future__ import annotations
 
 import copy
+import datetime
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -107,6 +109,24 @@ _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "mu
 LABEL_MAX = 32
 WAKE_IDLE_S = 8  # how long a conversation the wake word started waits for someone to speak
 AGENT_NAME_MAX = 24
+
+
+def local_zone() -> dict:
+    """Hermes's time zone, for the screensaver's clock (a Car Thing keeps UTC): its name when it
+    can be found, and its offset from UTC now, in minutes."""
+    zone = os.environ.get("TZ", "").lstrip(":")
+    if "/" not in zone:
+        zone = ""
+        try:
+            zone = Path("/etc/timezone").read_text(encoding="utf-8").strip()
+        except OSError:
+            try:
+                link = os.readlink("/etc/localtime")
+                zone = link.split("zoneinfo/", 1)[1] if "zoneinfo/" in link else ""
+            except OSError:
+                pass
+    offset = datetime.datetime.now().astimezone().utcoffset()
+    return {"zone": zone, "utc_offset": int(offset.total_seconds() // 60) if offset is not None else 0}
 
 
 def agent_name(mapping: dict) -> str:
@@ -469,7 +489,8 @@ class Petasos:
         return {"do": "screen", "presets": preset_labels(mapping, device_id, shown), "agent": agent_name(mapping),
                 "gestures": gesture_hints(mapping, device_id), "pages": preset_pages(mapping, device_id, shown),
                 "keys": keys, "key_sets": 2 if has_second_set(mapping, device_id) else 1,
-                "hold_ms": mapping["hold_ms"], "knob_volume": knob_volume(mapping, device_id)}
+                "hold_ms": mapping["hold_ms"], "knob_volume": knob_volume(mapping, device_id),
+                **local_zone()}
 
     def _screen(self, state, mapping, device_id) -> list[dict]:
         """The screen command: on hello, then whenever it changes."""

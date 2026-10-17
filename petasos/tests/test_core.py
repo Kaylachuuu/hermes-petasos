@@ -23,7 +23,7 @@ def setup(tmp_path):
 
 def screen(presets, agent="Hermes", pages=("", "", "soundcloud", "spotify"), keys=1, key_sets=2):
     return {"do": "screen", "presets": list(presets), "agent": agent, "gestures": core.gesture_hints(core.DEFAULT_MAPPING),
-            "pages": list(pages), "keys": keys, "key_sets": key_sets, "hold_ms": 350, "knob_volume": 5}
+            "pages": list(pages), "keys": keys, "key_sets": key_sets, "hold_ms": 350, "knob_volume": 5, **core.local_zone()}
 
 
 DEFAULT_LABELS = ["Calendar", "Last message", "SoundCloud", "Spotify"]
@@ -385,3 +385,10 @@ def test_the_wake_word_starts_a_conversation_that_gives_up_sooner(setup):
     petasos.handle(ev("device", "conversation_ended"))
     petasos.handle(ev("knob", "press", t=-5000)); petasos.handle(ev("knob", "release", t=-3000))
     assert petasos.handle(ev("device", "wake")) == [{"do": "notice", "text": "The mic is off."}]
+
+
+def test_the_screen_gets_hermess_time_zone(monkeypatch):
+    monkeypatch.setenv("TZ", "America/Chicago")
+    zone = core.local_zone()
+    assert zone["zone"] == "America/Chicago"
+    assert isinstance(zone["utc_offset"], int)
