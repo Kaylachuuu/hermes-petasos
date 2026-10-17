@@ -311,7 +311,7 @@ type ownSettings struct {
 // The choices for the top meander's sound, in the order the Device tab steps through them.
 var (
 	meterBandChoices = []int{1, 3, 4, 5}
-	meterFalls       = []string{"quick", "gentle", "slow"}
+	meterFalls       = []string{"quick", "gentle", "slow", "peaks"} // peaks: rising at once, falling slowly
 )
 
 // meterSetting is the top meander's bands and fall-off, as set in the Device tab.

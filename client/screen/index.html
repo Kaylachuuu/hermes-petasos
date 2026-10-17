@@ -546,7 +546,9 @@ function drawBands() {
 }
 
 // How much of the way down the sound's levels fall each frame, as the Device tab sets it.
-const FALLS = { quick: 0.15, gentle: 0.04, slow: 0.02 };
+const FALLS = { quick: 0.15, gentle: 0.04, slow: 0.02, peaks: 0.02 };
+// How much of the way up they rise: at once for quick and peaks (which then falls slowly).
+const RISES = { quick: 0.5, peaks: 0.5 };
 
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
 // The levels move by time, not by frame, but no more than a tenth of a second's worth at a step,
@@ -564,7 +566,7 @@ function stepBands(now) {
   };
   const fall = FALLS[state && state.fall] || FALLS.gentle;
   micShown = ease(micShown, state && state.phase === "listening" ? micTarget : 0);
-  const rise = fall < FALLS.quick ? 0.25 : 0.5; // softer rises too, but for quick
+  const rise = RISES[state && state.fall] || 0.25;
   lvlShown = ease(lvlShown, lvlTarget, fall, rise);
   let partsMoving = false;
   if (partsTarget) {
