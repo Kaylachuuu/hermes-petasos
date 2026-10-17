@@ -566,21 +566,28 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 		// The sound shown on the screen, later for a speaker that plays what it's sent later.
 		if h := hereNow(); h != nil {
 			at, address := len(items), d.Address
-			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Sound bands timing",
-				Value: delayLabel(delayFor(h.dir, address)), do: func() {
-					// Changed over the home screen, to see the bands line up with the sound;
-					// the front button puts it back as it was.
+			// Changed over the home screen, to see the bands line up with the sound (the music,
+			// or test beeps); the front button puts it back as it was.
+			adjust := func(withBeeps bool) func() {
+				return func() {
 					was := delayFor(h.dir, address)
 					b.mu.Lock()
 					b.undo = func() { _ = setDelayTo(h.dir, address, was) }
 					b.mu.Unlock()
+					if withBeeps {
+						startBeeps()
+					}
 					b.deviceViewEdit(at, true)
-				},
+				}
+			}
+			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Sound bands timing",
+				Value: delayLabel(delayFor(h.dir, address)), do: adjust(false),
 				turn: func(delta int) {
 					if err := setDelay(h.dir, address, delta); err != nil {
 						log.Printf("saving the timing: %v", err)
 					}
-				}})
+				}},
+				btItem{Kind: "row", Icon: "speaker", Label: "Set the timing with test beeps", do: adjust(true)})
 		}
 	}
 	items = append(items,
@@ -591,6 +598,9 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 	view := "device"
 	if editing = editing && items[sel].turn != nil; editing {
 		view = "peek" // the page shows the home screen, with the row's value over it
+		if beeping() {
+			note = "Playing a test beep each second"
+		}
 	}
 	b.show(&btScreen{View: view, Tab: "bluetooth", Title: d.Name, Note: note, Items: items, Sel: sel, Editing: editing})
 }

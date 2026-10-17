@@ -139,6 +139,7 @@ func (b *bluetooth) cancelEditing() {
 	v, undo := b.view, b.undo
 	b.undo = nil
 	b.mu.Unlock()
+	stopBeeps()
 	if undo != nil {
 		undo()
 	}
@@ -160,6 +161,7 @@ func (b *bluetooth) doneEditing() {
 		b.mu.Lock()
 		b.undo = nil
 		b.mu.Unlock()
+		stopBeeps()
 		b.deviceViewEdit(v.Sel, false)
 	default:
 		b.screenViewAt(v.Sel, false)

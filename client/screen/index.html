@@ -180,6 +180,7 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
               text-transform: uppercase; color: var(--dust); }
 .peekpop b { display: block; font-family: var(--display); font-weight: 400; font-size: 3.4cqw; color: var(--a); margin: .4cqw 0; }
 .peekpop em { font-style: normal; font-size: 1.9cqw; color: var(--dust); }
+.peekpop em.note { display: block; color: var(--a); margin-bottom: .3cqw; }
 .peekpop em strong { color: var(--bronze); font-weight: 600; }
 
 /* Held: what letting go of the knob (or another control with holds) would do now. */
@@ -1099,6 +1100,7 @@ function drawPeek(s) {
   $("peekpop").hidden = !it;
   if (!it) return;
   $("peekpop").innerHTML = `<h4>${esc(it.label)}</h4><b>‹ ${esc(it.value || "")} ›</b>` +
+    (s.peek.note ? `<em class="note">${esc(s.peek.note)}</em>` : "") +
     `<em><strong>Knob</strong> change · <strong>Press</strong> done · <strong>Front button</strong> cancel</em>`;
 }
 
