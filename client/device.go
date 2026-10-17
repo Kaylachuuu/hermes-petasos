@@ -306,13 +306,34 @@ type ownSettings struct {
 	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home (wireguard.conf); on unless turned off
 	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 4 if not set
 	Fall   string `json:"fall,omitempty"`  // how quickly the meander's sound falls back (meterFalls), "gentle" if not set
+	Delay  *int   `json:"delay,omitempty"` // ms later the meander's sound is shown (meterDelays), 0 if not set
 }
 
 // The choices for the top meander's sound, in the order the Device tab steps through them.
 var (
 	meterBandChoices = []int{1, 3, 4, 5}
 	meterFalls       = []string{"quick", "gentle", "slow", "peaks"} // peaks: rising at once, falling slowly
+	meterDelays      = []int{0, 100, 200, 300, 400, 500, 700, -200, -100}
 )
+
+// delaySetting is how much later the meander shows the sound, in ms, as set in the Device tab.
+func delaySetting(dir string) int {
+	o := loadOwnSettings(dir)
+	if o.Delay != nil && slices.Contains(meterDelays, *o.Delay) {
+		return *o.Delay
+	}
+	return 0
+}
+
+func delayLabel(ms int) string {
+	switch {
+	case ms > 0:
+		return fmt.Sprintf("%d ms later", ms)
+	case ms < 0:
+		return fmt.Sprintf("%d ms earlier", -ms)
+	}
+	return "As played"
+}
 
 // meterSetting is the top meander's bands and fall-off, as set in the Device tab.
 func meterSetting(dir string) (int, string) {
@@ -331,16 +352,21 @@ func meterSetting(dir string) (int, string) {
 func applyMeter(dir string) {
 	bands, fall := meterSetting(dir)
 	meterBands.Store(int32(bands))
+	meterDelay.Store(int32(delaySetting(dir)))
 	display.update(func(s *screenState) { s.Fall = fall })
 }
 
-// setMeter steps the bands (or, with fall, the fall-off) on to the next choice.
-func (h *hermes) setMeter(fall bool) error {
+// setMeter steps one of the meander's settings, "bands", "fall" or "delay", on to its next choice.
+func (h *hermes) setMeter(which string) error {
 	own := loadOwnSettings(h.dir)
 	bands, f := meterSetting(h.dir)
-	if fall {
+	switch which {
+	case "fall":
 		own.Fall = meterFalls[(slices.Index(meterFalls, f)+1)%len(meterFalls)]
-	} else {
+	case "delay":
+		d := meterDelays[(slices.Index(meterDelays, delaySetting(h.dir))+1)%len(meterDelays)]
+		own.Delay = &d
+	default:
 		own.Bands = meterBandChoices[(slices.Index(meterBandChoices, bands)+1)%len(meterBandChoices)]
 	}
 	if err := writeJSON(filepath.Join(h.dir, ownSettingsFile), own, 0o644); err != nil {
@@ -510,15 +536,13 @@ func (b *bluetooth) mineViewAt(sel int) {
 	bands, fall := meterSetting(h.dir)
 	items = append(items, btItem{Kind: "header", Label: "Sound on the screen"})
 	at := len(items)
-	for i, row := range []struct {
-		label, value string
-		fall         bool
-	}{
-		{"Bands", fmt.Sprint(bands), false},
-		{"Fall-off", strings.ToUpper(fall[:1]) + fall[1:], true},
+	for i, row := range []struct{ label, value, which string }{
+		{"Bands", fmt.Sprint(bands), "bands"},
+		{"Fall-off", strings.ToUpper(fall[:1]) + fall[1:], "fall"},
+		{"Timing", delayLabel(delaySetting(h.dir)), "delay"},
 	} {
 		items = append(items, btItem{Kind: "row", Icon: "speaker", Label: row.label, Value: row.value, do: func() {
-			if err := h.setMeter(row.fall); err != nil {
+			if err := h.setMeter(row.which); err != nil {
 				b.message("Couldn't save that", err.Error())
 				return
 			}

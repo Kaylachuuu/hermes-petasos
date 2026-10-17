@@ -71,8 +71,9 @@ func (m *audioMeter) run() {
 	for now := range tick.C {
 		m.mu.Lock()
 		due := -1
+		shown := now.Add(-time.Duration(meterDelay.Load()) * time.Millisecond) // the sound playing now
 		for i, l := range m.queue {
-			if l.at.After(now) {
+			if l.at.After(shown) {
 				break
 			}
 			due = i
@@ -84,7 +85,7 @@ func (m *audioMeter) run() {
 			level, send = m.queue[due], true
 			m.queue = m.queue[due+1:]
 			m.sending = true
-		case m.sending && (len(m.queue) == 0 || m.queue[0].at.Sub(now) > 4*meterStep):
+		case m.sending && (len(m.queue) == 0 || m.queue[0].at.Sub(shown) > 4*meterStep):
 			send, m.sending = true, false // the sound is over (or paused): back to 0
 			if n := int(meterBands.Load()); bandEdges[n] != nil {
 				level.bands = make([]float64, n) // the bands too, so the page keeps showing them
@@ -135,3 +136,7 @@ func (s *screen) audioLevel(level float64, bands []float64) {
 // meterBands is how many bands of pitch the top meander shows the sound in (1: its level alone),
 // as the Device tab sets it.
 var meterBands atomic.Int32
+
+// meterDelay is how much later than petasos reckons the speaker plays the sound (speakerLag) the
+// levels are shown, in ms, as the Device tab sets it: a car's Bluetooth can take longer.
+var meterDelay atomic.Int32

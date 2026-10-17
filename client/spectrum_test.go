@@ -80,7 +80,7 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 	}
 	var seen []int
 	for range 4 {
-		if err := h.setMeter(false); err != nil {
+		if err := h.setMeter("bands"); err != nil {
 			t.Fatal(err)
 		}
 		b, _ := meterSetting(h.dir)
@@ -89,10 +89,19 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 	if fmt.Sprint(seen) != "[5 1 3 4]" || meterBands.Load() != 4 {
 		t.Errorf("bands went %v, meter %d", seen, meterBands.Load())
 	}
-	if err := h.setMeter(true); err != nil {
+	if err := h.setMeter("fall"); err != nil {
 		t.Fatal(err)
 	}
 	if _, f := meterSetting(h.dir); f != "slow" {
 		t.Errorf("fall-off went to %s", f)
 	}
+	for range 2 {
+		if err := h.setMeter("delay"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if d := delaySetting(h.dir); d != 200 || meterDelay.Load() != 200 || delayLabel(d) != "200 ms later" {
+		t.Errorf("timing went to %d (%s), meter %d", d, delayLabel(d), meterDelay.Load())
+	}
+	meterDelay.Store(0)
 }
