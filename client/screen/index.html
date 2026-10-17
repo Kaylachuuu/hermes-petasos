@@ -296,7 +296,6 @@ body.virtual .topbar > span:hover { background: var(--row); }
     <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
     <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
     <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
-    <path class="marks" d="" fill="#e8823a"/>
   </svg>
   <svg class="band bottom" id="bottom-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
     <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
@@ -469,7 +468,7 @@ function drawTop(s) {
 // --- the meanders ---------------------------------------------------------------------------------
 
 // The top one shows the volume as it changes, then the sound: your voice while Athena listens,
-// and her voice or the music as it plays, in bands of pitch, each under a mark at the volume. A
+// and her voice or the music as it plays, in stacked bands of pitch, under a mark at the volume. A
 // music page keeps the volume lit when there's no sound to show. The bottom one is the song's
 // progress, in its service's colour.
 let volumeSeen = null, volumeUntil = 0, micTarget = 0, micShown = 0, lvlTarget = 0, lvlShown = 0, bandFrame = 0;
@@ -494,18 +493,17 @@ function setBand(id, b) {
   if (part("parts")) setParts(el, b, t);
 }
 
-// setParts splits a band into the sound's bands of pitch, bass to treble, each lit from its
-// own start and with its own mark at the volume.
-const PART_GAP = 14;
+// setParts stacks the sound's bands of pitch in the band, the bass at the bottom and the treble
+// at the top, each a strip lit from the left; the one mark stays at the volume.
+const PART_GAP = 3;
 function setParts(el, b, t) {
   const part = (c) => el.querySelector("." + c), parts = b.parts || [];
-  const width = (1000 - PART_GAP * (parts.length - 1)) / (parts.length || 1);
-  let clip = "", rules = "", marks = "";
-  parts.forEach((level, i) => {
-    const x = i * (width + PART_GAP), w = width * Math.max(0, Math.min(1, level));
-    clip += `M${x.toFixed(1)} 0h${w.toFixed(1)}v60h${(-w).toFixed(1)}Z`;
-    if (w > 0) rules += `M${x.toFixed(1)} 2h${w.toFixed(1)}M${x.toFixed(1)} 58h${w.toFixed(1)}`;
-    if (b.mark != null) marks += `M${(x + width * b.mark - 4).toFixed(1)} 0h8v60h-8Z`;
+  const height = (60 - PART_GAP * (parts.length - 1)) / (parts.length || 1);
+  const widths = parts.map((level) => 1000 * Math.max(0, Math.min(1, level)));
+  let clip = "";
+  widths.forEach((w, i) => {
+    const y = (parts.length - 1 - i) * (height + PART_GAP);
+    clip += `M0 ${y.toFixed(1)}h${w.toFixed(1)}v${height.toFixed(1)}h${(-w).toFixed(1)}Z`;
   });
   const clipped = parts.length ? `url(#${el.id}-parts)` : null;
   part("parts").setAttribute("d", clip);
@@ -513,11 +511,10 @@ function setParts(el, b, t) {
     if (clipped) { part(c).setAttribute("width", 1000); part(c).setAttribute("clip-path", clipped); }
     else part(c).removeAttribute("clip-path");
   }
-  if (!clipped) return part("marks").setAttribute("d", "");
-  part("litrule").setAttribute("d", b.dim ? rules || "M0 2 H0" : "M0 2 H0");
-  part("mark").setAttribute("x", -10);
-  part("marks").setAttribute("d", marks);
-  part("marks").setAttribute("fill", t.lit);
+  if (clipped && b.dim) { // the rules lit along the top and bottom strips
+    const top = widths[widths.length - 1].toFixed(1), bottom = widths[0].toFixed(1);
+    part("litrule").setAttribute("d", `M0 2 H${top} M0 58 H${bottom}`);
+  }
 }
 
 function musicProgress(m) {
