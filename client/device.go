@@ -330,13 +330,17 @@ func delayFor(dir, address string) int {
 
 // setDelay steps a speaker's delay on by delta choices, as the knob turns.
 func setDelay(dir, address string, delta int) error {
+	at := slices.Index(meterDelays, delayFor(dir, address)) + delta
+	return setDelayTo(dir, address, meterDelays[max(0, min(len(meterDelays)-1, at))])
+}
+
+// setDelayTo sets a speaker's delay, in ms.
+func setDelayTo(dir, address string, d int) error {
 	own := loadOwnSettings(dir)
 	if own.Delays == nil {
 		own.Delays = map[string]int{}
 	}
 	address = strings.ToUpper(address)
-	at := slices.Index(meterDelays, delayFor(dir, address)) + delta
-	d := meterDelays[max(0, min(len(meterDelays)-1, at))]
 	if d == 0 {
 		delete(own.Delays, address)
 	} else {

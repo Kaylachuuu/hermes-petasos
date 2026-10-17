@@ -74,6 +74,7 @@ type bluetooth struct {
 	open    bool
 	view    *btScreen
 	focus   dbus.ObjectPath // the device the device view is about
+	undo    func()          // puts back the value being changed over the home screen (peek)
 	pairing dbus.ObjectPath // the device Pair was called on from the scan view, while it runs
 	stop    chan struct{}   // ends the scan view's refreshing
 	confirm chan bool       // the knob's answer to a pairing code
@@ -266,6 +267,8 @@ func (b *bluetooth) handle(ev map[string]any) bool {
 		switch {
 		case name == "knob" && action == "turn":
 			b.adjust(intOf(ev["delta"], 0))
+		case name == "front" && action == "press" && view.View == "peek":
+			b.cancelEditing()
 		case (name == "knob" || name == "front") && action == "press":
 			b.doneEditing()
 		}
@@ -564,7 +567,15 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 		if h := hereNow(); h != nil {
 			at, address := len(items), d.Address
 			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Sound bands timing",
-				Value: delayLabel(delayFor(h.dir, address)), do: func() { b.deviceViewEdit(at, true) },
+				Value: delayLabel(delayFor(h.dir, address)), do: func() {
+					// Changed over the home screen, to see the bands line up with the sound;
+					// the front button puts it back as it was.
+					was := delayFor(h.dir, address)
+					b.mu.Lock()
+					b.undo = func() { _ = setDelayTo(h.dir, address, was) }
+					b.mu.Unlock()
+					b.deviceViewEdit(at, true)
+				},
 				turn: func(delta int) {
 					if err := setDelay(h.dir, address, delta); err != nil {
 						log.Printf("saving the timing: %v", err)
@@ -577,8 +588,11 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 			do: func() { b.act(d.Name, "Forgetting", b.forget(d.Path)) }},
 		btItem{Kind: "row", Icon: "back", Label: "Back", do: b.listView})
 	sel = firstRow(items, sel)
-	b.show(&btScreen{View: "device", Title: d.Name, Note: note, Items: items, Sel: sel,
-		Editing: editing && items[sel].turn != nil})
+	view := "device"
+	if editing = editing && items[sel].turn != nil; editing {
+		view = "peek" // the page shows the home screen, with the row's value over it
+	}
+	b.show(&btScreen{View: view, Tab: "bluetooth", Title: d.Name, Note: note, Items: items, Sel: sel, Editing: editing})
 }
 
 // act shows a working message, runs the step, then says how it went and returns to the list.

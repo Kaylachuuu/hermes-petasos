@@ -126,10 +126,24 @@ func (b *bluetooth) adjust(delta int) {
 	switch v.View {
 	case "softkey":
 		b.softKeyViewAt(v.Sel, true, "")
-	case "device":
+	case "device", "peek":
 		b.deviceViewEdit(v.Sel, true)
 	default:
 		b.screenViewAt(v.Sel, true)
+	}
+}
+
+// cancelEditing leaves the row being changed over the home screen, putting its value back.
+func (b *bluetooth) cancelEditing() {
+	b.mu.Lock()
+	v, undo := b.view, b.undo
+	b.undo = nil
+	b.mu.Unlock()
+	if undo != nil {
+		undo()
+	}
+	if v != nil {
+		b.deviceViewEdit(v.Sel, false)
 	}
 }
 
@@ -142,7 +156,10 @@ func (b *bluetooth) doneEditing() {
 	case v == nil:
 	case v.View == "softkey":
 		go b.saveSoftKey(v.Sel)
-	case v.View == "device":
+	case v.View == "device" || v.View == "peek":
+		b.mu.Lock()
+		b.undo = nil
+		b.mu.Unlock()
 		b.deviceViewEdit(v.Sel, false)
 	default:
 		b.screenViewAt(v.Sel, false)

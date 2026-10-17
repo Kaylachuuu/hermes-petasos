@@ -172,6 +172,16 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
          box-shadow: 0 1cqw 4cqw rgba(0,0,0,.6); z-index: 6; }
 .toast svg { width: 4cqw; height: 4cqw; }
 
+/* A setting changed over the home screen (peek), to see it at work: the sound bands' timing. */
+.peekpop { position: absolute; left: 50%; top: 78%; transform: translate(-50%, -50%); box-sizing: border-box;
+           background: #261d15; border: .2cqw solid var(--a); border-radius: 1.4cqw; padding: 1.4cqw 2.6cqw;
+           box-shadow: 0 1cqw 4cqw rgba(0,0,0,.6); text-align: center; z-index: 5; white-space: nowrap; }
+.peekpop h4 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.9cqw; letter-spacing: .28em;
+              text-transform: uppercase; color: var(--dust); }
+.peekpop b { display: block; font-family: var(--display); font-weight: 400; font-size: 3.4cqw; color: var(--a); margin: .4cqw 0; }
+.peekpop em { font-style: normal; font-size: 1.9cqw; color: var(--dust); }
+.peekpop em strong { color: var(--bronze); font-weight: 600; }
+
 /* Held: what letting go of the knob (or another control with holds) would do now. */
 .holdpop { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); width: 46cqw; box-sizing: border-box;
            background: #261d15; border: .2cqw solid var(--a); border-radius: 1.4cqw; padding: 2cqw 2.6cqw 2.2cqw;
@@ -355,6 +365,7 @@ body.virtual .topbar > span:hover { background: var(--row); }
   </div>
 
   <div class="holdpop" id="holdpop" hidden></div>
+  <div class="peekpop" id="peekpop" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <div class="update" id="update" hidden>
     <h2>UPDATING PETASOS</h2><div class="ver" id="update-ver"></div>
@@ -812,6 +823,7 @@ function draw(s) {
   else drawHome(s);
   if (!onMusic) closeMusicKeyboard();
   drawHold(s);
+  drawPeek(s);
   drawVolume(s);
   drawMicNote(s);
   drawUpdate(s);
@@ -1082,6 +1094,14 @@ function showToast(text, iconName) {
   toastTimer = setTimeout(() => { $("toast").hidden = true; }, 1800);
 }
 
+function drawPeek(s) {
+  const it = s.peek && s.peek.items && s.peek.items[s.peek.sel];
+  $("peekpop").hidden = !it;
+  if (!it) return;
+  $("peekpop").innerHTML = `<h4>${esc(it.label)}</h4><b>‹ ${esc(it.value || "")} ›</b>` +
+    `<em><strong>Knob</strong> change · <strong>Press</strong> done · <strong>Front button</strong> cancel</em>`;
+}
+
 // The mic turned off or on (the knob's hold): say so, whichever page is showing.
 function drawMicNote(s) {
   if (micNoteSeen === null) { micNoteSeen = s.mic_note || 0; return; }
@@ -1219,6 +1239,8 @@ function connect() {
     }
     if ("nav" in message) { musicNav(message.nav); return; } // the knob or front button on a music page
     state = message;
+    // A setting changed over the home screen: drawn as if the settings were shut, with its value.
+    if (state.bt && state.bt.view === "peek") state = { ...state, peek: state.bt, bt: null };
     if (pageVersion === null) pageVersion = state.version;
     else if (state.version !== pageVersion) { location.replace("/?v=" + encodeURIComponent(state.version)); return; }
     draw(state);
