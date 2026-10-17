@@ -86,6 +86,9 @@ func (m *audioMeter) run() {
 			m.sending = true
 		case m.sending && (len(m.queue) == 0 || m.queue[0].at.Sub(now) > 4*meterStep):
 			send, m.sending = true, false // the sound is over (or paused): back to 0
+			if n := int(meterBands.Load()); bandEdges[n] != nil {
+				level.bands = make([]float64, n) // the bands too, so the page keeps showing them
+			}
 		}
 		m.mu.Unlock()
 		if send {

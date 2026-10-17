@@ -289,10 +289,11 @@ body.virtual .topbar > span:hover { background: var(--row); }
 
   <div id="bands">
   <svg class="band top" id="top-band" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
-    <clipPath id="top-band-parts"><path class="parts" d=""/></clipPath>
     <rect class="base" width="1000" height="60" fill="url(#b-petasos)" transform="translate(2 0)"/>
     <rect class="cover" x="0" y="6" width="0" height="48" fill="#1f1b17"/>
     <rect class="lit" x="0" y="0" width="0" height="60" fill="url(#l-petasos)" transform="translate(2 0)"/>
+    <path class="stackcover" d="" fill="#1f1b17"/>
+    <path class="stack" d="" fill="url(#l-petasos)" transform="translate(2 0)"/>
     <path class="rule" d="M0 2 H1000 M0 58 H1000" stroke="#c9b48a" stroke-width="2.5"/>
     <path class="litrule" d="M0 2 H0 M0 58 H0" stroke="#e8823a" stroke-width="2.5"/>
     <rect class="mark" x="-10" y="0" width="8" height="60" fill="#e8823a"/>
@@ -490,31 +491,29 @@ function setBand(id, b) {
   part("litrule").setAttribute("stroke", t.lit);
   part("mark").setAttribute("x", b.mark == null ? -10 : (1000 * b.mark - 4).toFixed(1));
   part("mark").setAttribute("fill", t.lit);
-  if (part("parts")) setParts(el, b, t);
+  if (part("stack")) setParts(el, b);
 }
 
 // setParts stacks the sound's bands of pitch in the band, the bass at the bottom and the treble
 // at the top, each a strip lit from the left; the one mark stays at the volume.
-const PART_GAP = 0;
-function setParts(el, b, t) {
+function setParts(el, b) {
   const part = (c) => el.querySelector("." + c), parts = b.parts || [];
-  const height = (60 - PART_GAP * (parts.length - 1)) / (parts.length || 1);
-  const widths = parts.map((level) => 1000 * Math.max(0, Math.min(1, level)));
-  let clip = "";
-  widths.forEach((w, i) => {
-    const y = (parts.length - 1 - i) * (height + PART_GAP);
-    clip += `M0 ${y.toFixed(1)}h${w.toFixed(1)}v${height.toFixed(1)}h${(-w).toFixed(1)}Z`;
+  const height = 60 / (parts.length || 1);
+  let lit = "", cover = "";
+  parts.forEach((w, i) => {
+    if (w <= 0) return;
+    const y = (parts.length - 1 - i) * height, top = Math.max(6, y), bottom = Math.min(54, y + height);
+    lit += `M0 ${y.toFixed(1)}h${w}v${height.toFixed(1)}h${-w}Z`;
+    if (bottom > top) cover += `M0 ${top.toFixed(1)}h${w}v${(bottom - top).toFixed(1)}h${-w}Z`;
   });
-  const clipped = parts.length ? `url(#${el.id}-parts)` : null;
-  part("parts").setAttribute("d", clip);
-  for (const c of ["cover", "lit"]) {
-    if (clipped) { part(c).setAttribute("width", 1000); part(c).setAttribute("clip-path", clipped); }
-    else part(c).removeAttribute("clip-path");
-  }
-  if (clipped && b.dim) { // the rules lit along the top and bottom strips
-    const top = widths[widths.length - 1].toFixed(1), bottom = widths[0].toFixed(1);
-    part("litrule").setAttribute("d", `M0 2 H${top} M0 58 H${bottom}`);
-  }
+  part("stack").setAttribute("d", lit);
+  part("stackcover").setAttribute("d", cover);
+  if (!parts.length) return;
+  part("stack").setAttribute("fill", `url(#l-${b.theme})`);
+  part("cover").setAttribute("width", 0);
+  part("lit").setAttribute("width", 0);
+  // The rules lit along the top and bottom strips.
+  part("litrule").setAttribute("d", b.dim ? `M0 2 H${parts[parts.length - 1]} M0 58 H${parts[0]}` : "M0 2 H0");
 }
 
 function musicProgress(m) {
@@ -535,7 +534,7 @@ function drawBands() {
   else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
   else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol,
-                              parts: partsShown && partsShown.map((l) => l * (vol ?? 1)) };
+                              parts: partsShown && partsShown.map((l) => Math.round(1000 * Math.min(1, l * (vol ?? 1)))) };
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
@@ -550,10 +549,16 @@ function drawBands() {
 const FALLS = { quick: 0.15, gentle: 0.06, slow: 0.03 };
 
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
-function stepBands() {
+// The levels move by time, not by frame, so a busy moment that slows the frames down doesn't
+// leave them behind; and they're drawn at most about 30 times a second.
+let bandsAt = 0;
+function stepBands(now) {
   bandFrame = 0;
+  if (bandsAt && now - bandsAt < 30) { bandFrame = requestAnimationFrame(stepBands); return; }
+  const frames = bandsAt ? Math.min(now - bandsAt, 250) / 16.7 : 1; // in 60ths of a second
+  bandsAt = now;
   const ease = (shown, target, fall = 0.15) => {
-    shown += (target - shown) * (target > shown ? 0.5 : fall);
+    shown += (target - shown) * (1 - Math.pow(1 - (target > shown ? 0.5 : fall), frames));
     return Math.abs(target - shown) < 0.005 ? target : shown;
   };
   const fall = FALLS[state && state.fall] || FALLS.gentle;
@@ -567,6 +572,7 @@ function stepBands() {
   }
   drawBands();
   if (micShown !== (state && state.phase === "listening" ? micTarget : 0) || lvlShown !== lvlTarget || partsMoving) bandFrame = requestAnimationFrame(stepBands);
+  else bandsAt = 0;
 }
 
 function moveBands() {
