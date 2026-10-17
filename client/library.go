@@ -614,8 +614,12 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 	if virtual {
 		return l.playWhole(r, pcm, from)
 	}
-	cmd := exec.Command("aplay", "-q", "-t", "raw", "-f", "S16_LE", "-r", fmt.Sprint(libraryRate), "-c", "2",
-		"-D", v.speaker, "-")
+	// A second of sound queued for the speaker rides out a moment the Car Thing is busy
+	// elsewhere (the screen, the next song coming in over the same Bluetooth radio). aplay
+	// isn't quiet so its underruns, the speaker running dry, reach the log.
+	cmd := exec.Command("aplay", "-t", "raw", "-f", "S16_LE", "-r", fmt.Sprint(libraryRate), "-c", "2",
+		"--buffer-time="+fmt.Sprint(speakerQueue.Microseconds()), "-D", v.speaker, "-")
+	cmd.Stderr = &underruns{title: t.Title}
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return from, err
@@ -641,7 +645,8 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 			// rather than stuttering through each piece as it comes.
 			waited := time.Now()
 			ahead.fill(cushion, streamStall)
-			if time.Since(waited) > 300*time.Millisecond { // the speaker ran dry meanwhile
+			if wait := time.Since(waited); wait > 300*time.Millisecond { // the speaker ran dry meanwhile
+				log.Printf("library: %q waited %v for the download", t.Title, wait.Round(time.Millisecond))
 				heard = time.Now().Add(speakerLag).Add(-time.Duration(frame-from) * time.Second / libraryRate)
 			}
 		}
@@ -994,4 +999,32 @@ func firstErr(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// speakerQueue is how much sound aplay holds for the speaker ahead of what it plays.
+const speakerQueue = time.Second
+
+// underruns logs aplay's notes of the speaker running dry while a track plays, and anything
+// else it says but its opening line, a line at a time.
+type underruns struct {
+	title string
+	part  []byte
+}
+
+func (u *underruns) Write(p []byte) (int, error) {
+	u.part = append(u.part, p...)
+	for {
+		i := bytes.IndexByte(u.part, '\n')
+		if i < 0 {
+			break
+		}
+		if line := strings.TrimSpace(string(u.part[:i])); line != "" && !strings.HasPrefix(line, "Playing ") {
+			log.Printf("library: speaker, playing %q: %s", u.title, line)
+		}
+		u.part = u.part[i+1:]
+	}
+	if len(u.part) > 4096 {
+		u.part = u.part[:0]
+	}
+	return len(p), nil
 }

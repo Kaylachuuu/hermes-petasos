@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -390,5 +391,17 @@ func TestStreamBufferSettings(t *testing.T) {
 	r := newReadAhead(bytes.NewReader(append([]byte{0xFF, 0xFB, 0x90, 0x64}, make([]byte, 400<<10)...)), func(error) {})
 	if c := cushionFor(r); c != 10*128*1000/8 {
 		t.Errorf("10 seconds at 128 kbps is %d bytes", c)
+	}
+}
+
+func TestSpeakerUnderrunsReachTheLog(t *testing.T) {
+	var got bytes.Buffer
+	log.SetOutput(&got)
+	defer log.SetOutput(os.Stderr)
+	u := &underruns{title: "One"}
+	fmt.Fprint(u, "Playing raw data 'stdin' : Signed 16 bit Little Endian, Rate 44100 Hz, Stereo\nunder")
+	fmt.Fprint(u, "run!!! (at least 12.3 ms long)\n")
+	if s := got.String(); strings.Contains(s, "Playing raw") || !strings.Contains(s, `playing "One": underrun!!! (at least 12.3 ms long)`) {
+		t.Fatalf("logged %q", s)
 	}
 }
