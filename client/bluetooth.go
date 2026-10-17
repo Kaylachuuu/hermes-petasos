@@ -207,6 +207,7 @@ func (b *bluetooth) watchLinks() {
 			continue
 		}
 		var l links
+		speaker := ""
 		for _, d := range devs {
 			if !d.Paired {
 				continue
@@ -217,13 +218,19 @@ func (b *bluetooth) watchLinks() {
 			if d.Speaker {
 				l.SpeakerKnown = true
 				if d.Connected && !l.Speaker {
-					l.Speaker, l.SpeakerName = true, d.Name
+					l.Speaker, l.SpeakerName, speaker = true, d.Name, d.Address
 				} else if l.SpeakerName == "" {
 					l.SpeakerName = d.Name
 				}
 			}
 		}
 		l.Phone = tethered()
+		if speaker != speakerAddress() {
+			speakerNow.Store(speaker)
+			if h := hereNow(); h != nil {
+				applyMeter(h.dir)
+			}
+		}
 		display.update(func(st *screenState) {
 			l.Home, l.Checked = st.Links.Home, true
 			st.Links = l
@@ -548,6 +555,18 @@ func (b *bluetooth) deviceViewAt(sel int) {
 		} else {
 			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Use for " + display.agent(),
 				do: func() { b.act(d.Name, "Connecting", b.useSpeaker(d.Path)) }})
+		}
+		// The sound shown on the screen, later for a speaker that plays what it's sent later.
+		if h := hereNow(); h != nil {
+			at, address := len(items), d.Address
+			items = append(items, btItem{Kind: "row", Icon: "speaker", Label: "Sound bands timing",
+				Value: delayLabel(delayFor(h.dir, address)), do: func() {
+					if err := setDelay(h.dir, address); err != nil {
+						b.message("Couldn't save that", err.Error())
+						return
+					}
+					b.deviceViewAt(at)
+				}})
 		}
 	}
 	items = append(items,

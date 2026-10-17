@@ -306,7 +306,9 @@ type ownSettings struct {
 	VPN    *bool  `json:"vpn,omitempty"`   // the tunnel home (wireguard.conf); on unless turned off
 	Bands  int    `json:"bands,omitempty"` // the bands of pitch the top meander shows (meterBands), 4 if not set
 	Fall   string `json:"fall,omitempty"`  // how quickly the meander's sound falls back (meterFalls), "gentle" if not set
-	Delay  *int   `json:"delay,omitempty"` // ms later the meander's sound is shown (meterDelays), 0 if not set
+	// Delays is how much later the meander shows the sound for each speaker, by its Bluetooth
+	// address, in ms (meterDelays): one speaker plays what it's sent later than another.
+	Delays map[string]int `json:"delays,omitempty"`
 }
 
 // The choices for the top meander's sound, in the order the Device tab steps through them.
@@ -316,13 +318,42 @@ var (
 	meterDelays      = []int{0, 100, 200, 300, 400, 500, 700, -200, -100}
 )
 
-// delaySetting is how much later the meander shows the sound, in ms, as set in the Device tab.
-func delaySetting(dir string) int {
-	o := loadOwnSettings(dir)
-	if o.Delay != nil && slices.Contains(meterDelays, *o.Delay) {
-		return *o.Delay
+// delayFor is how much later the meander shows the sound while a speaker plays it, in ms, as
+// set in its page in the Bluetooth tab.
+func delayFor(dir, address string) int {
+	d := loadOwnSettings(dir).Delays[strings.ToUpper(address)]
+	if slices.Contains(meterDelays, d) {
+		return d
 	}
 	return 0
+}
+
+// setDelay steps a speaker's delay on to its next choice.
+func setDelay(dir, address string) error {
+	own := loadOwnSettings(dir)
+	if own.Delays == nil {
+		own.Delays = map[string]int{}
+	}
+	address = strings.ToUpper(address)
+	d := meterDelays[(slices.Index(meterDelays, delayFor(dir, address))+1)%len(meterDelays)]
+	if d == 0 {
+		delete(own.Delays, address)
+	} else {
+		own.Delays[address] = d
+	}
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
+		return err
+	}
+	applyMeter(dir)
+	return nil
+}
+
+// speakerNow is the Bluetooth address of the speaker connected now, or "" (watchLinks).
+var speakerNow atomic.Value
+
+func speakerAddress() string {
+	a, _ := speakerNow.Load().(string)
+	return a
 }
 
 func delayLabel(ms int) string {
@@ -352,20 +383,17 @@ func meterSetting(dir string) (int, string) {
 func applyMeter(dir string) {
 	bands, fall := meterSetting(dir)
 	meterBands.Store(int32(bands))
-	meterDelay.Store(int32(delaySetting(dir)))
+	meterDelay.Store(int32(delayFor(dir, speakerAddress())))
 	display.update(func(s *screenState) { s.Fall = fall })
 }
 
-// setMeter steps one of the meander's settings, "bands", "fall" or "delay", on to its next choice.
+// setMeter steps one of the meander's settings, "bands" or "fall", on to its next choice.
 func (h *hermes) setMeter(which string) error {
 	own := loadOwnSettings(h.dir)
 	bands, f := meterSetting(h.dir)
 	switch which {
 	case "fall":
 		own.Fall = meterFalls[(slices.Index(meterFalls, f)+1)%len(meterFalls)]
-	case "delay":
-		d := meterDelays[(slices.Index(meterDelays, delaySetting(h.dir))+1)%len(meterDelays)]
-		own.Delay = &d
 	default:
 		own.Bands = meterBandChoices[(slices.Index(meterBandChoices, bands)+1)%len(meterBandChoices)]
 	}
@@ -539,7 +567,6 @@ func (b *bluetooth) mineViewAt(sel int) {
 	for i, row := range []struct{ label, value, which string }{
 		{"Bands", fmt.Sprint(bands), "bands"},
 		{"Fall-off", strings.ToUpper(fall[:1]) + fall[1:], "fall"},
-		{"Timing", delayLabel(delaySetting(h.dir)), "delay"},
 	} {
 		items = append(items, btItem{Kind: "row", Icon: "speaker", Label: row.label, Value: row.value, do: func() {
 			if err := h.setMeter(row.which); err != nil {

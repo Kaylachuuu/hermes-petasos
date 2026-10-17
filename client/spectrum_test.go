@@ -95,13 +95,23 @@ func TestMeterSettingsStepThroughTheirChoices(t *testing.T) {
 	if _, f := meterSetting(h.dir); f != "slow" {
 		t.Errorf("fall-off went to %s", f)
 	}
+	const car = "aa:bb:cc:dd:ee:ff"
 	for range 2 {
-		if err := h.setMeter("delay"); err != nil {
+		if err := setDelay(h.dir, car); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if d := delaySetting(h.dir); d != 200 || meterDelay.Load() != 200 || delayLabel(d) != "200 ms later" {
-		t.Errorf("timing went to %d (%s), meter %d", d, delayLabel(d), meterDelay.Load())
+	if d := delayFor(h.dir, car); d != 200 || delayLabel(d) != "200 ms later" || delayFor(h.dir, "11:22:33:44:55:66") != 0 {
+		t.Errorf("timing went to %d (%s)", d, delayLabel(d))
+	}
+	if meterDelay.Load() != 0 {
+		t.Errorf("another speaker's timing applied: %d", meterDelay.Load())
+	}
+	speakerNow.Store(car)
+	defer speakerNow.Store("")
+	applyMeter(h.dir)
+	if meterDelay.Load() != 200 {
+		t.Errorf("the car's timing isn't applied: %d", meterDelay.Load())
 	}
 	meterDelay.Store(0)
 }
