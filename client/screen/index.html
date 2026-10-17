@@ -534,7 +534,7 @@ function drawBands() {
   else if (Date.now() < volumeUntil && vol != null && !sounding) top = { theme: page, dim: onMusic, lit: vol };
   else if (s.phase === "listening") top = { theme: "petasos", lit: micShown };
   else if (sounding) top = { theme: page, dim: true, lit: lvlShown * (vol ?? 1), mark: vol,
-                              parts: partsShown && partsShown.map((l) => Math.round(1000 * Math.min(1, l * (vol ?? 1)))) };
+                              parts: partsShown && partsShown.map((l) => 4 * Math.round(250 * Math.min(1, l * (vol ?? 1)))) };
   else if (onMusic) top = { theme: page, dim: true, lit: vol ?? 0 };
   else top = { theme: "petasos", lit: 0 };
   setBand("top-band", top);
@@ -549,13 +549,14 @@ function drawBands() {
 const FALLS = { quick: 0.15, gentle: 0.06, slow: 0.03 };
 
 // stepBands eases the levels towards where they're heading, a frame at a time, while they move.
-// The levels move by time, not by frame, so a busy moment that slows the frames down doesn't
-// leave them behind; and they're drawn at most about 30 times a second.
+// The levels move by time, not by frame, but no more than a tenth of a second's worth at a step,
+// so a frame the Car Thing is slow to draw doesn't make them leap; and they're drawn at most 20
+// times a second, as often as the levels come.
 let bandsAt = 0;
 function stepBands(now) {
   bandFrame = 0;
-  if (bandsAt && now - bandsAt < 30) { bandFrame = requestAnimationFrame(stepBands); return; }
-  const frames = bandsAt ? Math.min(now - bandsAt, 250) / 16.7 : 1; // in 60ths of a second
+  if (bandsAt && now - bandsAt < 50) { bandFrame = requestAnimationFrame(stepBands); return; }
+  const frames = bandsAt ? Math.min(now - bandsAt, 100) / 16.7 : 1; // in 60ths of a second
   bandsAt = now;
   const ease = (shown, target, fall = 0.15) => {
     shown += (target - shown) * (1 - Math.pow(1 - (target > shown ? 0.5 : fall), frames));
