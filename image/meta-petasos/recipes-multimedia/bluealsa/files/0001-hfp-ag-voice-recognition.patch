@@ -1,0 +1,42 @@
+From 7ea6e514f8efa23c5270daab3b6fc244abcec8af Mon Sep 17 00:00:00 2001
+From: Petasos <petasos@localhost>
+Date: Sun, 18 Oct 2026 20:03:36 +0000
+Subject: [PATCH] Advertise voice recognition in the HFP audio gateway
+
+The car's call button asks the phone for its voice assistant with
+AT+BVRA=1, but only when the audio gateway says it has voice recognition.
+BlueALSA leaves BVRA to the external RFCOMM handler (org.bluealsa.RFCOMM1),
+which petasos opens to start Athena.
+---
+ src/ba-adapter.c | 1 +
+ src/ba-config.c  | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ba-adapter.c b/src/ba-adapter.c
+index f0a4a88..9ae110f 100644
+--- a/src/ba-adapter.c
++++ b/src/ba-adapter.c
+@@ -161,6 +161,7 @@ void ba_adapter_unref(struct ba_adapter *a) {
+  * Get features exposed via RFCOMM for HFP-AG. */
+ unsigned int ba_adapter_get_hfp_features_ag(struct ba_adapter *a) {
+ 	unsigned int features =
++		HFP_AG_FEAT_VOICE |
+ 		HFP_AG_FEAT_REJECT |
+ 		HFP_AG_FEAT_ECS |
+ 		HFP_AG_FEAT_ECC;
+diff --git a/src/ba-config.c b/src/ba-config.c
+index 5abf2de..1284b0b 100644
+--- a/src/ba-config.c
++++ b/src/ba-config.c
+@@ -133,7 +133,7 @@ int ba_config_init(void) {
+ /**
+  * Get features exposed via Service Discovery for HFP-AG. */
+ unsigned int ba_config_get_hfp_sdp_features_ag(void) {
+-	unsigned int features = 0;
++	unsigned int features = SDP_HFP_AG_FEAT_VR;
+ #if ENABLE_MSBC
+ 	if (config.hfp.codecs.msbc)
+ 		features |= SDP_HFP_AG_FEAT_WBS;
+-- 
+2.43.0
+

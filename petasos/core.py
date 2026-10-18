@@ -33,10 +33,11 @@ import time
 from pathlib import Path
 from typing import Callable
 
-# The car-* inputs are a car's steering wheel media buttons, reaching the Car Thing over Bluetooth
-# (AVRCP) while it plays to the car.
+# The car-* inputs are a car's steering wheel buttons, reaching the Car Thing over Bluetooth while
+# it plays to the car: the media buttons (AVRCP), and the call button asking for voice
+# recognition, as a car's hands-free does of a phone (HFP).
 INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8",
-          "mute", "front", "knob", "car-play", "car-next", "car-previous")
+          "mute", "front", "knob", "car-play", "car-next", "car-previous", "car-call")
 GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "turn")
 # The pages a soft key can open: page_petasos is the home screen (no longer offered: the front
 # button's tap goes home from a music page; a key still holding it does nothing), the others a
@@ -71,16 +72,18 @@ DEFAULT_MAPPING: dict = {
         "preset-6": {"press": {"action": "page_navidrome"}},
         "preset-7": {"press": {"action": "none"}},
         "preset-8": {"press": {"action": "none"}},
-        "car-play": {"press": {"action": "conversation"}},
+        "car-play": {"press": {"action": "music_toggle"}},
         "car-next": {"press": {"action": "music_next"}},
         "car-previous": {"press": {"action": "music_previous"}},
+        "car-call": {"press": {"action": "conversation"}},
     },
 }
 
 
-# What the car's skip buttons did before they skipped songs; a mapping still holding these
-# unchanged gets today's defaults.
-_OLD_CAR_DEFAULTS = {"car-next": {"press": {"action": "stop_speaking"}},
+# What the car's buttons did before they worked the music (play started a conversation); a
+# mapping still holding these unchanged gets today's defaults.
+_OLD_CAR_DEFAULTS = {"car-play": {"press": {"action": "conversation"}},
+                     "car-next": {"press": {"action": "stop_speaking"}},
                      "car-previous": {"press": {"action": "none"}}}
 
 # The knob as earlier versions set it up; a mapping still holding one unchanged gets today's.

@@ -597,6 +597,8 @@ func (h *hermes) run(eventsFile string) {
 		go watchInputs(grab, raw)
 		go watchTouch()
 		go watchCarButtons(raw)
+		go car.start(raw)
+		go carCalls.watch(raw)
 		setUpTunnel(h.dir)
 		go keepTethered(h.cfg.Phone)
 		go keepSpeakerConnected()

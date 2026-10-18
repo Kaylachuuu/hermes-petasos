@@ -17,7 +17,8 @@ _MUSIC = "hermes_petasos_music"
 _LABELS = {"preset-1": "Preset 1", "preset-2": "Preset 2", "preset-3": "Preset 3", "preset-4": "Preset 4",
            "preset-5": "Preset 1 (second set)", "preset-6": "Preset 2 (second set)",
            "preset-7": "Preset 3 (second set)", "preset-8": "Preset 4 (second set)", "mute": "Top-right button", "front": "Front button", "knob": "Knob",
-           "car-play": "Car play/pause", "car-next": "Car next track", "car-previous": "Car previous track"}
+           "car-play": "Car play/pause", "car-next": "Car next track", "car-previous": "Car previous track",
+           "car-call": "Car call button"}
 
 
 _LOADING = threading.Lock()

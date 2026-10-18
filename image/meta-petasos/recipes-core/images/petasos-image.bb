@@ -1,5 +1,5 @@
 SUMMARY = "Petasos image for the Car Thing"
-DESCRIPTION = "yocto-superbird with the petasos program, Bluetooth tethering, WireGuard and Bluetooth audio, and a chromium kiosk screen. ext4 read-only rootfs; /var holds petasos's own files."
+DESCRIPTION = "yocto-superbird with the petasos program, Bluetooth and USB tethering, WireGuard and Bluetooth audio, and a chromium kiosk screen. ext4 read-only rootfs; /var holds petasos's own files."
 LICENSE = "MIT"
 
 inherit core-image

@@ -86,6 +86,15 @@ func keepTethered(pinned string) {
 	}
 	audioAsked := false // the phone's music was asked for since the link came up
 	for ; ; time.Sleep(15 * time.Second) {
+		if via := usbTethered(); via != "" {
+			// A phone on the USB port: Bluetooth is left to the car's audio.
+			if tethered() {
+				log.Printf("online through a phone on USB (%s); letting Bluetooth's go", via)
+				dropBluetoothTether()
+			}
+			lastProblem = ""
+			continue
+		}
 		if tethered() {
 			lastProblem = ""
 			if !audioAsked { // online already when petasos started (after an update, say)
@@ -169,6 +178,62 @@ func firstOf(devs []btDevice, address string) []btDevice {
 		}
 	}
 	return devs
+}
+
+// The USB port: a phone plugged in (through a powered hub, the port being the Car Thing's power
+// too) shares its internet over USB once the port is the host's (the image's superbird-usb-role,
+// set on the Network tab), which keeps Bluetooth for the car. systemd-networkd gets an address
+// from the phone (40-petasos-usb-tether.network in the image); an iPhone needs usbmuxd to start.
+
+const usbRoleTool = "/usr/bin/superbird-usb-role"
+
+// usbTetherDrivers are the drivers of a phone sharing its internet over USB.
+var usbTetherDrivers = map[string]string{"ipheth": "iPhone", "rndis_host": "Android", "cdc_ncm": "Android", "cdc_ether": "USB"}
+
+// usbRole is the USB port's role, host or device, or "" without the tool to change it.
+func usbRole() string {
+	if _, err := os.Stat(usbRoleTool); err != nil {
+		return ""
+	}
+	roles, _ := filepath.Glob("/sys/class/usb_role/*/role")
+	for _, r := range roles {
+		if data, err := os.ReadFile(r); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
+}
+
+// usbTethered is which kind of phone is sharing its internet over USB, or "".
+func usbTethered() string {
+	links, _ := filepath.Glob("/sys/class/net/*/device/driver")
+	for _, l := range links {
+		target, err := os.Readlink(l)
+		if err != nil {
+			continue
+		}
+		if kind, ok := usbTetherDrivers[filepath.Base(target)]; ok {
+			if state, _ := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(l)), "operstate")); strings.TrimSpace(string(state)) != "down" {
+				return kind
+			}
+		}
+	}
+	return ""
+}
+
+// dropBluetoothTether ends the Bluetooth network link, leaving the phone's music connected.
+func dropBluetoothTether() {
+	out, err := busctl(10*time.Second, "--json=short", "call", "org.bluez", "/",
+		"org.freedesktop.DBus.ObjectManager", "GetManagedObjects")
+	if err != nil {
+		return
+	}
+	phones, _ := pairedOffering(out, napUUID, "")
+	for _, p := range phones {
+		if p.Connected {
+			_, _ = busctl(10*time.Second, "call", "org.bluez", p.Path, "org.bluez.Network1", "Disconnect")
+		}
+	}
 }
 
 // tethered reports whether a Bluetooth network link exists already.

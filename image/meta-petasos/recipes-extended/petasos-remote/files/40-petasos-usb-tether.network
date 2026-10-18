@@ -1,0 +1,13 @@
+# A phone sharing its internet over USB (the port switched to host on the Network tab): the
+# phone hands out an address. Preferred to Bluetooth tethering (metric 100), which petasos then
+# lets go, keeping the Bluetooth radio for the car's audio.
+[Match]
+Driver=ipheth rndis_host cdc_ncm cdc_ether
+
+[Network]
+DHCP=ipv4
+IPv6AcceptRA=yes
+LinkLocalAddressing=ipv6
+
+[DHCPv4]
+RouteMetric=50

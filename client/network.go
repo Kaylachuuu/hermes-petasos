@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -99,6 +100,19 @@ func (b *bluetooth) networkViewAt(sel int) {
 	live := liveVPNs(h.dir)
 	items = append(items, btItem{Kind: "header", Label: "VPN"},
 		btItem{Kind: "row", Icon: "shield", Label: "VPN configurations", Value: fmt.Sprint(len(live)), do: b.vpnListView})
+	if role := usbRole(); role != "" {
+		value, detail := "Computer", "For a computer to reach this Car Thing. Press to use it for a phone's internet."
+		if role == "host" {
+			value, detail = "Phone", "Online through a phone plugged in, through a powered hub. Press to give it back to a computer."
+			if via := usbTethered(); via != "" {
+				detail = "Online through the phone plugged in (" + via + "). Press to give the port back to a computer."
+			}
+		}
+		items = append(items, btItem{Kind: "header", Label: "USB"},
+			btItem{Kind: "row", Icon: "power", Label: "USB port", Value: value, Detail: detail, do: func() {
+				b.setUSBRole(map[bool]string{true: "device", false: "host"}[role == "host"])
+			}})
+	}
 	note := "Each phone chooses its VPN on its page in the Bluetooth tab."
 	if !in {
 		note = "Logged out: " + display.agent() + " can't be reached until you log in."
@@ -357,4 +371,20 @@ func (b *bluetooth) vpnDeleteView() {
 		{Kind: "row", Icon: "back", Label: "Keep it", do: func() { b.vpnEditViewAt(-1) }}}
 	b.show(&btScreen{View: "vpnkey", Tab: "network", Sub: "VPN", Title: "Delete " + d.name + "?", Items: items, Sel: 1,
 		Note: "It's deleted from Hermes and your other devices too."})
+}
+
+// setUSBRole switches the USB port, and keeps it so after a restart.
+func (b *bluetooth) setUSBRole(role string) {
+	to := map[string][]string{"host": {"to-host", "--no-revert"}, "device": {"to-device"}}[role]
+	out, err := exec.Command(usbRoleTool, "persist", role).CombinedOutput()
+	if err == nil {
+		out, err = exec.Command(usbRoleTool, to...).CombinedOutput()
+	}
+	if err != nil {
+		log.Printf("switching the USB port to %s: %v: %s", role, err, out)
+		b.message("Couldn't switch the USB port", truncate(strings.TrimSpace(string(out)), 160))
+		return
+	}
+	log.Printf("the USB port is now for a %s", map[string]string{"host": "phone", "device": "computer"}[role])
+	b.networkViewAt(8)
 }

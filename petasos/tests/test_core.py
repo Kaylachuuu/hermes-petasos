@@ -320,19 +320,23 @@ def test_agent_name_reaches_the_screen(setup):
 def test_car_buttons_work_with_a_mapping_written_before_them(setup):
     petasos, _ = setup
     old = copy.deepcopy(core.DEFAULT_MAPPING)
-    for name in ("car-play", "car-next", "car-previous"):
+    for name in ("car-play", "car-next", "car-previous", "car-call"):
         del old["controls"][name]
     petasos.mapping.replace(old)
-    started = petasos.handle(ev("car-play", "press"))
+    started = petasos.handle(ev("car-call", "press"))
     assert started[-1]["do"] == "listen" and started[-1]["mode"] == "conversation"
+    petasos.handle(ev("car-call", "release"))
+    assert petasos.handle(ev("car-call", "press"))[-1] == {"do": "listen_stop"}
+    assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "music", "op": "toggle"}
     assert petasos.handle(ev("car-play", "release")) == []
-    assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "listen_stop"}
     assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "music", "op": "next"}
-    # The skip buttons' defaults from before they played music are taken as today's.
+    # The buttons' defaults from before they worked the music are taken as today's.
     old = copy.deepcopy(core.DEFAULT_MAPPING)
     old["controls"]["car-next"] = {"press": {"action": "stop_speaking"}}
+    old["controls"]["car-play"] = {"press": {"action": "conversation"}}
     petasos.mapping.replace(old)
     assert petasos.handle(ev("car-next", "press"))[-1] == {"do": "music", "op": "next"}
+    assert petasos.handle(ev("car-play", "press"))[-1] == {"do": "music", "op": "toggle"}
 
 
 def test_a_device_can_have_its_own_presets(setup):

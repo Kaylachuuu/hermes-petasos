@@ -138,7 +138,7 @@ The device counts quick taps itself and reports them with the release (`"taps"`)
 
 `agent_name` at the top of the file is the name of the agent the Car Thing talks to, as its screen shows it ("Hold the front button to talk to …", "Messenger of …") and in its messages. It defaults to `Hermes`; set it to your agent's name, for example `"agent_name": "Athena"`.
 
-`car-play`, `car-next` and `car-previous` are a car's steering wheel media buttons, which reach the Car Thing over Bluetooth while it plays to the car. By default play/pause starts or ends a conversation and next track stops the reply; a mapping written before they existed gets those defaults.
+`car-play`, `car-next` and `car-previous` are a car's steering wheel media buttons, which reach the Car Thing over Bluetooth while it plays to the car, and `car-call` its call button. By default play/pause plays or pauses the music, the skip buttons skip, and the call button starts or ends a conversation; a mapping written before they existed, or still holding their earlier defaults (play starting a conversation), gets these. The Car Thing is a media player to the car (`client/carplayer.go`, registered with BlueZ): the car's screen shows the song's title, artist and length, and play and pause only do something when they'd change it, since many cars send play as they connect. The call button asks the Car Thing for voice recognition as it would a phone (`AT+BVRA=1` over the hands-free link, which petasos answers through BlueALSA's AT channel, `client/carcall.go`); a car only does so once the image says the Car Thing has it (image 0.3.0). Many cars ask on a long press of the call button.
 
 `label` is the name the Car Thing's screen shows under the button (up to 32 characters, on two lines when it needs them). Without one, the screen shows the start of the prompt.
 
@@ -198,7 +198,7 @@ Tested here: the plugin's routes in a fresh `hermes-agent` (27 tests), the event
 
 ## Step 5: our own Car Thing system, and getting online
 
-Nocturne can't give petasos a network of its own (no Bluetooth tethering, no WireGuard), so the Car Thing runs our own image instead: `image/`, a layer on [yocto-superbird](https://github.com/JoeyEamigh/yocto-superbird). It adds Bluetooth tethering and WireGuard to the kernel, Bluetooth audio, petasos itself (it starts at boot, then copies itself to `/var/lib/petasos` so it can update there), the winged hat boot logo, shown from power-on until petasos's screen appears (`image/splash/`), and root login over the USB cable only.
+Nocturne can't give petasos a network of its own (no Bluetooth tethering, no WireGuard), so the Car Thing runs our own image instead: `image/`, a layer on [yocto-superbird](https://github.com/JoeyEamigh/yocto-superbird). It adds Bluetooth and USB tethering and WireGuard to the kernel, Bluetooth audio, petasos itself (it starts at boot, then copies itself to `/var/lib/petasos` so it can update there), the winged hat boot logo, shown from power-on until petasos's screen appears (`image/splash/`), and root login over the USB cable only.
 
 ### Build and flash
 
@@ -224,6 +224,10 @@ The phone's own VPN doesn't carry hotspot traffic, so the Car Thing has its own 
 ```
 
 petasos turns it into a systemd-networkd tunnel (`wg-petasos`) under `/run` at start (`client/wireguard.go`). It refuses a config that sends all traffic home.
+
+### Online through USB
+
+From image 0.3.0, a phone can share its internet over USB instead, which keeps the Bluetooth radio for the car's audio and charges the phone. The Car Thing's one USB port is also its power, so the phone goes through a hub with power passed through (USB-C PD in, the Car Thing on the hub's host connector, the phone on one of its ports). Switch the port with Settings → Network → USB port: "Phone" makes the Car Thing the USB host (the BSP's `superbird-usb-role`, kept after a restart), "Computer" gives it back to a computer, for `ssh` over the cable. Then turn on the phone's Personal Hotspot (iPhone: trust the Car Thing when it asks; usbmuxd keeps that in `/var/lib/lockdown`) or USB tethering (Android). systemd-networkd gets an address from it (`40-petasos-usb-tether.network`, preferred to Bluetooth's), and petasos lets the Bluetooth tether go while USB is up, taking it back if the phone is unplugged (`client/tether.go`). The kernel has the iPhone (`ipheth`), RNDIS, NCM and CDC Ethernet drivers built in.
 
 ## Step 6: voice
 
