@@ -7,6 +7,8 @@ The car's call button asks the phone for its voice assistant with
 AT+BVRA=1, but only when the audio gateway says it has voice recognition.
 BlueALSA leaves BVRA to the external RFCOMM handler (org.bluealsa.RFCOMM1),
 which petasos opens to start Athena.
+
+Upstream-Status: Inappropriate [petasos-specific: only useful with an external RFCOMM handler answering BVRA]
 ---
  src/ba-adapter.c | 1 +
  src/ba-config.c  | 2 +-
