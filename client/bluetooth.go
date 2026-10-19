@@ -595,6 +595,11 @@ func (b *bluetooth) listViewAt(sel int) {
 	}
 	items := []btItem{{Kind: "header", Label: "Internet"}}
 	phones, speakers := 0, 0
+	if via := usbTethered(); via != "" { // Bluetooth's link is let go meanwhile (keepTethered)
+		items = append(items, btItem{Kind: "row", Icon: "power", Label: via + " on USB", Detail: "Online through it",
+			Hot: true, do: b.networkView})
+		phones++
+	}
 	first := netFirst.get()
 	for _, d := range devs {
 		if !d.Paired || !d.Phone {
