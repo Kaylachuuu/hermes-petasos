@@ -375,10 +375,17 @@ func (b *bluetooth) vpnDeleteView() {
 
 // setUSBRole switches the USB port, and keeps it so after a restart.
 func (b *bluetooth) setUSBRole(role string) {
+	// The port starts as a computer's anyway, so "device" clears the boot role instead of keeping
+	// one: superbird-usb-role.service would otherwise set it again late in every boot, after the
+	// gadget is bound, leaving the cable without its network.
 	to := map[string][]string{"host": {"to-host", "--no-revert"}, "device": {"to-device"}}[role]
-	out, err := exec.Command(usbRoleTool, "persist", role).CombinedOutput()
+	persist := map[string]string{"host": "host", "device": "clear"}[role]
+	out, err := exec.Command(usbRoleTool, "persist", persist).CombinedOutput()
 	if err == nil {
 		out, err = exec.Command(usbRoleTool, to...).CombinedOutput()
+	}
+	if err == nil && role == "device" {
+		rebindUSBGadget()
 	}
 	if err != nil {
 		log.Printf("switching the USB port to %s: %v: %s", role, err, out)

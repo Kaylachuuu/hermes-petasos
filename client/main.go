@@ -601,6 +601,7 @@ func (h *hermes) run(eventsFile string) {
 		go car.start(raw)
 		go carCalls.watch(raw)
 		setUpTunnel(h.dir)
+		go fixUSBBootRole()
 		go keepTethered(h.cfg.Phone)
 		go keepSpeakerConnected()
 		go keepKioskOnScreen()

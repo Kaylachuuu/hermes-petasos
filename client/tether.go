@@ -204,6 +204,31 @@ func usbRole() string {
 	return ""
 }
 
+// usbBootRole is where superbird-usb-role keeps the role it sets at boot.
+const usbBootRole = "/var/lib/superbird-usb-role/boot-role"
+
+// rebindUSBGadget gives the computer back the cable's network after the port was the host's:
+// the switch leaves the gadget unbound, and adbd's unit binds it as it starts.
+func rebindUSBGadget() {
+	if out, err := exec.Command("systemctl", "restart", "android-tools-adbd.service").CombinedOutput(); err != nil {
+		log.Printf("re-binding the USB gadget: %v: %s", err, out)
+	}
+}
+
+// fixUSBBootRole undoes a "device" boot role kept by petasos 0.29.3 and earlier, which unbound the
+// gadget late in every boot (see setUSBRole).
+func fixUSBBootRole() {
+	if data, err := os.ReadFile(usbBootRole); err != nil || strings.TrimSpace(string(data)) != "device" {
+		return
+	}
+	if err := os.Remove(usbBootRole); err != nil {
+		log.Printf("clearing the USB port's boot role: %v", err)
+		return
+	}
+	log.Printf("cleared the USB port's boot role; giving the computer its network back")
+	rebindUSBGadget()
+}
+
 // usbTethered is which kind of phone is sharing its internet over USB, or "".
 func usbTethered() string {
 	links, _ := filepath.Glob("/sys/class/net/*/device/driver")
