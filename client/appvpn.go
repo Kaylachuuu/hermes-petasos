@@ -159,11 +159,18 @@ type appPrefs struct {
 	Saver      string `json:"saver"`
 	SaverAfter int    `json:"saver_after"`
 	Buffer     int    `json:"buffer"`
+
+	// The bands' timing for the speaker playing now (macoutput.go), and the choices.
+	Delay  *int           `json:"delay,omitempty"` // left out by an older page: kept
+	Output computerOutput `json:"output"`
+	Delays []int          `json:"delays,omitempty"`
+	Beeps  bool           `json:"beeps,omitempty"`
 }
 
 // appPrefsHandler is /app/prefs: GET and PUT the settings above; POST ?preview shows the
 // screensaver until the next key or click, ?wake counts as activity (the mouse moving over the
-// window), ?logout forgets the sign-in and starts again, at the sign-in page.
+// window), ?logout forgets the sign-in and starts again, at the sign-in page, and ?beeps=on or
+// off plays the test beeps for timing the bands to the speaker.
 func appPrefsHandler(w http.ResponseWriter, r *http.Request) {
 	h := hereNow()
 	if h == nil || !virtual {
@@ -176,6 +183,13 @@ func appPrefsHandler(w http.ResponseWriter, r *http.Request) {
 		backlight.trySaver()
 	case r.Method == http.MethodPost && q.Has("wake"):
 		backlight.wake()
+	case r.Method == http.MethodPost && q.Has("beeps"):
+		if q.Get("beeps") == "on" {
+			startBeeps()
+		} else {
+			stopBeeps()
+		}
+		time.Sleep(50 * time.Millisecond) // so the answer says they've started
 	case r.Method == http.MethodPost && q.Has("logout"):
 		if err := os.Remove(filepath.Join(h.dir, "tokens.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			writeJSONResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -206,9 +220,10 @@ func appPrefsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAppPrefs(dir string) appPrefs {
-	m, s := meterSetting(dir), backlight.settings()
+	m, s, delay := meterSetting(dir), backlight.settings(), delayFor(dir, speakerAddress())
 	return appPrefs{Bands: m.Bands, Rise: m.Rise, Fall: m.Fall, Peaks: m.Peaks, Saver: s.Saver, SaverAfter: s.SaverAfter,
-		Buffer: bufferSetting(dir)}
+		Buffer: bufferSetting(dir), Delay: &delay, Output: currentOutput(), Delays: meterDelays,
+		Beeps: beeping()}
 }
 
 func setAppPrefs(dir string, p appPrefs) error {
@@ -229,5 +244,10 @@ func setAppPrefs(dir string, p appPrefs) error {
 	s := backlight.settings()
 	s.Saver, s.SaverAfter = p.Saver, p.SaverAfter
 	backlight.change(s)
+	if key := speakerAddress(); key != "" && p.Delay != nil && slices.Contains(meterDelays, *p.Delay) && *p.Delay != delayFor(dir, key) {
+		if err := setDelayTo(dir, key, *p.Delay); err != nil {
+			return err
+		}
+	}
 	return setBufferTo(dir, p.Buffer)
 }

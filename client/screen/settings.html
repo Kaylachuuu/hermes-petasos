@@ -124,6 +124,11 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
       <select id="peaks" data-pref="peaks"><option value="off">Off</option><option value="on">On</option></select>
       <p class="hint">A line held at each band's recent high for about a second.</p>
     </div>
+    <div class="row" id="timing-row" hidden>
+      <label for="delay">Timing</label>
+      <div class="status"><select id="delay" data-pref="delay"></select><button type="button" id="beeps">Beep</button></div>
+      <p class="hint" id="timing-hint"></p>
+    </div>
     <h2>Screensaver</h2>
     <div class="row">
       <label for="saver">Screensaver</label>
@@ -462,7 +467,9 @@ async function loadPrefs() {
   const res = await fetch("/app/prefs", { cache: "no-store" });
   if (!res.ok) return;
   const p = await res.json();
+  showTiming(p);
   for (const el of document.querySelectorAll("[data-pref]")) {
+    if (el.id === "delay" && $("timing-row").hidden) continue;
     const v = p[el.dataset.pref];
     el.value = typeof v === "boolean" ? (v ? "on" : "off") : String(v);
   }
@@ -473,10 +480,41 @@ function prefsChange() {
   const p = {};
   for (const el of document.querySelectorAll("[data-pref]")) {
     const k = el.dataset.pref;
-    p[k] = k === "peaks" ? el.value === "on" : ["bands", "saver_after", "buffer"].includes(k) ? Number(el.value) : el.value;
+    if (k === "delay" && $("timing-row").hidden) continue; // no speaker to time it to
+    p[k] = k === "peaks" ? el.value === "on" : ["bands", "saver_after", "buffer", "delay"].includes(k) ? Number(el.value) : el.value;
   }
   return p;
 }
+
+// The bands' timing, for the speaker playing now: each keeps its own, as the Car Thing's
+// Bluetooth speakers do. The beeps light the bands as each is heard; move the timing until
+// they match.
+let timingFor = "";
+function showTiming(p) {
+  const out = p.output || {};
+  $("timing-row").hidden = !out.name || !p.delays;
+  if ($("timing-row").hidden) return;
+  if (!$("delay").options.length) {
+    for (const ms of p.delays) $("delay").append(new Option(ms > 0 ? `${ms} ms later` : ms < 0 ? `${-ms} ms earlier` : "As played", ms));
+  }
+  if (out.name !== timingFor) { timingFor = out.name; $("delay").value = String(p.delay ?? 0); }
+  $("timing-hint").textContent = `For ${out.name}${out.kind ? ` (${out.kind})` : ""}, the speaker playing now; each keeps its own. ` +
+    "Beep plays a beep each second: move this until the bands light as you hear each one. Speakers over Bluetooth or AirPlay play later than this computer's own.";
+  showBeeps(!!p.beeps);
+}
+function showBeeps(on) { $("beeps").textContent = on ? "Stop beeping" : "Beep"; $("beeps").dataset.on = on ? "1" : ""; }
+async function beeps(on) {
+  showBeeps(on);
+  await fetch(`/app/prefs?beeps=${on ? "on" : "off"}`, { method: "POST" }).catch(() => {});
+}
+$("beeps").addEventListener("click", () => beeps(!$("beeps").dataset.on));
+addEventListener("pagehide", () => { if ($("beeps").dataset.on) navigator.sendBeacon("/app/prefs?beeps=off"); });
+// The speaker can change while the tab is open (AirPods put in, say).
+setInterval(async () => {
+  if ($("timing-row").closest("section").hidden) return;
+  const res = await fetch("/app/prefs", { cache: "no-store" }).catch(() => null);
+  if (res && res.ok) showTiming(await res.json());
+}, 5000);
 
 function showSaver() {
   const off = $("saver").value === "off";
@@ -781,6 +819,7 @@ function showTab(name) {
     el.setAttribute("aria-selected", el.dataset.tab === name);
   }
   $("actions").hidden = name === "music" || name === "display";
+  if (name !== "display" && $("beeps").dataset.on) beeps(false);
   history.replaceState(null, "", "#" + name);
 }
 for (const el of document.querySelectorAll(".tabs button")) el.addEventListener("click", () => showTab(el.dataset.tab));

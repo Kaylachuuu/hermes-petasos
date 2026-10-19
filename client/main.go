@@ -591,6 +591,7 @@ func (h *hermes) run(eventsFile string) {
 	go countGestures(paged, presses)
 	if virtual {
 		h.startVirtual(raw)
+		go watchOutput(h.dir)
 	} else if eventsFile != "" {
 		go readEventFile(eventsFile, "test", raw)
 	} else {

@@ -138,7 +138,8 @@ func TestAppPrefsTakeEffectAtOnce(t *testing.T) {
 	if err := setAppPrefs(dir, want); err != nil {
 		t.Fatal(err)
 	}
-	if got := getAppPrefs(dir); got != want {
+	if got := getAppPrefs(dir); got.Bands != want.Bands || got.Rise != want.Rise || got.Fall != want.Fall || got.Peaks != want.Peaks ||
+		got.Saver != want.Saver || got.SaverAfter != want.SaverAfter || got.Buffer != want.Buffer {
 		t.Fatalf("saved %+v, got %+v", want, got)
 	}
 	if streamBuffer.Load() != -1 || meterBands.Load() != 5 {
@@ -149,4 +150,54 @@ func TestAppPrefsTakeEffectAtOnce(t *testing.T) {
 		t.Fatalf("nonsense became %+v", got)
 	}
 	setBufferTo(dir, 4)
+}
+
+// On a computer the bands' timing is kept for each speaker it plays on, as the Car Thing's is
+// for each Bluetooth speaker; a page that leaves the timing out keeps it.
+func TestTheBandsAreTimedForEachComputerSpeaker(t *testing.T) {
+	oldV := virtual
+	virtual = true
+	defer func() { virtual = oldV }()
+	saved := backlight
+	defer func() { backlight = saved }()
+	dir := t.TempDir()
+	backlight = &light{set: defaultLight, file: filepath.Join(dir, "screen.json"), swallow: map[string]bool{}}
+	use := func(o computerOutput) {
+		outputNow.Lock()
+		outputNow.out = o
+		outputNow.Unlock()
+	}
+	defer use(computerOutput{})
+	use(computerOutput{Name: "AirPods Pro", Kind: "Bluetooth"})
+	p := getAppPrefs(dir)
+	later := 250
+	p.Delay = &later
+	if err := setAppPrefs(dir, p); err != nil {
+		t.Fatal(err)
+	}
+	if meterDelay.Load() != 250 {
+		t.Fatalf("not applied: %d", meterDelay.Load())
+	}
+	use(computerOutput{Name: "MacBook Pro Speakers", Kind: "Built-in"})
+	applyMeter(dir)
+	if got := getAppPrefs(dir); *got.Delay != 0 || got.Output.Kind != "Built-in" || meterDelay.Load() != 0 {
+		t.Fatalf("the built-in speakers have %+v", got)
+	}
+	use(computerOutput{Name: "AirPods Pro", Kind: "Bluetooth"})
+	p = getAppPrefs(dir)
+	p.Delay = nil
+	setAppPrefs(dir, p)
+	if *getAppPrefs(dir).Delay != 250 {
+		t.Fatal("an older page's save lost the AirPods' timing")
+	}
+}
+
+func TestTheMacsOutputIsFound(t *testing.T) {
+	raw := []byte(`{"SPAudioDataType":[{"_name":"coreaudio_device","_items":[
+	  {"_name":"MacBook Pro Microphone","coreaudio_default_audio_input_device":"spaudio_yes","coreaudio_device_transport":"coreaudio_device_type_builtin"},
+	  {"_name":"MacBook Pro Speakers","coreaudio_device_transport":"coreaudio_device_type_builtin"},
+	  {"_name":"Kayla's AirPods Pro","coreaudio_default_audio_output_device":"spaudio_yes","coreaudio_device_transport":"coreaudio_device_type_bluetooth"}]}]}`)
+	if o, ok := defaultOutput(raw); !ok || o != (computerOutput{Name: "Kayla's AirPods Pro", Kind: "Bluetooth"}) {
+		t.Fatalf("got %+v %v", o, ok)
+	}
 }

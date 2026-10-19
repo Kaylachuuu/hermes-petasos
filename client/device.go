@@ -370,6 +370,9 @@ func setDelayTo(dir, address string, d int) error {
 var speakerNow atomic.Value
 
 func speakerAddress() string {
+	if virtual {
+		return outputKey(currentOutput()) // the computer's speaker, by name (macoutput.go)
+	}
 	a, _ := speakerNow.Load().(string)
 	return a
 }
