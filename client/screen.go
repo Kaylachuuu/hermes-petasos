@@ -45,6 +45,7 @@ type screenState struct {
 	MicID     int          `json:"mic_id,omitempty"`     // which recording, for its posts to /mic
 	MicName   string       `json:"mic_name,omitempty"`   // the microphone chosen in settings, by name
 	OnTop     bool         `json:"on_top,omitempty"`     // the app keeps its window above others (the pin)
+	TitleBar  bool         `json:"title_bar,omitempty"`  // the app's window has its own title bar, so the page draws no − and ×
 	NoPin     bool         `json:"no_pin,omitempty"`     // ...which the Linux desktop app's window can't
 	Music     *nowPlaying  `json:"music,omitempty"`      // what the phone plays through the Car Thing (music.go)
 	Page      string       `json:"page,omitempty"`       // the music page open (soundcloud, navidrome, spotify, apple), or "" for home (musicpage.go)

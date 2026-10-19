@@ -201,3 +201,23 @@ func TestTheMacsOutputIsFound(t *testing.T) {
 		t.Fatalf("got %+v %v", o, ok)
 	}
 }
+
+// The title bar and the pin are set apart: changing one keeps the other.
+func TestTheTitleBarKeepsThePin(t *testing.T) {
+	oldDir := appDir
+	appDir = t.TempDir()
+	defer func() { appDir = oldDir }()
+	post := func(body string) {
+		appWindow(httptest.NewRecorder(), httptest.NewRequest("POST", "/app/window", strings.NewReader(body)))
+	}
+	post(`{"on_top":true}`)
+	post(`{"title_bar":true}`)
+	if w := loadWindowSettings(appDir); !w.OnTop || !w.TitleBar || !display.snapshot().TitleBar {
+		t.Fatalf("got %+v", w)
+	}
+	post(`{"on_top":false}`)
+	if w := loadWindowSettings(appDir); w.OnTop || !w.TitleBar {
+		t.Fatalf("got %+v", w)
+	}
+	post(`{"title_bar":false}`)
+}

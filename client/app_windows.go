@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -164,7 +165,7 @@ func frame(hwnd uintptr) (int32, int32) {
 func shapeWindowProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 	const wmNCCalcSize, wmSizing = 0x0083, 0x0214
 	switch {
-	case msg == wmNCCalcSize && wParam == 1:
+	case msg == wmNCCalcSize && wParam == 1 && !titleBarShown.Load():
 		// The window keeps its borders (for resizing, snapping and its shadow) but not its title
 		// bar: the inside reaches the top, where the title bar was. A maximized window's frame
 		// hangs off the screen, so its top is brought back in by the same amount.
@@ -224,12 +225,32 @@ func windowAction(hwnd uintptr, what string) {
 	}
 }
 
-// keepOnTop keeps the window above other windows while the pin under the screen says so
-// (window.json), checking every half second.
+// titleBarShown is the Display tab's title bar (window.json): the window then keeps Windows's own.
+var titleBarShown atomic.Bool
+
+// showTitleBar gives the window its title bar back, or takes it away, keeping the inside's shape.
+func showTitleBar(hwnd uintptr, on bool) {
+	titleBarShown.Store(on)
+	const noMove, noZOrder, noActivate, frameChanged = 0x2, 0x4, 0x10, 0x20
+	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0, 0x1|noMove|noZOrder|noActivate|frameChanged) // 0x1: SWP_NOSIZE
+	var client winRect
+	getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&client)))
+	fw, fh := frame(hwnd)
+	width := client.Right - client.Left
+	setWindowPos.Call(hwnd, 0, 0, 0, uintptr(width+fw), uintptr(width*aspectH/aspectW+fh), noMove|noZOrder|noActivate)
+}
+
+// keepOnTop keeps the window above other windows while the pin under the screen says so, and
+// gives it its title bar while the Display tab does (window.json), checking every half second.
 func keepOnTop(w webview2.WebView, dir string) {
-	applied := false
+	applied, bar := false, false
 	for first := true; ; first = false {
-		on := loadWindowSettings(dir).OnTop
+		set := loadWindowSettings(dir)
+		if set.TitleBar != bar {
+			bar = set.TitleBar
+			w.Dispatch(func() { showTitleBar(uintptr(w.Window()), bar) })
+		}
+		on := set.OnTop
 		if first || on != applied {
 			applied = on
 			after := uintptr(^uintptr(1)) // HWND_NOTOPMOST (-2)

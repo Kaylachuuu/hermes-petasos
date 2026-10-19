@@ -267,7 +267,8 @@ func appSignIn(w http.ResponseWriter, r *http.Request) {
 // windowSettings is window.json, set by the pin under the screen and read by the Mac and
 // Windows apps themselves: they keep the window above other windows while on_top is set.
 type windowSettings struct {
-	OnTop bool `json:"on_top"`
+	OnTop    bool `json:"on_top"`
+	TitleBar bool `json:"title_bar,omitempty"` // the window's own title bar, which the page otherwise stands in for
 }
 
 func loadWindowSettings(dir string) windowSettings {
@@ -276,23 +277,38 @@ func loadWindowSettings(dir string) windowSettings {
 	return w
 }
 
-// appWindow is /app/window: the pin under the screen. It takes effect without a restart; the
-// apps check window.json every half second.
+// appWindow is /app/window: the pin under the screen, and the Display tab's title bar. A POST
+// changes what it names; GET says what's set. It takes effect without a restart; the apps check
+// window.json every half second.
 func appWindow(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || appDir == "" {
+	if appDir == "" || (r.Method != http.MethodPost && r.Method != http.MethodGet) {
 		http.NotFound(w, r)
 		return
 	}
-	var set windowSettings
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&set); err != nil {
+	set := loadWindowSettings(appDir)
+	if r.Method == http.MethodGet {
+		writeJSONResponse(w, http.StatusOK, set)
+		return
+	}
+	var change struct {
+		OnTop    *bool `json:"on_top"`
+		TitleBar *bool `json:"title_bar"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&change); err != nil {
 		writeJSONResponse(w, http.StatusBadRequest, map[string]string{"error": "That wasn't a window setting."})
 		return
+	}
+	if change.OnTop != nil {
+		set.OnTop = *change.OnTop
+	}
+	if change.TitleBar != nil {
+		set.TitleBar = *change.TitleBar
 	}
 	if err := writeJSON(filepath.Join(appDir, "window.json"), set, 0o644); err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	display.update(func(st *screenState) { st.OnTop = set.OnTop })
+	display.update(func(st *screenState) { st.OnTop, st.TitleBar = set.OnTop, set.TitleBar })
 	writeJSONResponse(w, http.StatusOK, set)
 }
 

@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
     private var engine: Process?
     private var quitting = false
     private var dragMonitor: Any?
+    private var titleBarShown = false
 
     private let pageURL = URL(string: "http://127.0.0.1:8187/")!
     private let support: URL = {
@@ -39,8 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = true
         config.mediaTypesRequiringUserActionForPlayback = [] // the page records and plays without a click first
-        // The window has no title bar, as on Windows: the page draws minimize and close, and
-        // moves the window when its background is dragged, through petasosWindow(what).
+        // The window has no title bar, as on Windows, unless the Display tab gives it one
+        // (setTitleBar): the page draws minimize and close, and moves the window when its
+        // background is dragged, through petasosWindow(what).
         let controller = WKUserContentController()
         controller.add(self, name: "petasosWindow")
         controller.addUserScript(WKUserScript(
@@ -54,13 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = "Petasos"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(button)?.isHidden = true
-        }
-        // The title bar's own view would still take clicks along the top, where the soft keys are.
-        window.standardWindowButton(.closeButton)?.superview?.superview?.isHidden = true
+        setTitleBar(false)
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(red: 0x1f / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0, alpha: 1)
         window.contentAspectRatio = NSSize(width: 800, height: 544) // the Car Thing's screen, plus the buttons under it
@@ -112,16 +108,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         }
     }
 
-    // The pin under the screen (window.json, beside the rest of the app's settings).
+    // The pin under the screen and the Display tab's title bar (window.json, beside the rest of
+    // the app's settings).
     private func applyWindowSettings() {
-        var onTop = false
+        var onTop = false, titleBar = false
         if let data = try? Data(contentsOf: support.appendingPathComponent("window.json")),
            let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             onTop = settings["on_top"] as? Bool ?? false
+            titleBar = settings["title_bar"] as? Bool ?? false
         }
         let level: NSWindow.Level = onTop ? .floating : .normal
         if window.level != level {
             window.level = level
+        }
+        if titleBar != titleBarShown {
+            setTitleBar(titleBar)
+        }
+    }
+
+    // setTitleBar shows the Mac's own title bar above the screen, or hides it, the screen then
+    // reaching the top of the window, keeping the window's inside the same size.
+    private func setTitleBar(_ on: Bool) {
+        titleBarShown = on
+        let inside = window.contentLayoutRect.size
+        if on {
+            window.styleMask.remove(.fullSizeContentView)
+        } else {
+            window.styleMask.insert(.fullSizeContentView)
+        }
+        window.titleVisibility = on ? .visible : .hidden
+        window.titlebarAppearsTransparent = !on
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(button)?.isHidden = !on
+        }
+        // Hidden, the title bar's own view would still take clicks along the top, where the soft keys are.
+        window.standardWindowButton(.closeButton)?.superview?.superview?.isHidden = !on
+        if inside.width > 0 {
+            window.setContentSize(inside)
         }
     }
 

@@ -129,6 +129,14 @@ h3 { font: 600 14px var(--body); color: var(--bronze); margin: 18px 0 4px; }
       <div class="status"><select id="delay" data-pref="delay"></select><button type="button" id="beeps">Beep</button></div>
       <p class="hint" id="timing-hint"></p>
     </div>
+    <div id="window-part" hidden>
+    <h2>Window</h2>
+    <div class="row">
+      <label for="title-bar">Title bar</label>
+      <select id="title-bar"><option value="off">Hidden</option><option value="on">Shown</option></select>
+      <p class="hint">Hidden, the window is dragged by the screen's background and has its own − and × at the top. Shown, it has this computer's usual title bar.</p>
+    </div>
+    </div>
     <h2>Screensaver</h2>
     <div class="row">
       <label for="saver">Screensaver</label>
@@ -484,6 +492,17 @@ function prefsChange() {
     p[k] = k === "peaks" ? el.value === "on" : ["bands", "saver_after", "buffer", "delay"].includes(k) ? Number(el.value) : el.value;
   }
   return p;
+}
+
+// The window's title bar, in the Mac and Windows apps (window.json, which they watch).
+if (window.petasosWindow) {
+  $("window-part").hidden = false;
+  fetch("/app/window", { cache: "no-store" }).then((r) => r.ok ? r.json() : null)
+    .then((w) => { if (w) $("title-bar").value = w.title_bar ? "on" : "off"; }).catch(() => {});
+  $("title-bar").addEventListener("change", () => {
+    fetch("/app/window", { method: "POST", headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify({ title_bar: $("title-bar").value === "on" }) }).catch(() => {});
+  });
 }
 
 // The bands' timing, for the speaker playing now: each keeps its own, as the Car Thing's

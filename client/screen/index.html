@@ -1487,6 +1487,8 @@ function setUpControls(s) {
   $("c-pin").hidden = !!s.no_pin;
   $("c-pin").classList.toggle("on", !!s.on_top);
   $("c-pin").title = s.on_top ? "Stop keeping this window on top" : "Keep this window on top";
+  // The apps' windows have no title bar of their own unless the Display tab gives them one.
+  if (window.petasosWindow) $("c-min").hidden = $("c-close").hidden = !!s.title_bar;
   if (controlsReady) return;
   controlsReady = true;
   document.body.classList.add("virtual");
@@ -1513,8 +1515,7 @@ function setUpControls(s) {
                            body: JSON.stringify({ on_top: !(state && state.on_top) }) }).catch(() => {});
   });
   $("c-down").addEventListener("click", () => press("knob", "turn", -1));
-  if (window.petasosWindow) { // the apps' windows have no title bar of their own
-    $("c-min").hidden = $("c-close").hidden = false;
+  if (window.petasosWindow) {
     $("c-min").addEventListener("click", () => petasosWindow("minimize"));
     $("c-close").addEventListener("click", () => petasosWindow("close"));
   }

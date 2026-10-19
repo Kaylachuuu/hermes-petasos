@@ -360,7 +360,10 @@ shows its volume display. The file isn't signed, so Windows SmartScreen asks onc
 first run: **More info**, then **Run anyway**.
 
 Neither app's window has a title bar: drag it by the screen's background, and use the − and ×
-at the right of the controls to minimize or close it. Resizing keeps its shape.
+at the right of the controls to minimize or close it. Resizing keeps its shape. Settings →
+Display → Title bar → Shown gives it the computer's usual title bar instead (`title_bar` in
+`window.json`, which the apps watch; the − and × then go). The window is the app's own part, so
+this needs an app built from this version or later.
 
 The screen keeps the Car Thing's shape in a window of any size, in both apps.
 
