@@ -547,6 +547,8 @@ func (b *bluetooth) mineViewAt(sel int) {
 	case <-time.After(hermesWait):
 	}
 	items = append(items, versionItems(v, func() { b.checkForUpdate(h) })...)
+	items = append(items, btItem{Kind: "row", Icon: "device", Label: "Send log to " + display.agent(),
+		Detail: "For troubleshooting, without the USB cable", do: func() { b.sendLog(h) }})
 	b.show(&btScreen{View: "mine", Tab: "device", Note: "Name is also what Bluetooth shows this Car Thing as.",
 		Items: items, Sel: firstRow(items, sel)})
 }

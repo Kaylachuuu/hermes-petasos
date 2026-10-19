@@ -103,6 +103,25 @@ def put_device_presets(device: str, body: dict) -> dict:
     return {**presets, "commands": screen}
 
 
+# --- logs ---------------------------------------------------------------------------------------
+
+MAX_LOG_BYTES = 2 * 1024 * 1024
+
+
+@router.post("/log")
+async def device_log(request: Request, device: str = "car-thing") -> dict:
+    """A device's log and state in (plain text), for troubleshooting when it can't be reached
+    otherwise; saved as petasos/logs/<device>.log beside the mapping, replacing the last one."""
+    body = await request.body()
+    if len(body) > MAX_LOG_BYTES:
+        raise HTTPException(status_code=413, detail="log too long")
+    name = "".join(c if c.isalnum() or c in "-_." else "_" for c in device)[:64].strip(".") or "device"
+    path = _core()._mapping_path().parent / "logs" / f"{name}.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return {"path": str(path)}
+
+
 # --- voice --------------------------------------------------------------------------------------
 
 MAX_SPEECH_BYTES = 10 * 1024 * 1024  # about five minutes of 16 kHz mono WAV
