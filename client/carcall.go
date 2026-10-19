@@ -102,6 +102,9 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 			return
 		}
 		reply, call := carCallAnswer(string(buf[:n]))
+		if reply != "" && !call {
+			log.Printf("the car asked %q", strings.TrimSpace(string(buf[:n]))) // what its buttons send, if not BVRA
+		}
 		if reply != "" {
 			if _, err := f.Write([]byte(reply)); err != nil {
 				return
