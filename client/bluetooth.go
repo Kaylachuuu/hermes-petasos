@@ -240,7 +240,7 @@ func (b *bluetooth) watchLinks() {
 				}
 			}
 		}
-		l.Phone = tethered()
+		l.Phone = tethered() || usbTethered() != "" // online through a phone, over Bluetooth or USB
 		if phone != phoneAddress() {
 			phoneNow.Store(phone) // each phone may use its own VPN
 			if h := hereNow(); h != nil && phone != "" {
