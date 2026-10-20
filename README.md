@@ -209,7 +209,7 @@ cd ~/Projects/yocto-superbird
 KAS_CONTAINER_ENGINE=podman kas-container build ~/Projects/hermes-petasos/image/kas/petasos.yml
 ```
 
-The result is `build/tmp/deploy/images/superbird/petasos-image-superbird-flashthing.zip`. Copy it to the Mac, hold buttons 1 and 4 while plugging the Car Thing in, and run `flashthing-cli` on it (install with rustup and `cargo install flashthing-cli`; Homebrew's Rust builds LLVM from source). Then run the installer as in step 4. On the USB cable the Car Thing is `petasos.local`; use `ssh -4`. The image's Bluetooth audio also answers a car's hands-free connection (for the car's microphone, in the Device tab), so pair the car again after flashing for it to see that.
+The result is `build/tmp/deploy/images/superbird/petasos-image-superbird-flashthing.zip`. Copy it to the Mac, hold buttons 1 and 4 while plugging the Car Thing in, and run `flashthing-cli` on it (install with rustup and `cargo install flashthing-cli`; Homebrew's Rust builds LLVM from source). Then run the installer as in step 4. On the USB cable the Car Thing is `petasos.local`; use `ssh -4`. If the Mac gets no `10.42.1.x` address on the cable, check that macOS Internet Sharing is off (or leaves the Car Thing out): it takes the cable into its own bridge. The image's Bluetooth audio also answers a car's hands-free connection (for the car's microphone, in the Device tab), so pair the car again after flashing for it to see that.
 
 ### Online through the phone
 
