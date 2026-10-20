@@ -19,6 +19,9 @@ const (
 )
 
 func keepMemoryReserve() {
+	if virtual {
+		return
+	}
 	data, err := os.ReadFile(minFreePath)
 	if err != nil {
 		return
