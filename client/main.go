@@ -244,6 +244,7 @@ func (h *hermes) send(method, path, contentType string, payload []byte, client *
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
+	followHermesClock(resp)
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	return resp.StatusCode, data, err
 }
