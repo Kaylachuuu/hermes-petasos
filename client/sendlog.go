@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -17,7 +18,7 @@ import (
 // petasos's own log, plus the state of the USB port and the services around it. The plugin saves
 // it as petasos/logs/<device>.log in the Hermes home.
 
-const sentLogLimit = 1 << 20
+const sentLogLimit = 384 << 10 // a Bluetooth hotspot can be slow
 
 // logChecks are what the Car Thing reports besides its log; each runs for at most a few seconds.
 var logChecks = [][]string{
@@ -26,7 +27,7 @@ var logChecks = [][]string{
 	{"ip", "-br", "addr"},
 	{"networkctl", "--no-pager"},
 	{"systemctl", "status", "--no-pager", "--lines=0", "android-tools-adbd", "superbird-usb-gadget", "superbird-usb-role", "usbmuxd", "bluealsa"},
-	{"journalctl", "-b", "--no-pager", "-n", "300", "-u", "android-tools-adbd", "-u", "superbird-usb-gadget", "-u", "superbird-usb-role", "-u", "usbmuxd", "-u", "bluealsa", "-u", "systemd-networkd"},
+	{"sh", "-c", "journalctl -b --no-pager -u android-tools-adbd -u superbird-usb-gadget -u superbird-usb-role -u usbmuxd -u bluealsa -u systemd-networkd | grep -v 'PCM overrun' | tail -n 200"},
 	{"sh", "-c", "dmesg | tail -n 200"},
 }
 
@@ -63,8 +64,9 @@ func logReport(dir string) []byte {
 func (b *bluetooth) sendLog(h *hermes) {
 	b.message("Sending the log", "Sending it to "+display.agent()+"…")
 	go func() {
+		slow := &http.Client{Transport: h.http.Transport, Timeout: 3 * time.Minute}
 		data, err := h.exchange("POST", "/api/plugins/petasos/log?device="+url.QueryEscape(h.cfg.Device), "text/plain",
-			logReport(h.dir), h.http, 1<<16)
+			logReport(h.dir), slow, 1<<16)
 		if err != nil {
 			b.message("Couldn't send the log", friendlyHermes(err))
 			return
