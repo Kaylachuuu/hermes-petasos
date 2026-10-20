@@ -336,7 +336,8 @@ less Bluetooth and the screen's light, which the computer looks after itself.
   moving over the window ends the screensaver. On a Mac, Timing lines the bands up with the
   speaker playing now (its own, AirPods over Bluetooth, an AirPlay speaker, as macOS's
   `system_profiler` says, looked at every 10 seconds; `client/macoutput.go`), with Beep's test
-  beeps, and each speaker keeps its own, as the Car Thing's Bluetooth speakers do.
+  beeps (Beep goes back to the screen, where the bands can be seen, with Earlier and Later over
+  them until Done), and each speaker keeps its own, as the Car Thing's Bluetooth speakers do.
 - **Network**: the server and account signed in to, with Log out. The VPN: WireGuard, built
   into the program. Only Petasos's own connection to Hermes goes through it, so the rest of the
   computer is untouched and no administrator password is needed. Choose one of the VPN

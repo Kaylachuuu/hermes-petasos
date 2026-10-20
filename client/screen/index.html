@@ -16,6 +16,16 @@ html, body { margin: 0; height: 100%; background: var(--night); overflow: hidden
 .screen { container-type: inline-size; position: relative; width: 100vw; height: 100vh; overflow: hidden;
           font-family: var(--body); color: var(--bronze); --a: var(--ember); }
 [hidden] { display: none !important; }
+/* The apps' timing check (Settings → Display → Timing → Beep): the bands stay in view above
+   and below while the beeps play, with the timing to move between them. */
+.timing { position: absolute; left: 50%; top: 21cqw; transform: translateX(-50%); z-index: 5; cursor: default;
+          background: var(--row); border: 1px solid var(--rule); border-radius: 1.5cqw; padding: 2cqw 3cqw;
+          display: flex; flex-direction: column; align-items: center; gap: 1.4cqw; font-size: 2.4cqw; }
+.timing .t-row { display: flex; align-items: center; gap: 2cqw; }
+.timing button { font: inherit; color: var(--bronze); background: var(--night); border: 1px solid var(--rule);
+                 border-radius: 1cqw; padding: .6cqw 2cqw; cursor: pointer; }
+.timing #t-value { min-width: 18cqw; text-align: center; color: var(--ember); }
+.timing .t-hint { color: var(--dust); font-size: 1.9cqw; }
 
 /* Four equal columns, one under each preset button, one line each. The one opening the page
    showing lights in its colour (--a); dots at the right say which set of soft keys this is. */
@@ -441,6 +451,12 @@ body.virtual .topbar > span:hover { background: var(--row); }
   <button id="c-close" title="Close Petasos" hidden><svg><use href="#i-close"/></svg></button>
 </div>
 
+<div class="timing" id="timing" hidden>
+  <div class="t-hint" id="t-for"></div>
+  <div class="t-row"><button type="button" id="t-earlier">Earlier</button><span id="t-value"></span><button type="button" id="t-later">Later</button></div>
+  <div class="t-hint">Move it until each beep lights the bands as you hear it.</div>
+  <button type="button" id="t-done">Done</button>
+</div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -1543,6 +1559,46 @@ if (window.petasosWindow) addEventListener("mousedown", (e) => {
   if (e.button === 0 && !e.target.closest("button, .topbar > span, a, input, select, textarea, label, .k, .row, .page, .mp-kb"))
     petasosWindow("drag");
 });
+
+// The apps' timing check: Settings' Beep opens this page as /?timing. The beeps play while it's
+// up; the timing moves through the same choices as the Timing row, saved as it changes.
+if (window.petasosWindow && new URLSearchParams(location.search).has("timing")) {
+  let prefs = null;
+  const showTimingPanel = () => {
+    const i = prefs.delays.indexOf(prefs.delay ?? 0), ms = prefs.delays[i];
+    $("t-value").textContent = ms > 0 ? `${ms} ms later` : ms < 0 ? `${-ms} ms earlier` : "As played";
+    $("t-earlier").disabled = i <= 0;
+    $("t-later").disabled = i >= prefs.delays.length - 1;
+    const out = prefs.output || {};
+    $("t-for").textContent = out.name ? `Timing for ${out.name}` : "Timing";
+  };
+  const move = async (step) => {
+    const i = prefs.delays.indexOf(prefs.delay ?? 0) + step;
+    if (i < 0 || i >= prefs.delays.length) return;
+    prefs.delay = prefs.delays[i];
+    showTimingPanel();
+    const res = await fetch("/app/prefs", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify(prefs) }).catch(() => null);
+    if (res && res.ok) { prefs = await res.json(); showTimingPanel(); }
+  };
+  const done = () => {
+    navigator.sendBeacon("/app/prefs?beeps=off");
+    location.href = "settings.html#display";
+  };
+  fetch("/app/prefs", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((p) => {
+    if (!p || !p.delays) return;
+    prefs = p;
+    showTimingPanel();
+    $("timing").hidden = false;
+    fetch("/app/prefs?beeps=on", { method: "POST" }).catch(() => {});
+  });
+  $("t-earlier").addEventListener("click", () => move(-1));
+  $("t-later").addEventListener("click", () => move(1));
+  $("t-done").addEventListener("click", done);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") done(); });
+  addEventListener("pagehide", () => navigator.sendBeacon("/app/prefs?beeps=off"));
+  history.replaceState(null, "", "/"); // a reload is the plain screen again
+}
 
 document.fonts.ready.then(connect);
 </script>

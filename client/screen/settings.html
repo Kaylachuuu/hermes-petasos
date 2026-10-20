@@ -526,7 +526,14 @@ async function beeps(on) {
   showBeeps(on);
   await fetch(`/app/prefs?beeps=${on ? "on" : "off"}`, { method: "POST" }).catch(() => {});
 }
-$("beeps").addEventListener("click", () => beeps(!$("beeps").dataset.on));
+// In the apps the beeps play on the screen itself, where the bands can be seen (index.html's
+// timing check); the timing is saved first, as it's picked up from there.
+$("beeps").addEventListener("click", async () => {
+  if (!window.petasosWindow) return beeps(!$("beeps").dataset.on);
+  await fetch("/app/prefs", { method: "PUT", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify(prefsChange()) }).catch(() => {});
+  location.href = "/?timing";
+});
 addEventListener("pagehide", () => { if ($("beeps").dataset.on) navigator.sendBeacon("/app/prefs?beeps=off"); });
 // The speaker can change while the tab is open (AirPods put in, say).
 setInterval(async () => {
