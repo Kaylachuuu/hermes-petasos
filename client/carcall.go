@@ -79,9 +79,12 @@ type carCallLine struct {
 
 var carCalls = &carCallLine{open: map[dbus.ObjectPath]bool{}}
 
-// watch opens the AT channel of each car connected as a hands-free.
+// watch opens the AT channel of each car connected as a hands-free. The car asks its questions
+// in the first second, and BlueALSA answers ERROR to any it asks before the channel is open, so
+// a new one is opened as BlueALSA announces it; a look every few seconds catches any missed.
 func (c *carCallLine) watch(out chan<- map[string]any) {
 	c.out = out
+	go c.watchAdded()
 	for ; ; time.Sleep(5 * time.Second) {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -103,6 +106,41 @@ func (c *carCallLine) watch(out chan<- map[string]any) {
 				go c.serve(conn, path)
 			}
 		}
+	}
+}
+
+// watchAdded opens a car's AT channel the moment BlueALSA announces it.
+func (c *carCallLine) watchAdded() {
+	for ; ; time.Sleep(5 * time.Second) {
+		conn, err := dbus.ConnectSystemBus() // its own, so its signals come to it alone
+		if err != nil {
+			continue
+		}
+		if err := conn.AddMatchSignal(dbus.WithMatchSender(bluealsaService),
+			dbus.WithMatchInterface("org.freedesktop.DBus.ObjectManager"), dbus.WithMatchMember("InterfacesAdded")); err != nil {
+			conn.Close()
+			continue
+		}
+		signals := make(chan *dbus.Signal, 16)
+		conn.Signal(signals)
+		for s := range signals {
+			if len(s.Body) < 2 {
+				continue
+			}
+			path, _ := s.Body[0].(dbus.ObjectPath)
+			ifaces, _ := s.Body[1].(map[string]map[string]dbus.Variant)
+			if _, ok := ifaces["org.bluealsa.RFCOMM1"]; !ok || path == "" {
+				continue
+			}
+			c.mu.Lock()
+			busy := c.open[path]
+			c.open[path] = true
+			c.mu.Unlock()
+			if !busy {
+				go c.serve(conn, path)
+			}
+		}
+		conn.Close() // the bus went away; join it again
 	}
 }
 
