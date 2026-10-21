@@ -309,6 +309,9 @@ type ownSettings struct {
 	// Delays is how much later the meander shows the sound for each speaker, by its Bluetooth
 	// address, in ms (meterDelays): one speaker plays what it's sent later than another.
 	Delays map[string]int `json:"delays,omitempty"`
+	// Class is how the Car Thing shows itself over Bluetooth: "phone" for a car that offers its
+	// hands-free (and its call button) only to a phone, or "" as a speaker (btclass_linux.go).
+	Class string `json:"class,omitempty"`
 }
 
 // The choices for the top meander's sound, in the order the Display tab steps through them.

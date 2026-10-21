@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -641,7 +642,32 @@ func (b *bluetooth) listViewAt(sel int) {
 	}
 	items = append(items,
 		btItem{Kind: "row", Icon: "plus", Label: "Pair a new device", do: b.scanView})
+	if h := hereNow(); h != nil && !virtual {
+		value, detail := "Speaker", "So a phone plays its music here. Press to show as a phone, for a car's call button."
+		if loadOwnSettings(h.dir).Class == "phone" {
+			value, detail = "Phone", "So a car offers its call button. Press to show as a speaker again."
+		}
+		items = append(items, btItem{Kind: "row", Icon: "device", Label: "Shows itself as", Value: value, Detail: detail,
+			do: func() { b.setClass(h.dir, value == "Speaker") }})
+	}
 	b.show(&btScreen{View: "list", Items: items, Sel: firstRow(items, sel)})
+}
+
+// setClass makes the Car Thing show itself over Bluetooth as a phone, or as a speaker again. A
+// device already paired keeps what it saw, so the car has to forget the Car Thing and pair again.
+func (b *bluetooth) setClass(dir string, phone bool) {
+	own := loadOwnSettings(dir)
+	own.Class = map[bool]string{true: "phone", false: ""}[phone]
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
+		b.message("Couldn't save that", err.Error())
+		return
+	}
+	setSpeakerClass()
+	if phone {
+		b.message("Shows itself as a phone", "Forget the Car Thing on the car and pair them again for it to see the change. A phone already paired still plays its music here.")
+		return
+	}
+	b.message("Shows itself as a speaker", "Forget the Car Thing on a phone and pair again for it to offer the Car Thing for its music.")
 }
 
 func (b *bluetooth) deviceView(path dbus.ObjectPath) {
