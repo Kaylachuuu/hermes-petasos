@@ -42,7 +42,33 @@ func carCallAnswer(msg string) (reply string, call bool) {
 	case "AT+BVRA=0":
 		return "\r\nOK\r\n", false
 	}
+	for _, q := range phoneAnswers {
+		if at == q.ask || (strings.HasSuffix(q.ask, "=") && strings.HasPrefix(at, q.ask)) {
+			if q.info != "" {
+				return "\r\n" + q.info + "\r\n\r\nOK\r\n", false
+			}
+			return "\r\nOK\r\n", false
+		}
+	}
 	return "\r\nERROR\r\n", false
+}
+
+// phoneAnswers are what a phone with no call going answers the questions a car asks as it
+// connects (a Ford SYNC asks all of these). Some cars take an ERROR to one as the phone not
+// being fit for hands-free, and stop offering its voice assistant.
+var phoneAnswers = []struct{ ask, info string }{
+	{"AT+CHLD=?", "+CHLD: (0,1,2,3)"},
+	{"AT+COPS=", ""},
+	{"AT+COPS?", `+COPS: 0,0,"Petasos"`},
+	{"AT+CLCC", ""}, // no calls
+	{"AT+CGMI", "Petasos"},
+	{"AT+CGMM", "Car Thing"},
+	{"AT+CGMR", version},
+	{"AT+CNUM", ""},
+	{"AT+CLIP=", ""},
+	{"AT+CCWA=", ""},
+	{"AT+CMEE=", ""},
+	{"AT+NREC=", ""},
 }
 
 type carCallLine struct {

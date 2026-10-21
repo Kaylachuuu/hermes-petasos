@@ -15,8 +15,12 @@ func TestCarCallAnswers(t *testing.T) {
 		"AT+CMER=3,0,0,1\r": {"", false},
 		"AT+CIND=?\r":       {"", false},
 		"AT+BCC\r":          {"", false},
-		"AT+CLCC\r":         {"\r\nERROR\r\n", false},
-		"AT+COPS=3,0\r":     {"\r\nERROR\r\n", false},
+		"AT+CLCC\r":         {"\r\nOK\r\n", false},
+		"AT+COPS=3,0\r":     {"\r\nOK\r\n", false},
+		"AT+CHLD=?\r":       {"\r\n+CHLD: (0,1,2,3)\r\n\r\nOK\r\n", false},
+		"AT+CGMI\r":         {"\r\nPetasos\r\n\r\nOK\r\n", false},
+		"AT+CCWA=0\r":       {"\r\nOK\r\n", false},
+		"AT+XYZ\r":          {"\r\nERROR\r\n", false},
 		"\r\nOK\r\n":        {"", false},
 	} {
 		if reply, call := carCallAnswer(msg); reply != want.reply || call != want.call {
