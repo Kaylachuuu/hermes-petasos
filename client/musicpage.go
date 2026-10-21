@@ -15,7 +15,7 @@ import (
 // its list from there, through the library player (library.go), as if Athena had put it on, or
 // for Spotify, on the phone's Spotify app.
 
-var musicPages = map[string]bool{"soundcloud": true, "navidrome": true, "spotify": true, "apple": true}
+var musicPages = map[string]bool{"soundcloud": true, "navidrome": true, "spotify": true, "apple": true, "ipod": true}
 
 // onPhonePage is whether a page for music played on the phone (Apple Music's or Spotify's) is
 // open: its controls are the phone's, even with the library's music paused.
@@ -66,6 +66,11 @@ func musicViewPost(w http.ResponseWriter, r *http.Request) {
 // musicBrowse passes the page's list requests on to the plugin: ?what=likes, playlists,
 // playlist (with source and id) or search (with q).
 func musicBrowse(w http.ResponseWriter, r *http.Request) {
+	if q := r.URL.Query(); q.Get("source") == ipodSource { // the iPod's, read here
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ipodBrowse(q.Get("what"), q.Get("id"), q.Get("q")))
+		return
+	}
 	h := hereNow()
 	if h == nil {
 		http.Error(w, "Petasos is still starting.", http.StatusServiceUnavailable)
@@ -86,6 +91,9 @@ func musicBrowse(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(answer)
 }
 
+// musicQueueMax is the most of a list played from a song picked.
+const musicQueueMax = 2000
+
 // musicPlay plays a list from the song picked: {"title", "tracks", "at"}.
 func musicPlay(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -101,8 +109,11 @@ func musicPlay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tracks required", http.StatusBadRequest)
 		return
 	}
-	if len(body.Tracks) > 500 {
-		body.Tracks = body.Tracks[:500]
+	if len(body.Tracks) > musicQueueMax { // the part of a long list from the song picked
+		if body.At >= musicQueueMax {
+			body.Tracks, body.At = body.Tracks[body.At:], 0
+		}
+		body.Tracks = body.Tracks[:min(len(body.Tracks), musicQueueMax)]
 	}
 	if body.Tracks[0].Source == "spotify" { // played by Spotify on the phone; the sound comes over Bluetooth
 		playOnSpotify(w, body.Tracks, body.At)

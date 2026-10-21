@@ -491,6 +491,7 @@ const THEMES = {
   navidrome: { band: "#5b9ee8", dim: "#24364d", lit: "#5b9ee8", accent: "#5b9ee8", name: "Navidrome" },
   spotify: { band: "#4cc879", dim: "#24452f", lit: "#4cc879", accent: "#4cc879", name: "Spotify" },
   apple: { band: "#f0505a", dim: "#4f2427", lit: "#f0505a", accent: "#f0505a", name: "Apple Music" },
+  ipod: { band: "#a9b8c8", dim: "#363f4a", lit: "#c8d6e4", accent: "#a9c4de", name: "iPod" },
 };
 (function makePatterns() {
   const pat = (id, c) => `<pattern id="${id}" width="40" height="60" patternUnits="userSpaceOnUse">
@@ -1083,7 +1084,11 @@ const PAGES = {
   navidrome: { source: "navidrome,folders", tabs: [["likes", "Starred"], ["playlists", "Playlists"], ["search", "Search"]] },
   spotify: { source: "spotify", tabs: [["likes", "Liked"], ["playlists", "Playlists"], ["search", "Search"]] },
   apple: { tabs: [] },
+  ipod: { source: "ipod", tabs: [["albums", "Albums"], ["playlists", "Playlists"], ["search", "Search"]] },
 };
+// The views listing things to open (playlists, albums), each opened in place.
+const FOLDERS = ["playlists", "albums"];
+const openHere = () => mp.open && mp.open.view === mp.view ? mp.open : null;
 
 // What's playing comes with the state. The lists come from /music/browse when a tab first opens
 // and stay, so they keep their place while the music plays. Each page keeps its own; mp is the
@@ -1122,7 +1127,7 @@ function setUpMusicPage() {
 // back to its top (the playlists, from an open one).
 function pickView(view) {
   const again = mp.view === view;
-  if (view === "playlists" && again) mp.open = null;
+  if (FOLDERS.includes(view) && again) mp.open = null;
   setView(view);
   if (view === "search" && (again || !mp.found)) openMusicKeyboard();
   if (again && view !== "search") loadTab(true);
@@ -1140,12 +1145,12 @@ function pickRow(row) {
   if (row.dataset.find) { openMusicKeyboard(); return; }
   if (row.dataset.back) { mp.open = null; mp.sel = 0; renderMusic(); return; }
   if (row.dataset.p) {
-    const p = (mp.lists.playlists || {}).playlists[+row.dataset.p], page = mp;
-    page.open = { title: p.title, loading: true };
+    const view = mp.view, p = (mp.lists[view] || {}).playlists[+row.dataset.p], page = mp;
+    page.open = { title: p.title, loading: true, view };
     page.sel = 0;
     renderMusic();
     browse({ what: "playlist", source: p.source, id: p.id }).then((got) => {
-      if (page.open && page.open.title === p.title) { page.open = { ...got, title: p.title }; if (page === mp) renderMusic(); }
+      if (page.open && page.open.title === p.title) { page.open = { ...got, title: p.title, view }; if (page === mp) renderMusic(); }
     });
     return;
   }
@@ -1195,13 +1200,15 @@ function browse(params) {
 
 function loadTab(force) {
   const tab = mp.lastTab, page = mp;
-  if (!tab || tab === "search" || (page.lists[tab] && !page.lists[tab].loading && !force)) return;
+  // The iPod's lists come again while they only say why there are none: it may be plugged in now.
+  const stale = page.name === "ipod" && page.lists[tab] && page.lists[tab].note;
+  if (!tab || tab === "search" || (page.lists[tab] && !page.lists[tab].loading && !force && !stale)) return;
   if (!page.lists[tab]) page.lists[tab] = { loading: true };
   browse({ what: tab, source: PAGES[page.name].source }).then((got) => { page.lists[tab] = got; if (page === mp) renderMusic(); });
 }
 
 function shownList() {
-  if (mp.view === "playlists" && mp.open) return mp.open;
+  if (openHere()) return mp.open;
   if (mp.view === "search") return mp.found;
   return mp.lists[mp.view];
 }
@@ -1223,16 +1230,16 @@ function listHTML() {
     else if (mp.found) html += mp.found.tracks && mp.found.tracks.length ? trackRows(mp.found.tracks, now) : note(mp.found.note || "Nothing found.");
     return html;
   }
-  if (mp.view === "playlists" && mp.open) {
+  if (openHere()) {
     const o = mp.open;
     return `<div class="head" data-back="1">${icon("back")}<div>${esc(o.title)}</div><em>${o.tracks ? o.tracks.length + " songs" : ""}</em></div>` +
       (o.loading ? note("Loading…") : o.tracks && o.tracks.length ? trackRows(o.tracks, now) : note(o.note || "This playlist is empty."));
   }
   const l = mp.lists[mp.view];
   if (!l || l.loading) return note("Loading…");
-  if (mp.view === "playlists")
+  if (FOLDERS.includes(mp.view))
     return (l.playlists || []).length ? l.playlists.map((p, i) => `<div class="pl" data-p="${i}"><div class="thumb" style="${artStyle(p.art, true)}">${p.art ? "" : icon("list")}</div>
-      <div><b>${esc(p.title)}</b><span>${p.count ? p.count + " songs" : ""}</span></div><em></em></div>`).join("")
+      <div><b>${esc(p.title)}</b><span>${esc([p.artist, p.count ? p.count + " songs" : ""].filter(Boolean).join(" · "))}</span></div><em></em></div>`).join("")
       : note(l.note || "No playlists yet.");
   return (l.tracks || []).length ? trackRows(l.tracks, now) : note(l.note || "Nothing here yet.");
 }
@@ -1267,7 +1274,7 @@ function drawMusicPage(s) {
   $("mp-art").innerHTML = m && m.art ? "" : icon("music");
   $("mp-src").textContent = m ? t.name + (m.service && m.source && !m.library ? " · " + m.source : "") : THEMES[s.page].name;
   $("mp-title").textContent = m ? m.title || "Playing" : "Nothing playing";
-  $("mp-artist").textContent = m ? m.artist || "" : s.page === "apple" ? "" : `Pick something, or ask ${s.agent}`;
+  $("mp-artist").textContent = m ? m.artist || "" : s.page === "apple" ? "" : s.page === "ipod" ? "Pick something from the iPod" : `Pick something, or ask ${s.agent}`;
   $("mp-play").firstElementChild.firstElementChild.setAttribute("href", m && m.playing ? "#i-pause" : "#i-play");
   const lib = !!(m && m.library);
   $("mp-repeat").firstElementChild.firstElementChild.setAttribute("href", m && m.repeat === "one" ? "#i-repeat-one" : "#i-repeat");

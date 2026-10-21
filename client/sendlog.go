@@ -28,6 +28,7 @@ var logChecks = [][]string{
 	{"networkctl", "--no-pager"},
 	{"systemctl", "status", "--no-pager", "--lines=0", "android-tools-adbd", "superbird-usb-gadget", "superbird-usb-role", "usbmuxd", "bluealsa"},
 	{"sh", "-c", "journalctl -b --no-pager -u android-tools-adbd -u superbird-usb-gadget -u superbird-usb-role -u usbmuxd -u bluealsa -u systemd-networkd | grep -v 'PCM overrun' | tail -n 200"},
+	{"sh", "-c", "ls /sys/block; grep -E ' /run/petasos' /proc/mounts; cat /proc/filesystems | grep -E 'fat|hfs'; command -v ffmpeg"},
 	{"sh", "-c", "dmesg | tail -n 200"},
 }
 

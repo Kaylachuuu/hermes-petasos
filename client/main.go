@@ -604,6 +604,7 @@ func (h *hermes) run(eventsFile string) {
 		setUpTunnel(h.dir)
 		keepMemoryReserve()
 		go fixUSBBootRole()
+		go watchIPod()
 		go keepTethered(h.cfg.Phone)
 		go keepSpeakerConnected()
 		go keepKioskOnScreen()

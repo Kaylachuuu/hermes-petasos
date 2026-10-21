@@ -42,7 +42,7 @@ GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "tu
 # The pages a soft key can open: page_petasos is the home screen (no longer offered: the front
 # button's tap goes home from a music page; a key still holding it does nothing), the others a
 # music service's.
-PAGES = ("petasos", "soundcloud", "navidrome", "spotify", "apple")
+PAGES = ("petasos", "soundcloud", "navidrome", "spotify", "apple", "ipod")
 ACTIONS = ("push_to_talk", "conversation", "stop_speaking", "volume", "mic_toggle", "prompt",
            "music_toggle", "music_next", "music_previous", "music_stop", "music_page", "soft_keys",
            *("page_" + p for p in PAGES), "none")
@@ -107,7 +107,7 @@ _ACTION_LABELS = {"music_toggle": "Play / pause", "music_next": "Next song", "mu
                   "music_stop": "Stop the music", "music_page": "Music page",
                   "mic_toggle": "Mic on / off", "soft_keys": "Other soft keys",
                   "page_petasos": "Petasos", "page_soundcloud": "SoundCloud", "page_navidrome": "Navidrome",
-                  "page_spotify": "Spotify", "page_apple": "Apple Music"}
+                  "page_spotify": "Spotify", "page_apple": "Apple Music", "page_ipod": "iPod"}
 
 LABEL_MAX = 32
 WAKE_IDLE_S = 8  # how long a conversation the wake word started waits for someone to speak

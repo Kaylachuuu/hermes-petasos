@@ -233,7 +233,7 @@ func (l *libraryPlayer) fetchNext() {
 	l.mu.Lock()
 	t, ok := l.nextLocked()
 	h := l.h
-	if !ok || h == nil || trackKey(t) == l.cacheKey || l.next != nil && trackKey(l.next.t) == trackKey(t) {
+	if !ok || h == nil || t.Source == ipodSource || trackKey(t) == l.cacheKey || l.next != nil && trackKey(l.next.t) == trackKey(t) {
 		l.mu.Unlock()
 		return
 	}
@@ -341,6 +341,13 @@ func (l *libraryPlayer) active() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.want != ""
+}
+
+// playingFrom is whether the library's music, playing or paused, is a source's.
+func (l *libraryPlayer) playingFrom(source string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.want != "" && l.pos < len(l.queue) && l.queue[l.pos].Source == source
 }
 
 // playing is whether the library's music is playing now, rather than paused.
@@ -519,7 +526,7 @@ func (l *libraryPlayer) show() {
 	var np *nowPlaying
 	if l.want != "" && l.pos < len(l.queue) {
 		t := l.queue[l.pos]
-		source := map[string]string{"navidrome": "Navidrome", "soundcloud": "SoundCloud"}[t.Source]
+		source := map[string]string{"navidrome": "Navidrome", "soundcloud": "SoundCloud", ipodSource: "iPod"}[t.Source]
 		if source == "" {
 			source = "Music"
 		}
@@ -599,13 +606,21 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 	l.mu.Lock()
 	h, v := l.h, l.v
 	l.mu.Unlock()
-	if h == nil || v == nil {
+	if v == nil || h == nil && t.Source != ipodSource {
 		return from, fmt.Errorf("not connected")
 	}
 	var src io.Reader
 	cushion := 0
 	var ahead *readAhead // a stream's download, not a track kept in memory
-	if data := l.cached(t); data != nil {
+	var pcm io.Reader
+	if t.Source == ipodSource { // played from the iPod, decoded by ffmpeg (ipod.go)
+		decoded, stop, err := ipodPCM(t, from)
+		if err != nil {
+			return from, err
+		}
+		defer stop()
+		pcm = decoded
+	} else if data := l.cached(t); data != nil {
 		src = bytes.NewReader(data)
 		go l.fetchNext()
 	} else {
@@ -634,13 +649,15 @@ func (l *libraryPlayer) playTrack(r *libRun, t libTrack, from int) (int, error) 
 		ahead.pace(paceFactor*rate, max(cushion, paceLead*rate))
 		src = ahead
 	}
-	dec, err := mp3.NewDecoder(src)
-	if err != nil {
-		return from, err
-	}
-	pcm := resampleStereo(dec, dec.SampleRate(), libraryRate)
-	if _, err := io.CopyN(io.Discard, pcm, int64(from)*4); err != nil {
-		return from, err
+	if pcm == nil {
+		dec, err := mp3.NewDecoder(src)
+		if err != nil {
+			return from, err
+		}
+		pcm = resampleStereo(dec, dec.SampleRate(), libraryRate)
+		if _, err := io.CopyN(io.Discard, pcm, int64(from)*4); err != nil {
+			return from, err
+		}
 	}
 	if virtual {
 		return l.playWhole(r, pcm, from)

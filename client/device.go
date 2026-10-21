@@ -96,6 +96,7 @@ var softKeyActions = []choiceOf{
 	{"page_navidrome", "Navidrome page"},
 	{"page_spotify", "Spotify page"},
 	{"page_apple", "Apple Music page"},
+	{"page_ipod", "iPod page"},
 	{"none", "Nothing"},
 }
 

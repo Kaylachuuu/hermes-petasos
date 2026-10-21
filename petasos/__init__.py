@@ -50,7 +50,7 @@ def _describe(step: dict, agent: str) -> str:
             "music_previous": "previous song", "music_stop": "stop the music", "music_page": "open the music page", "soft_keys": "show the other soft keys",
             "page_petasos": "open the Petasos page", "page_soundcloud": "open the SoundCloud page",
             "page_navidrome": "open the Navidrome page", "page_spotify": "open the Spotify page",
-            "page_apple": "open the Apple Music page", "none": "nothing"}.get(action, action)
+            "page_apple": "open the Apple Music page", "page_ipod": "open the iPod page", "none": "nothing"}.get(action, action)
 
 
 def _slash(_args: str = "") -> str:

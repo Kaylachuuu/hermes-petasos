@@ -29,6 +29,7 @@
     ["page_navidrome", "Open the Navidrome page"],
     ["page_spotify", "Open the Spotify page"],
     ["page_apple", "Open the Apple Music page"],
+    ["page_ipod", "Open the iPod page"],
     ["none", "Nothing"],
   ];
   // The two sets of soft keys: preset-1..4 on the top buttons, and preset-5..8 on the same
@@ -54,7 +55,7 @@
 
   // The screen's own names for these (petasos core._ACTION_LABELS).
   const ACTION_LABELS = { mic_toggle: "Mic on / off", music_next: "Next song", music_previous: "Previous song", music_toggle: "Play / pause", music_stop: "Stop the music", music_page: "Music page", soft_keys: "Other soft keys",
-    page_petasos: "Petasos", page_soundcloud: "SoundCloud", page_navidrome: "Navidrome", page_spotify: "Spotify", page_apple: "Apple Music" };
+    page_petasos: "Petasos", page_soundcloud: "SoundCloud", page_navidrome: "Navidrome", page_spotify: "Spotify", page_apple: "Apple Music", page_ipod: "iPod" };
 
   // The actions to pick from, with one an older mapping still gives a preset (such as the
   // music page) kept at the end so it shows as it is.
