@@ -70,7 +70,9 @@ def test_play_music_leaves_a_queue_for_the_device_that_asked(home):
     configure(home, {"folders": [str(library(home))]})
     music.note_turn("kitchen")
     answer = json.loads(music.play_music({"query": "discovery"}))
-    assert answer == {"playing": "Discovery by Daft Punk", "songs": 2, "first": "One More Time", "device": "kitchen"}
+    assert answer == {"result": "Done: Discovery by Daft Punk is starting on kitchen, 2 songs, first One More Time. "
+                                "Nothing more is needed.",
+                      "playing": "Discovery by Daft Punk", "songs": 2, "first": "One More Time", "device": "kitchen"}
     json.loads(music.music_control({"action": "next"}))
     commands = music.take("kitchen")
     assert [c["op"] for c in commands] == ["play", "next"]
@@ -376,7 +378,8 @@ def test_a_song_named_in_full_plays_alone_and_repeat_reaches_the_device(tmp_path
     monkeypatch.setattr(music, "device_for", lambda d, s: "car")
     music.play_music({"query": "Dreams", "repeat": "one"})
     assert left[-1]["repeat"] == "one" and left[-1]["shuffle"] is False
-    assert json.loads(music.music_control({"action": "shuffle_on"}))["done"] == "shuffle_on"
+    control = json.loads(music.music_control({"action": "shuffle_on"}))
+    assert control["done"] == "shuffle_on" and control["result"].startswith("Done: shuffle on is sent to")
     assert left[-1] == {"do": "music", "op": "shuffle_on"}
     assert "error" in json.loads(music.music_control({"action": "wiggle"}))
 
