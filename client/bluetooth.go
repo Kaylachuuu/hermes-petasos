@@ -786,7 +786,10 @@ func (b *bluetooth) deviceViewEdit(sel int, editing bool) {
 		}
 	}
 	items = append(items,
-		btItem{Kind: "row", Icon: "forget", Label: "Forget this device", do: func() { b.forgetView(d.Name, d.Path) }},
+		// Held, not pressed: a car forgotten by a stray press has to be paired again, which is
+		// no job for the road.
+		btItem{Kind: "row", Icon: "forget", Label: "Forget this device", Detail: "Hold the knob for 3 seconds",
+			Hold: true, hold: func() { b.act(d.Name, "Forgetting", b.forget(d.Path)) }},
 		btItem{Kind: "row", Icon: "back", Label: "Back", do: b.listView})
 	sel = firstRow(items, sel)
 	view := "device"
@@ -896,16 +899,6 @@ func (b *bluetooth) useSpeaker(path dbus.ObjectPath) func() error {
 		}
 		return b.call(path, "org.bluez.Device1.Connect")()
 	}
-}
-
-// forgetView asks before forgetting a device, Keep it highlighted: a car forgotten by a stray
-// press has to be paired again, which is no job for the road.
-func (b *bluetooth) forgetView(name string, path dbus.ObjectPath) {
-	items := []btItem{
-		{Kind: "row", Icon: "forget", Label: "Forget " + name, do: func() { b.act(name, "Forgetting", b.forget(path)) }},
-		{Kind: "row", Icon: "back", Label: "Keep it", do: func() { b.deviceViewAt(-1) }}}
-	b.show(&btScreen{View: "device", Tab: "bluetooth", Title: "Forget " + name + "?", Items: items, Sel: 1,
-		Note: "It has to be paired again to use it."})
 }
 
 func (b *bluetooth) forget(path dbus.ObjectPath) func() error {
