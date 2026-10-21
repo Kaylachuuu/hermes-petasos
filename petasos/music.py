@@ -1547,7 +1547,9 @@ def play_music(args: dict | None = None, session_id: str | None = None, **_) -> 
     repeat = args.get("repeat") if args.get("repeat") in ("one", "all") else ""
     leave(device, {"do": "music", "op": "play", "title": said, "tracks": tracks, "repeat": repeat,
                    "shuffle": bool(args.get("shuffle"))})
-    return json.dumps({"playing": said, "songs": len(tracks), "first": tracks[0]["title"], "device": device})
+    return json.dumps({"result": f"Done: {said} is starting on {device}, {len(tracks)} song{'s' if len(tracks) != 1 else ''}, "
+                                 f"first {tracks[0]['title']}. Nothing more is needed.",
+                       "playing": said, "songs": len(tracks), "first": tracks[0]["title"], "device": device})
 
 
 def music_control(args: dict | None = None, session_id: str | None = None, **_) -> str:
@@ -1558,4 +1560,5 @@ def music_control(args: dict | None = None, session_id: str | None = None, **_) 
         return json.dumps({"error": "action is one of " + ", ".join(actions)})
     device = device_for(args.get("device"), session_id)
     leave(device, {"do": "music", "op": action})
-    return json.dumps({"done": action, "device": device})
+    return json.dumps({"result": f"Done: {action.replace('_', ' ')} is sent to {device}. Nothing more is needed.",
+                       "done": action, "device": device})
