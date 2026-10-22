@@ -311,7 +311,8 @@ type ownSettings struct {
 	Delays map[string]int `json:"delays,omitempty"`
 	// Class is how the Car Thing shows itself over Bluetooth: "phone" for a car that offers its
 	// hands-free (and its call button) only to a phone, or "" as a speaker (btclass_linux.go).
-	Class string `json:"class,omitempty"`
+	Class     string `json:"class,omitempty"`
+	SkipHolds string `json:"skip_holds,omitempty"` // "off": a car's held skip buttons do nothing
 }
 
 // The choices for the top meander's sound, in the order the Display tab steps through them.

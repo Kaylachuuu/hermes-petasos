@@ -653,6 +653,13 @@ func (b *bluetooth) listViewAt(sel int) {
 		}
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "Shows itself as", Value: value, Detail: detail,
 			do: func() { b.setClass(h.dir, next) }})
+		holds, holdsDetail := "Athena", "Holding a car's skip back starts a conversation, skip ahead stops Athena talking. Press to turn off."
+		if loadOwnSettings(h.dir).SkipHolds == "off" {
+			holds, holdsDetail = "Off", "A car's held skip buttons do nothing. Press to have skip back start a conversation."
+		}
+		at := len(items)
+		items = append(items, btItem{Kind: "row", Icon: "device", Label: "Holding skip buttons", Value: holds, Detail: holdsDetail,
+			do: func() { b.setSkipHolds(h.dir, holds == "Athena", at) }})
 	}
 	b.show(&btScreen{View: "list", Items: items, Sel: firstRow(items, sel)})
 }
@@ -677,6 +684,17 @@ func (b *bluetooth) setClass(dir, class string) {
 		return
 	}
 	b.message("Shows itself as a speaker", "Forget the Car Thing on a phone and pair again for it to offer the Car Thing for its music.")
+}
+
+// setSkipHolds turns a car's held skip buttons (car-rewind and car-forward) off or on again.
+func (b *bluetooth) setSkipHolds(dir string, off bool, sel int) {
+	own := loadOwnSettings(dir)
+	own.SkipHolds = map[bool]string{true: "off", false: ""}[off]
+	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
+		b.message("Couldn't save that", err.Error())
+		return
+	}
+	b.listViewAt(sel)
 }
 
 func (b *bluetooth) deviceView(path dbus.ObjectPath) {

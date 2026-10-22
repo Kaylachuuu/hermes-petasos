@@ -208,6 +208,9 @@ func translate(typ, code uint16, value int32, ms int64) map[string]any {
 		}
 		if name == "car-rewind" || name == "car-forward" {
 			carSeekAt.Store(time.Now().UnixMilli())
+			if h := hereNow(); h != nil && loadOwnSettings(h.dir).SkipHolds == "off" {
+				return nil // turned off on the Bluetooth tab
+			}
 		}
 		action := "release"
 		if value == 1 {
