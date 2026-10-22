@@ -27,7 +27,10 @@ var logChecks = [][]string{
 	{"ip", "-br", "addr"},
 	{"networkctl", "--no-pager"},
 	{"systemctl", "status", "--no-pager", "--lines=0", "android-tools-adbd", "superbird-usb-gadget", "superbird-usb-role", "usbmuxd", "bluealsa"},
-	{"sh", "-c", "journalctl -b --no-pager -u android-tools-adbd -u superbird-usb-gadget -u superbird-usb-role -u usbmuxd -u bluealsa -u systemd-networkd | grep -v 'PCM overrun' | tail -n 200"},
+	{"sh", "-c", "journalctl -b --no-pager -u android-tools-adbd -u superbird-usb-gadget -u superbird-usb-role -u usbmuxd -u bluealsa -u bluetooth -u systemd-networkd | grep -v 'PCM overrun' | tail -n 200"},
+	// What the Car Thing offers over Bluetooth (its class and profiles), and what each device
+	// paired with it offers and has connected: why a car does or doesn't take it for a phone.
+	{"sh", "-c", "bluetoothctl show; for d in $(bluetoothctl devices | cut -d' ' -f2); do bluetoothctl info $d; done"},
 	{"sh", "-c", "ls /sys/block; grep -E ' /run/petasos' /proc/mounts; cat /proc/filesystems | grep -E 'fat|hfs'; command -v ffmpeg"},
 	{"sh", "-c", "dmesg | tail -n 200"},
 }
