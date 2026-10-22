@@ -164,7 +164,8 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 	defer f.Close()
 	log.Printf("taking the car's call button (%s)", path)
 	buf := make([]byte, 512)
-	indicated := false
+	var signal *time.Timer
+	var mu sync.Mutex // the reply here and the signal above both write
 	for {
 		n, err := f.Read(buf)
 		if err != nil || n == 0 {
@@ -175,18 +176,27 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 			log.Printf("the car asked %q", strings.TrimSpace(string(buf[:n]))) // what its buttons send, if not BVRA
 		}
 		if reply != "" {
-			if _, err := f.Write([]byte(reply)); err != nil {
+			mu.Lock()
+			_, err := f.Write([]byte(reply))
+			mu.Unlock()
+			if err != nil {
 				return
 			}
 		}
-		if !indicated {
-			// BlueALSA tells the car there's no phone network. A Ford SYNC 2 then won't pass its
-			// call button on, so the Car Thing says it has service, at full signal. What the car
-			// sends here comes after the handshake (and its AT+CMER), when it may hear these.
-			indicated = true
-			if _, err := f.Write([]byte(networkSignal)); err != nil {
-				return
-			}
+		// BlueALSA tells the car there's no phone network, and a Ford SYNC 2 then passes no
+		// button on, so the Car Thing says it has service, at full signal. The car asks for the
+		// indicators again during its setup, so this waits until it has been quiet a moment.
+		if signal == nil {
+			signal = time.AfterFunc(2*time.Second, func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if _, err := f.Write([]byte(networkSignal)); err == nil {
+					log.Printf("told the car the Car Thing has phone service")
+				}
+			})
+			defer signal.Stop()
+		} else {
+			signal.Reset(2 * time.Second)
 		}
 		if call {
 			log.Printf("the car's call button")
