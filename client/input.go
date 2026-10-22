@@ -193,6 +193,9 @@ func translate(typ, code uint16, value int32, ms int64) map[string]any {
 	switch typ {
 	case evKey:
 		name, ok := keyNames[code]
+		if !ok && value == 1 {
+			log.Printf("a key with no name: %d", code) // a car's other buttons, say
+		}
 		if !ok || (value != 0 && value != 1) {
 			return nil
 		}

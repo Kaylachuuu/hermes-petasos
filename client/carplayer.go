@@ -151,6 +151,7 @@ func (c *carPlayer) press(name string) {
 	if c.out == nil {
 		return
 	}
+	log.Printf("car button: %s", name) // when each comes shows what a held button sends
 	ms := time.Now().UnixMilli()
 	c.out <- map[string]any{"input": name, "action": "press", "t": ms}
 	c.out <- map[string]any{"input": name, "action": "release", "t": ms}
