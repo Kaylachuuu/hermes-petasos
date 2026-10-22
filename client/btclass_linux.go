@@ -16,7 +16,8 @@ import (
 //
 // A car may offer its hands-free (the call button, its phone screens) only to a device that says
 // it is a phone, so the Bluetooth tab can make it Phone, Smartphone instead (Class in
-// device.json). A phone paired while it was a speaker keeps it as one.
+// device.json; "iphone" is a phone too, see carcall.go). A phone paired while it was a speaker
+// keeps it as one.
 const (
 	classMajorAudio       = 0x04
 	classMinorLoudspeaker = 0x05 << 2 // the minor class sits above two format bits
@@ -30,7 +31,7 @@ const (
 // starts, so it holds until then.
 func setSpeakerClass() {
 	major, minor, name := byte(classMajorAudio), byte(classMinorLoudspeaker), "loudspeaker"
-	if h := hereNow(); h != nil && loadOwnSettings(h.dir).Class == "phone" {
+	if h := hereNow(); h != nil && loadOwnSettings(h.dir).Class != "" {
 		major, minor, name = classMajorPhone, classMinorSmartphone, "phone"
 	}
 	fd, err := unix.Socket(unix.AF_BLUETOOTH, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.BTPROTO_HCI)

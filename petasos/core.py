@@ -37,7 +37,8 @@ from typing import Callable
 # it plays to the car: the media buttons (AVRCP), and the call button asking for voice
 # recognition, as a car's hands-free does of a phone (HFP).
 INPUTS = ("preset-1", "preset-2", "preset-3", "preset-4", "preset-5", "preset-6", "preset-7", "preset-8",
-          "mute", "front", "knob", "car-play", "car-next", "car-previous", "car-call")
+          "mute", "front", "knob", "car-play", "car-next", "car-previous", "car-call",
+          "car-rewind", "car-forward")
 GESTURES = ("press", "hold", "long_hold", "tap", "double_tap", "triple_tap", "turn")
 # The pages a soft key can open: page_petasos is the home screen (no longer offered: the front
 # button's tap goes home from a music page; a key still holding it does nothing), the others a
@@ -76,6 +77,9 @@ DEFAULT_MAPPING: dict = {
         "car-next": {"press": {"action": "music_next"}},
         "car-previous": {"press": {"action": "music_previous"}},
         "car-call": {"press": {"action": "conversation"}},
+        # Holding a skip button, for a car (a Ford SYNC) that keeps its call button to itself.
+        "car-rewind": {"press": {"action": "conversation"}},
+        "car-forward": {"press": {"action": "stop_speaking"}},
     },
 }
 

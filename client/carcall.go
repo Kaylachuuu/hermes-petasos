@@ -44,8 +44,12 @@ func carCallAnswer(msg string) (reply string, call bool) {
 	}
 	for _, q := range phoneAnswers {
 		if at == q.ask || (strings.HasSuffix(q.ask, "=") && strings.HasPrefix(at, q.ask)) {
-			if q.info != "" {
-				return "\r\n" + q.info + "\r\n\r\nOK\r\n", false
+			info := q.info
+			if apple, ok := appleAnswers[q.ask]; ok && asIPhone() {
+				info = apple
+			}
+			if info != "" {
+				return "\r\n" + info + "\r\n\r\nOK\r\n", false
 			}
 			return "\r\nOK\r\n", false
 		}
@@ -65,11 +69,9 @@ var phoneAnswers = []struct{ ask, info string }{
 	{"AT+COPS=", ""},
 	{"AT+COPS?", `+COPS: 0,0,"Petasos"`},
 	{"AT+CLCC", ""}, // no calls
-	// An iPhone, as a car may hand its voice button only to one (Siri Eyes Free), with Siri
-	// there to talk to when the car asks Apple's way (APLSIRI).
-	{"AT+CGMI", "Apple Inc."},
-	{"AT+CGMM", "iPhone"},
-	{"AT+APLSIRI?", "+APLSIRI: 1"},
+	{"AT+CGMI", "Petasos"},
+	{"AT+CGMM", "Car Thing"},
+	{"AT+APLSIRI?", "+APLSIRI: 1"}, // Siri is there to talk to, should the car ask Apple's way
 	{"AT+CGMR", version},
 	{"AT+CNUM", ""},
 	{"AT+CLIP=", ""},
@@ -215,4 +217,14 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 			c.out <- map[string]any{"input": "car-call", "action": "release", "t": ms}
 		}
 	}
+}
+
+// appleAnswers are who made the Car Thing, when it shows itself as an iPhone.
+var appleAnswers = map[string]string{"AT+CGMI": "Apple Inc.", "AT+CGMM": "iPhone"}
+
+// asIPhone is whether the Bluetooth tab has the Car Thing show itself as an iPhone: a car may hand
+// its voice button only to one (Siri Eyes Free), so asked who made it, it says Apple, iPhone.
+func asIPhone() bool {
+	h := hereNow()
+	return h != nil && loadOwnSettings(h.dir).Class == "iphone"
 }

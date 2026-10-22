@@ -166,6 +166,10 @@ func (c *carPlayer) playing() bool {
 type carControls struct{ c *carPlayer }
 
 func (p carControls) Play() *dbus.Error {
+	if time.Now().UnixMilli()-carSeekAt.Load() < 3000 {
+		log.Printf("car button: play, after a held skip button; left alone")
+		return nil
+	}
 	if !p.c.playing() {
 		p.c.press("car-play")
 	}

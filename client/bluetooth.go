@@ -643,27 +643,36 @@ func (b *bluetooth) listViewAt(sel int) {
 	items = append(items,
 		btItem{Kind: "row", Icon: "plus", Label: "Pair a new device", do: b.scanView})
 	if h := hereNow(); h != nil && !virtual {
-		value, detail := "Speaker", "So a phone plays its music here. Press to show as a phone, for a car's call button."
-		if loadOwnSettings(h.dir).Class == "phone" {
-			value, detail = "Phone", "So a car offers its call button. Press to show as a speaker again."
+		class := loadOwnSettings(h.dir).Class
+		value, detail, next := "Speaker", "So a phone plays its music here. Press to show as a phone, for a car's call button.", "phone"
+		switch class {
+		case "phone":
+			value, detail, next = "Phone", "So a car offers its call button. Press to show as an iPhone.", "iphone"
+		case "iphone":
+			value, detail, next = "iPhone", "A phone that says it's an iPhone, for a car that hands its voice button only to one. Press to show as a speaker again.", ""
 		}
 		items = append(items, btItem{Kind: "row", Icon: "device", Label: "Shows itself as", Value: value, Detail: detail,
-			do: func() { b.setClass(h.dir, value == "Speaker") }})
+			do: func() { b.setClass(h.dir, next) }})
 	}
 	b.show(&btScreen{View: "list", Items: items, Sel: firstRow(items, sel)})
 }
 
-// setClass makes the Car Thing show itself over Bluetooth as a phone, or as a speaker again. A
-// device already paired keeps what it saw, so the car has to forget the Car Thing and pair again.
-func (b *bluetooth) setClass(dir string, phone bool) {
+// setClass makes the Car Thing show itself over Bluetooth as a phone (an iPhone, when class is
+// "iphone"), or as a speaker again (""). A device already paired keeps what it saw, so the car has
+// to forget the Car Thing and pair again.
+func (b *bluetooth) setClass(dir, class string) {
 	own := loadOwnSettings(dir)
-	own.Class = map[bool]string{true: "phone", false: ""}[phone]
+	own.Class = class
 	if err := writeJSON(filepath.Join(dir, ownSettingsFile), own, 0o644); err != nil {
 		b.message("Couldn't save that", err.Error())
 		return
 	}
 	setSpeakerClass()
-	if phone {
+	if class == "iphone" {
+		b.message("Shows itself as an iPhone", "Asked who made it, the Car Thing says Apple, iPhone. Forget it on the car and pair them again for it to see the change.")
+		return
+	}
+	if class == "phone" {
 		b.message("Shows itself as a phone", "Forget the Car Thing on the car and pair them again for it to see the change. A phone already paired still plays its music here.")
 		return
 	}

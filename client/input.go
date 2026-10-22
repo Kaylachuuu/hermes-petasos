@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,7 +35,13 @@ var keyNames = map[uint16]string{
 	// A car's steering wheel media buttons, as BlueZ passes them on from AVRCP.
 	164: "car-play", 200: "car-play", 201: "car-play", // KEY_PLAYPAUSE, KEY_PLAYCD, KEY_PAUSECD
 	163: "car-next", 165: "car-previous", // KEY_NEXTSONG, KEY_PREVIOUSSONG
+	// Holding skip back or ahead, as a Ford SYNC sends it: rewind and fast forward.
+	168: "car-rewind", 208: "car-forward", // KEY_REWIND, KEY_FASTFORWARD
 }
+
+// carSeekAt is when a car's skip button was last held (Unix ms). A car sends play as it is let
+// go, to carry on from where the seek took it, which carPlayer then leaves alone.
+var carSeekAt atomic.Int64
 
 // watchInputs finds the button and knob devices by name and reports their events, reopening
 // them if they go away. With grab, Nocturne's own screen stops seeing these presses.
@@ -198,6 +205,9 @@ func translate(typ, code uint16, value int32, ms int64) map[string]any {
 		}
 		if !ok || (value != 0 && value != 1) {
 			return nil
+		}
+		if name == "car-rewind" || name == "car-forward" {
+			carSeekAt.Store(time.Now().UnixMilli())
 		}
 		action := "release"
 		if value == 1 {

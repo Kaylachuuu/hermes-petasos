@@ -396,3 +396,11 @@ def test_the_screen_gets_hermess_time_zone(monkeypatch):
     zone = core.local_zone()
     assert zone["zone"] == "America/Chicago"
     assert isinstance(zone["utc_offset"], int)
+
+
+def test_holding_a_car_skip_button(setup):
+    petasos, _ = setup
+    started = petasos.handle(ev("car-rewind", "press"))
+    assert started[-1]["do"] == "listen" and started[-1]["mode"] == "conversation"
+    petasos.handle(ev("car-rewind", "release"))
+    assert petasos.handle(ev("car-forward", "press"))[-1] == {"do": "stop_speaking"}
