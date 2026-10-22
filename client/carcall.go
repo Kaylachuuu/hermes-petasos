@@ -165,7 +165,8 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 	log.Printf("taking the car's call button (%s)", path)
 	buf := make([]byte, 512)
 	var signal *time.Timer
-	var mu sync.Mutex // the reply here and the signal above both write
+	var mu sync.Mutex // the reply here and the signal below both write
+	signalled := false
 	for {
 		n, err := f.Read(buf)
 		if err != nil || n == 0 {
@@ -185,18 +186,24 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 		}
 		// BlueALSA tells the car there's no phone network, and a Ford SYNC 2 then passes no
 		// button on, so the Car Thing says it has service, at full signal. The car asks for the
-		// indicators again during its setup, so this waits until it has been quiet a moment.
+		// indicators again during its setup, so this waits until it has been quiet a moment. Only
+		// once: the car asks for the network's name on hearing it, which mustn't start it again.
 		if signal == nil {
 			signal = time.AfterFunc(2*time.Second, func() {
 				mu.Lock()
 				defer mu.Unlock()
+				signalled = true
 				if _, err := f.Write([]byte(networkSignal)); err == nil {
 					log.Printf("told the car the Car Thing has phone service")
 				}
 			})
 			defer signal.Stop()
 		} else {
-			signal.Reset(2 * time.Second)
+			mu.Lock()
+			if !signalled {
+				signal.Reset(2 * time.Second)
+			}
+			mu.Unlock()
 		}
 		if call {
 			log.Printf("the car's call button")
