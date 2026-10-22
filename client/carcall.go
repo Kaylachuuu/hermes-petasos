@@ -65,8 +65,11 @@ var phoneAnswers = []struct{ ask, info string }{
 	{"AT+COPS=", ""},
 	{"AT+COPS?", `+COPS: 0,0,"Petasos"`},
 	{"AT+CLCC", ""}, // no calls
-	{"AT+CGMI", "Petasos"},
-	{"AT+CGMM", "Car Thing"},
+	// An iPhone, as a car may hand its voice button only to one (Siri Eyes Free), with Siri
+	// there to talk to when the car asks Apple's way (APLSIRI).
+	{"AT+CGMI", "Apple Inc."},
+	{"AT+CGMM", "iPhone"},
+	{"AT+APLSIRI?", "+APLSIRI: 1"},
 	{"AT+CGMR", version},
 	{"AT+CNUM", ""},
 	{"AT+CLIP=", ""},
