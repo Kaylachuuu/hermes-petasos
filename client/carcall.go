@@ -56,6 +56,10 @@ func carCallAnswer(msg string) (reply string, call bool) {
 // phoneAnswers are what a phone with no call going answers the questions a car asks as it
 // connects (a Ford SYNC asks all of these). Some cars take an ERROR to one as the phone not
 // being fit for hands-free, and stop offering its voice assistant.
+// networkSignal is a phone network's indicators: service (the first in BlueALSA's AT+CIND list) on,
+// and signal (the fifth) at 5 of 5.
+const networkSignal = "\r\n+CIEV: 1,1\r\n\r\n+CIEV: 5,5\r\n"
+
 var phoneAnswers = []struct{ ask, info string }{
 	{"AT+CHLD=?", "+CHLD: (0,1,2,3)"},
 	{"AT+COPS=", ""},
@@ -160,6 +164,7 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 	defer f.Close()
 	log.Printf("taking the car's call button (%s)", path)
 	buf := make([]byte, 512)
+	indicated := false
 	for {
 		n, err := f.Read(buf)
 		if err != nil || n == 0 {
@@ -171,6 +176,15 @@ func (c *carCallLine) serve(conn *dbus.Conn, path dbus.ObjectPath) {
 		}
 		if reply != "" {
 			if _, err := f.Write([]byte(reply)); err != nil {
+				return
+			}
+		}
+		if !indicated {
+			// BlueALSA tells the car there's no phone network. A Ford SYNC 2 then won't pass its
+			// call button on, so the Car Thing says it has service, at full signal. What the car
+			// sends here comes after the handshake (and its AT+CMER), when it may hear these.
+			indicated = true
+			if _, err := f.Write([]byte(networkSignal)); err != nil {
 				return
 			}
 		}
