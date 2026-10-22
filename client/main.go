@@ -601,6 +601,7 @@ func (h *hermes) run(eventsFile string) {
 		go watchCarButtons(raw)
 		go car.start(raw)
 		go carCalls.watch(raw)
+		go traceHandsFree()
 		setUpTunnel(h.dir)
 		keepMemoryReserve()
 		go fixUSBBootRole()
