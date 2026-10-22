@@ -96,3 +96,9 @@ func TestWireGuard(t *testing.T) {
 		t.Error("missing key accepted")
 	}
 }
+
+func TestCarKit(t *testing.T) {
+	if !carKit(0x340408) || !carKit(0x240420) || carKit(0x240414) || carKit(0x5a020c) {
+		t.Fatal("SYNC and car audio are car kits; a loudspeaker and a phone aren't")
+	}
+}

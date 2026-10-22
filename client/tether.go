@@ -356,7 +356,7 @@ func keepSpeakerConnected() {
 			continue
 		}
 		for _, s := range speakers {
-			if _, err := busctl(20*time.Second, "call", "org.bluez", s.Path, "org.bluez.Device1", "Connect"); err == nil {
+			if err := connectSound(s.Path); err == nil {
 				log.Printf("connected to %s for sound", s.Name)
 				lastProblem = ""
 				break
@@ -366,4 +366,25 @@ func keepSpeakerConnected() {
 			}
 		}
 	}
+}
+
+// connectSound connects a speaker. A car kit (by its class: a hands-free device or car audio)
+// gets only its music: it opens hands-free itself, as it does with a phone, and a Ford SYNC 2
+// says nothing at all over a hands-free channel the Car Thing opened.
+func connectSound(path string) error {
+	how := []string{"Connect"}
+	if out, err := busctl(5*time.Second, "get-property", "org.bluez", path, "org.bluez.Device1", "Class"); err == nil {
+		var class uint32
+		if _, err := fmt.Sscanf(string(out), "u %d", &class); err == nil && carKit(class) {
+			how = []string{"ConnectProfile", "s", audioSinkUUID}
+		}
+	}
+	_, err := busctl(45*time.Second, append([]string{"call", "org.bluez", path, "org.bluez.Device1"}, how...)...)
+	return err
+}
+
+// carKit reports whether a Bluetooth class is audio/video's hands-free device or car audio.
+func carKit(class uint32) bool {
+	minor := class >> 2 & 0x3f
+	return class>>8&0x1f == 0x04 && (minor == 0x02 || minor == 0x08)
 }

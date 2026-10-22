@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -64,10 +65,48 @@ func hfLines(pkt []byte) []string {
 	}
 	who := map[uint16]string{monACLTx: "Car Thing →", monACLRx: "→ Car Thing"}[op]
 	var out []string
+	if ev := linkEvent(pkt[6:]); ev != "" {
+		out = append(out, who+" "+ev)
+	}
 	for _, run := range strings.FieldsFunc(string(pkt[6:]), func(r rune) bool { return r < 0x20 || r > 0x7e }) {
 		if m := atLine.FindString(run); m != "" {
 			out = append(out, who+" "+m)
 		}
 	}
 	return out
+}
+
+// linkEvent is what sets up a hands-free connection, below its AT commands: a channel asked for
+// (SDP, the lookup of what a device offers, or RFCOMM, which hands-free runs over), and RFCOMM's
+// own opening and closing of a channel. ACL data: a 4-byte header, then L2CAP's (length, channel).
+func linkEvent(acl []byte) string {
+	if len(acl) < 8 {
+		return ""
+	}
+	cid := binary.LittleEndian.Uint16(acl[6:])
+	l2 := acl[8:]
+	if cid == 1 { // signalling: a Connection Request (code 2) names the protocol (PSM)
+		if len(l2) >= 8 && l2[0] == 0x02 {
+			psm := binary.LittleEndian.Uint16(l2[4:])
+			name := map[uint16]string{1: "SDP (looking up what it offers)", 3: "RFCOMM", 0x17: "AVCTP", 0x19: "AVDTP"}[psm]
+			if name == "" {
+				name = fmt.Sprintf("PSM 0x%x", psm)
+			}
+			return "asks for a channel: " + name
+		}
+		return ""
+	}
+	// An RFCOMM frame with no data: address (DLCI above the two low bits), control, length 0.
+	if cid < 0x40 || len(l2) < 4 || l2[0]&1 == 0 || l2[2] != 0x01 {
+		return ""
+	}
+	kind := map[byte]string{0x2f: "opens", 0x63: "accepts", 0x0f: "refuses", 0x43: "closes"}[l2[1]&^0x10]
+	if kind == "" {
+		return ""
+	}
+	dlci := l2[0] >> 2
+	if dlci == 0 {
+		return "RFCOMM " + kind + " the link"
+	}
+	return fmt.Sprintf("RFCOMM %s channel %d", kind, dlci>>1)
 }

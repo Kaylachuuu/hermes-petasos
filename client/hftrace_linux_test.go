@@ -25,6 +25,18 @@ func TestHFLines(t *testing.T) {
 	if len(got) != 1 || got[0] != "→ Car Thing AT+CIND=?" {
 		t.Fatalf("after a printable length: %q", got)
 	}
+	acl := func(cid uint16, l2 string) string {
+		b := []byte{0x02, 0x20, 0, 0, byte(len(l2)), 0, byte(cid), byte(cid >> 8)}
+		return string(append(b, l2...))
+	}
+	got = hfLines(pkt(monACLRx, acl(1, "\x02\x05\x04\x00\x03\x00\x40\x00")))
+	if len(got) != 1 || got[0] != "→ Car Thing asks for a channel: RFCOMM" {
+		t.Fatalf("an L2CAP request: %q", got)
+	}
+	got = hfLines(pkt(monACLTx, acl(0x41, "\x0b\x3f\x01\x5c"))) // SABM on DLCI 2: channel 1
+	if len(got) != 1 || got[0] != "Car Thing → RFCOMM opens channel 1" {
+		t.Fatalf("an RFCOMM SABM: %q", got)
+	}
 	if got := hfLines(pkt(3, "AT+BRSF=1")); got != nil {
 		t.Fatalf("an event isn't ACL data: %q", got)
 	}

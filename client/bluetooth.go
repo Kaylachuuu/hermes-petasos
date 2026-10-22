@@ -923,7 +923,7 @@ func (b *bluetooth) useSpeaker(path dbus.ObjectPath) func() error {
 				_ = b.call(d.Path, "org.bluez.Device1.Disconnect")()
 			}
 		}
-		return b.call(path, "org.bluez.Device1.Connect")()
+		return connectSound(string(path))
 	}
 }
 
